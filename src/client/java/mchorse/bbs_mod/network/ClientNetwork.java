@@ -2,6 +2,8 @@ package mchorse.bbs_mod.network;
 
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.actions.ActionState;
+import mchorse.bbs_mod.actions.types.crowd.CrowdClientMembers;
+import mchorse.bbs_mod.actions.types.crowd.CrowdExportPreload;
 import mchorse.bbs_mod.blocks.entities.ModelBlockEntity;
 import mchorse.bbs_mod.blocks.entities.ModelProperties;
 import mchorse.bbs_mod.client.BBSRendering;
@@ -60,6 +62,26 @@ public class ClientNetwork
         crusher.reset();
     }
 
+    /**
+     * Tell the server we are, or are no longer, exporting a film to video.
+     *
+     * <p>Exporting happens entirely on this side, but the crowd is spawned on the other, and how
+     * much of it to spawn is the one decision that has to tell a take from a shot being built.</p>
+     */
+    public static void sendExportState(boolean exporting)
+    {
+        if (!isIsBBSModOnServer())
+        {
+            return;
+        }
+
+        PacketByteBuf buf = PacketByteBufs.create();
+
+        buf.writeBoolean(exporting);
+
+        ClientPlayNetworking.send(ServerNetwork.SERVER_EXPORT_STATE, buf);
+    }
+
     public static boolean isIsBBSModOnServer()
     {
         return isBBSModOnServer;
@@ -86,6 +108,8 @@ public class ClientNetwork
         ClientPlayNetworking.registerGlobalReceiver(ServerNetwork.CLIENT_SELECTED_SLOT, (client, handler, buf, responseSender) -> handleSelectedSlotPacket(client, buf));
         ClientPlayNetworking.registerGlobalReceiver(ServerNetwork.CLIENT_ANIMATION_STATE_MODEL_BLOCK_TRIGGER, (client, handler, buf, responseSender) -> handleAnimationStateModelBlockPacket(client, buf));
         ClientPlayNetworking.registerGlobalReceiver(ServerNetwork.CLIENT_REFRESH_MODEL_BLOCKS, (client, handler, buf, responseSender) -> handleRefreshModelBlocksPacket(client, buf));
+        ClientPlayNetworking.registerGlobalReceiver(ServerNetwork.CLIENT_CROWD_MEMBERS, (client, handler, buf, responseSender) -> handleCrowdMembersPacket(client, buf));
+        ClientPlayNetworking.registerGlobalReceiver(ServerNetwork.CLIENT_CROWD_PRELOAD_READY, (client, handler, buf, responseSender) -> handleCrowdPreloadReadyPacket(client, buf));
         ClientPlayNetworking.registerGlobalReceiver(ServerNetwork.CLIENT_REQUEST_FILM_RESYNC, (client, handler, buf, responseSender) -> handleRequestFilmResync(client, buf));
         ClientPlayNetworking.registerGlobalReceiver(ServerNetwork.CLIENT_STRUCTURE_SAVED, (client, handler, buf, responseSender) -> handleStructureSaved(client, buf));
         ClientPlayNetworking.registerGlobalReceiver(ServerNetwork.CLIENT_STRUCTURE_CUT, (client, handler, buf, responseSender) -> handleStructureCut(client, buf));
@@ -200,7 +224,31 @@ public class ClientNetwork
     {
         String filmId = buf.readString();
 
-        client.execute(() -> Films.stopFilm(filmId));
+        client.execute(() ->
+        {
+            CrowdClientMembers.clear();
+            Films.stopFilm(filmId);
+        });
+    }
+
+    private static void handleCrowdMembersPacket(MinecraftClient client, PacketByteBuf buf)
+    {
+        int count = buf.readInt();
+        int[] ids = new int[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            ids[i] = buf.readInt();
+        }
+
+        client.execute(() -> CrowdClientMembers.add(ids));
+    }
+
+    private static void handleCrowdPreloadReadyPacket(MinecraftClient client, PacketByteBuf buf)
+    {
+        String filmId = buf.readString();
+
+        client.execute(() -> CrowdExportPreload.serverFinished(filmId));
     }
 
     private static void handleRequestFilmResync(MinecraftClient client, PacketByteBuf buf)

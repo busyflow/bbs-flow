@@ -29,7 +29,26 @@ public record FilmTarget(FilmTarget.Kind kind, String bone, TransformSpace space
         /** The form's anchor track, which parents the whole form. */
         ANCHOR,
         /** A bone inside the form, or the form's own transform. {@link #bone} is its path. */
-        BONE
+        BONE,
+        /**
+         * A crowd's walk waypoint, in world space. Fork-only.
+         *
+         * <p>Not a bone and not the replay: a waypoint is a point the crowd walks to, stored in
+         * world coordinates and owned by a keyframe rather than by any entity. The point itself
+         * rides on {@link mchorse.bbs_mod.film.FilmControllerContext#crowdMotionPoint} the way
+         * upstream's second bone rides on {@code bone2} - keeping the payload off the record
+         * leaves its signature upstream's.</p>
+         */
+        CROWD_MOTION,
+        /**
+         * An offset dragged across every selected replay at once. Fork-only.
+         *
+         * <p>Distinct from {@link #ROOT}, which edits one replay's placement on the current
+         * frame. This one edits no stored value at all - it is an offset that rewrites whole
+         * paths as it moves, so it is anchored at
+         * {@link mchorse.bbs_mod.film.FilmControllerContext#replayShiftPosition}.</p>
+         */
+        REPLAY_SHIFT
     }
 
     public static final FilmTarget NONE = new FilmTarget(Kind.NONE, null, TransformSpace.LOCAL);
@@ -47,6 +66,18 @@ public record FilmTarget(FilmTarget.Kind kind, String bone, TransformSpace space
     public static FilmTarget root(TransformSpace space)
     {
         return new FilmTarget(Kind.ROOT, null, space == null ? TransformSpace.LOCAL : space);
+    }
+
+    /** Fork-only, see {@link Kind#CROWD_MOTION}. */
+    public static FilmTarget crowdMotion()
+    {
+        return new FilmTarget(Kind.CROWD_MOTION, null, TransformSpace.WORLD);
+    }
+
+    /** Fork-only, see {@link Kind#REPLAY_SHIFT}. */
+    public static FilmTarget replayShift()
+    {
+        return new FilmTarget(Kind.REPLAY_SHIFT, null, TransformSpace.WORLD);
     }
 
     public boolean is(Kind kind)

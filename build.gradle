@@ -46,19 +46,6 @@ loom {
 	accessWidenerPath.set(getRootProject().file("src/main/resources/bbs.accesswidener"))
 }
 
-/* Windows Java can fail to connect its selector's Unix-domain socket in the user temp
- * directory (PipeImpl: Invalid argument: connect). Keep these short-lived sockets local
- * to the development checkout; this also covers the integrated server started by the client. */
-tasks.named('runClient', JavaExec) {
-	if (System.getProperty('os.name').startsWith('Windows')) {
-		def socketDir = layout.projectDirectory.dir('.gradle/sockets').asFile
-		systemProperty 'jdk.net.unixdomain.tmpdir', socketDir.absolutePath
-		doFirst {
-			socketDir.mkdirs()
-		}
-	}
-}
-
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
@@ -77,6 +64,22 @@ dependencies {
 
 	modImplementation "org.anarres:jcpp:1.4.14"
 	modImplementation "io.github.douira:glsl-transformer:2.0.0-pre13"
+
+    /* The live-recording undo lives in the client source set, and splitEnvironmentSourceSets
+     * keeps that off the test classpath by default. */
+    testImplementation sourceSets.client.output
+    testImplementation sourceSets.client.compileClasspath
+
+    testImplementation platform("org.junit:junit-bom:5.10.2")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+	useJUnitPlatform()
+	javaLauncher = javaToolchains.launcherFor {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
 }
 
 processResources {
@@ -272,4 +275,17 @@ tasks.register("apiCheck") {
 
 tasks.named("build") {
 	dependsOn tasks.named("apiCheck")
+}
+
+/* Windows Java can fail to connect its selector's Unix-domain socket in the user temp
+ * directory (PipeImpl: Invalid argument: connect). Keep these short-lived sockets local
+ * to the development checkout; this also covers the integrated server started by the client. */
+tasks.named('runClient', JavaExec) {
+	if (System.getProperty('os.name').startsWith('Windows')) {
+		def socketDir = layout.projectDirectory.dir('.gradle/sockets').asFile
+		systemProperty 'jdk.net.unixdomain.tmpdir', socketDir.absolutePath
+		doFirst {
+			socketDir.mkdirs()
+		}
+	}
 }

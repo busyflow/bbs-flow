@@ -91,6 +91,7 @@ public final class BoneIKIO
             bone.ikStretch.set(entry.getBool("stretch", false));
             bone.ikSquash.set(entry.getBool("squash", false));
             bone.ikClassic.set(entry.getBool("classic", defaultClassic));
+            bone.ikDepenetrate.set(entry.getBool("depenetrate", false));
 
             IKControl control = new IKControl();
 
@@ -151,6 +152,11 @@ public final class BoneIKIO
                 if (bone.ikChainLength.get() != 0)
                 {
                     entry.putInt("chain_length", bone.ikChainLength.get());
+                }
+
+                if (bone.ikDepenetrate.get())
+                {
+                    entry.putBool("depenetrate", true);
                 }
 
                 if (control.pole != DEFAULT_POLE)

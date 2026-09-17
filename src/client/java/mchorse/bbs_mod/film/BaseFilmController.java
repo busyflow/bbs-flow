@@ -2,6 +2,8 @@ package mchorse.bbs_mod.film;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import mchorse.bbs_mod.BBSModClient;
+import mchorse.bbs_mod.camera.clips.overwrite.POVClip;
+import mchorse.bbs_mod.utils.clips.Clip;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,6 +12,7 @@ import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.client.renderer.ItemUseEffects;
 import mchorse.bbs_mod.client.renderer.LivePlayerItemUse;
+import mchorse.bbs_mod.client.renderer.SprintEffects;
 import mchorse.bbs_mod.client.renderer.ThirdPersonItemUse;
 import mchorse.bbs_mod.cubic.animation.ItemUsePose;
 import mchorse.bbs_mod.entity.ActorEntity;
@@ -25,6 +28,7 @@ import mchorse.bbs_mod.forms.entities.EntityState;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.entities.MCEntity;
 import mchorse.bbs_mod.forms.entities.StubEntity;
+import mchorse.bbs_mod.forms.forms.CrowdForm;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.forms.forms.utils.Anchor;
 import mchorse.bbs_mod.forms.renderers.utils.MatrixCache;
@@ -112,6 +116,7 @@ public abstract class BaseFilmController
                 int ticks = replay.getTick(this.getTick());
 
                 entity.setForm(FormUtils.copy(replay.form.get()));
+                entity.setAnimationPhase(replay.animationPhase.get());
                 replay.keyframes.apply(ticks, entity);
                 entity.setPrevX(entity.getX());
                 entity.setPrevY(entity.getY());
@@ -167,6 +172,10 @@ public abstract class BaseFilmController
                  * carry over to the next replay in the loop (which would then wrap an already wrapped tick). */
                 int replayTicks = replay.getTick(ticks);
 
+                /* Pushed every tick rather than only at creation, so that desyncing a replay is
+                 * visible the moment the button is pressed instead of on the next rebuild. */
+                entity.setAnimationPhase(replay.animationPhase.get());
+
                 this.updateEntityAndForm(entity, replayTicks);
                 this.applyReplay(replay, replayTicks, entity);
 
@@ -176,6 +185,10 @@ public abstract class BaseFilmController
                  * is only answered while drawing, so vanilla's own tick spits
                  * nothing for them either (see LivePlayerItemUse). */
                 ItemUseEffects.tick(replay, entity, replayTicks);
+
+                /* Same reason: vanilla scuffs the ground from Entity#move, and a stub is placed
+                 * rather than moved, so the sprint never reaches that code. */
+                SprintEffects.tick(entity, replayTicks);
 
                 Map<String, Integer> actors = this.getActors();
 
@@ -189,6 +202,10 @@ public abstract class BaseFilmController
 
                         if (anEntity instanceof ActorEntity actor)
                         {
+                            /* An actor placed in the world renders through its own long-lived
+                             * MCEntity, which is where its phase has to live to be read. */
+                            actor.getEntity().setAnimationPhase(replay.animationPhase.get());
+
                             /* Force synchronize entity angles */
                             float yaw = replay.keyframes.yaw.interpolate(replayTicks).floatValue();
                             float pitch = replay.keyframes.pitch.interpolate(replayTicks).floatValue();
@@ -552,7 +569,7 @@ public abstract class BaseFilmController
     {
         Form form = entity.getForm();
 
-        if (form == null || form.anchor.get().hasTarget())
+        if (form == null || form.anchor.get().hasTarget() || form instanceof CrowdForm)
         {
             return false;
         }
@@ -573,7 +590,6 @@ public abstract class BaseFilmController
      * plates &mdash; it does not change how the replay is drawn. Drawn from the keyframes like
      * every other replay, it moves without riding the network, and it keeps what belongs to a
      * replay rather than to an entity: its shadow, its relative origin, its onion skin, its tag.
-     *
      * <p>What the shell is being put through travels the other way, because the shell is the thing
      * blows land on and the body drawn over it is the thing anyone looks at: the flash of a hit and
      * the 20 ticks of falling over went to a body nobody was watching, so hitting an actor did
@@ -620,8 +636,29 @@ public abstract class BaseFilmController
         return entity.getDeathTime() <= 0;
     }
 
+    protected boolean shouldHideActor(Replay replay)
+    {
+        if (this.film != null && this.film.camera != null)
+        {
+            for (Clip clip : this.film.camera.getClips(this.getTick()))
+            {
+                if (clip instanceof POVClip pov && pov.enabled.get() && pov.hideActor.get() && pov.tracksReplay(replay, this.film))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     protected void renderEntity(WorldRenderContext context, Replay replay, IEntity entity)
     {
+        if (this.shouldHideActor(replay))
+        {
+            return;
+        }
+
         FilmControllerContext filmContext = getFilmControllerContext(context, replay, entity);
 
         filmContext.transition = getTransition(entity, context.tickDelta());
@@ -634,7 +671,7 @@ public abstract class BaseFilmController
         return FilmControllerContext.instance
             .setup(this.entities, entity, replay, context)
             .shadow(replay.shadow.get(), replay.shadowSize.get())
-            .nameTag(replay.nameTag.get())
+            .nameTag(replay.nameTag.get(), replay.nameTagHeight.get())
             .relative(replay.relative.get());
     }
 

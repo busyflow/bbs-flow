@@ -193,6 +193,11 @@ public class UIModelBlockPanel extends UIDashboardPanel implements GizmoViewport
         TourAnchors.register("model_blocks.form", () -> this.pickEdit);
         TourAnchors.register("model_blocks.transform", () -> this.transform);
 
+        /* What the tour of this panel points at; the fields below are built further down */
+        TourAnchors.register("model_blocks.list", () -> this.modelBlocksSearch);
+        TourAnchors.register("model_blocks.form", () -> this.pickEdit);
+        TourAnchors.register("model_blocks.transform", () -> this.transform);
+
         this.pickEdit = new UINestedEdit((editing) ->
         {
             UIFormPalette palette = UIFormPalette.open(this, editing, this.modelBlock.getProperties().getForm(), (f) ->

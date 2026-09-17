@@ -107,7 +107,9 @@ public class UIFormUndoHandler
      * Handle undo/redo. This method primarily updates the UI state, according to
      * the undo/redo changes were done.
      */
-    private void handleUndos(IUndo<ValueGroup> undo, boolean redo)
+    /* protected so a subclass can act on its own undo kinds - the film handler puts the
+     * playhead back after a live take (see LiveRecordingUndo). */
+    protected void handleUndos(IUndo<ValueGroup> undo, boolean redo)
     {
         IUndo<ValueGroup> anotherUndo = undo;
 

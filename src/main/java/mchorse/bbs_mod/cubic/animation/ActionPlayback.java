@@ -3,6 +3,7 @@ package mchorse.bbs_mod.cubic.animation;
 import mchorse.bbs_mod.cubic.IModel;
 import mchorse.bbs_mod.cubic.data.animation.Animation;
 import mchorse.bbs_mod.forms.entities.IEntity;
+import mchorse.bbs_mod.utils.animation.DesyncPhase;
 
 public class ActionPlayback
 {
@@ -202,16 +203,49 @@ public class ActionPlayback
 
     public void apply(IEntity target, IModel armature, float transition, float blend, boolean skipInitial)
     {
-        float tick = this.getTick(transition);
+        float tick = this.getTick(transition, target);
 
         armature.apply(target, this.action, tick, blend, transition, skipInitial);
     }
 
     public void postApply(IEntity target, IModel armature, float transition)
     {
-        float tick = this.getTick(transition);
+        float tick = this.getTick(transition, target);
 
         armature.postApply(target, this.action, tick, transition);
+    }
+
+    /**
+     * Whether this playback runs forever, as opposed to being fired once and fading out.
+     */
+    public boolean isLooping()
+    {
+        return this.looping && this.config.loop;
+    }
+
+    /**
+     * The playhead this action is at, shifted by the target's animation phase.
+     *
+     * <p>A walk cycle starts on the tick its actor starts walking, so a line of actors given the
+     * same path start the same loop on the same tick and stay in step for as long as they walk.
+     * Shifting the read is what separates them - the playback itself is untouched, so a scrub, a
+     * fade or a change of action behaves exactly as before.</p>
+     *
+     * <p>Only loops are shifted. A one-shot - a swipe, a jump, a hurt - is a reaction to something
+     * that happened on a particular tick, and starting it partway through would be wrong rather
+     * than merely different.</p>
+     */
+    private float getTick(float transition, IEntity target)
+    {
+        float tick = this.getTick(transition);
+        float phase = target == null ? 0F : target.getAnimationPhase();
+
+        if (phase == 0F || !this.isLooping())
+        {
+            return tick;
+        }
+
+        return DesyncPhase.offsetTicks(tick, phase, this.duration);
     }
 
     public static enum Fade

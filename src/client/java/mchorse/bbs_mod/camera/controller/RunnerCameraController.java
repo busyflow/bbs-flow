@@ -25,6 +25,11 @@ public class RunnerCameraController extends CameraWorkCameraController
         this.panel = panel;
         this.callback = callback;
         this.context.playing = false;
+
+        if (this.panel != null)
+        {
+            this.context.film = this.panel.getData();
+        }
     }
 
     public boolean isRunning()
@@ -96,6 +101,11 @@ public class RunnerCameraController extends CameraWorkCameraController
     @Override
     public void setup(Camera camera, float transition)
     {
+        if (this.panel != null)
+        {
+            this.context.film = this.panel.getData();
+        }
+
         if (this.manual != null)
         {
             this.manual.apply(camera);

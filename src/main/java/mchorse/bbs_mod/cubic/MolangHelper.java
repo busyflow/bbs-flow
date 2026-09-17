@@ -49,13 +49,23 @@ public class MolangHelper
 
         if (target != null)
         {
-            float yawHead = Lerps.lerp(target.getPrevHeadYaw(), target.getHeadYaw(), transition);
-            float bodyYaw = Lerps.lerp(target.getPrevBodyYaw(), target.getBodyYaw(), transition);
+            /* Yaw is an angle on a circle, so it is interpolated the short way round. A plain
+             * lerp from 179 to -176 is not a five degree turn but a three hundred and fifty five
+             * degree one, taken inside a single tick - which is the head snapping round and back
+             * as it crosses behind the model. Every angle here goes through normalizeYaw, which
+             * carries the second value to whichever side of the first it is actually nearer. */
+            float yawHead = Lerps.lerp(target.getPrevHeadYaw(), Lerps.normalizeYaw(target.getPrevHeadYaw(), target.getHeadYaw()), transition);
+            float bodyYaw = Lerps.lerp(target.getPrevBodyYaw(), Lerps.normalizeYaw(target.getPrevBodyYaw(), target.getBodyYaw()), transition);
 
             dx = target.getVelocity().x;
             dz = target.getVelocity().z;
-            yawSpeed = Lerps.lerp(target.getPrevBodyYaw() - target.getPrevPrevBodyYaw(), target.getBodyYaw() - target.getPrevBodyYaw(), transition);
-            headYaw = yawHead - bodyYaw;
+            /* Differences of angles wrap in the same way: a body that turned five degrees across
+             * the boundary must not read as having spun most of the way round. */
+            yawSpeed = Lerps.lerp(
+                Lerps.normalizeYaw(0F, target.getPrevBodyYaw() - target.getPrevPrevBodyYaw()),
+                Lerps.normalizeYaw(0F, target.getBodyYaw() - target.getPrevBodyYaw()),
+                transition);
+            headYaw = Lerps.normalizeYaw(0F, yawHead - bodyYaw);
             headPitch = Lerps.lerp(target.getPrevPitch(), target.getPitch(), transition);
             velocity = Math.sqrt(dx * dx + target.getVelocity().y * target.getVelocity().y + dz * dz);
             limbSwingAmount = target.getLimbSpeed(transition);

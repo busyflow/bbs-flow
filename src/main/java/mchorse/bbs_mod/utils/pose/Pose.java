@@ -223,10 +223,7 @@ public class Pose implements IMapSerializable
 
         for (Map.Entry<String, PoseTransform> entry : pose.transforms.entrySet())
         {
-            if (!entry.getValue().isDefault())
-            {
-                this.transforms.put(entry.getKey(), (PoseTransform) entry.getValue().copy());
-            }
+            this.transforms.put(entry.getKey(), (PoseTransform) entry.getValue().copy());
         }
     }
 
@@ -242,10 +239,7 @@ public class Pose implements IMapSerializable
 
         for (Map.Entry<String, PoseTransform> entry : this.transforms.entrySet())
         {
-            if (!entry.getValue().isDefault())
-            {
-                pose.put(entry.getKey(), entry.getValue().toData());
-            }
+            pose.put(entry.getKey(), entry.getValue().toData());
         }
 
         data.put("pose", pose);
@@ -264,10 +258,7 @@ public class Pose implements IMapSerializable
 
             transform.fromData(pose.getMap(key));
 
-            if (!transform.isDefault())
-            {
-                this.transforms.put(key, transform);
-            }
+            this.transforms.put(key, transform);
         }
     }
 

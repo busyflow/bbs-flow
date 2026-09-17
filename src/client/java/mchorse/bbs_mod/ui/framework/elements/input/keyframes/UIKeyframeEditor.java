@@ -13,6 +13,7 @@ import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.utils.UITimelinePanel;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIAnchorKeyframeFactory;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UICrowdWalkKeyframeFactory;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIKeyframeFactory;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIPoseKeyframeFactory;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIPoseTransformKeyframeFactory;
@@ -316,6 +317,25 @@ public class UIKeyframeEditor extends UITimelinePanel
         UIKeyframeSheet sheet = this.getSheet(this.editor.getKeyframe());
 
         return sheet != null && sheet.property != null && "anchor".equals(sheet.id);
+    }
+
+    public UICrowdWalkKeyframeFactory getCrowdMotionEditor()
+    {
+        return this.editor instanceof UICrowdWalkKeyframeFactory factory ? factory : null;
+    }
+
+    public boolean isCrowdWalkTrack()
+    {
+        UICrowdWalkKeyframeFactory factory = this.getCrowdMotionEditor();
+
+        if (factory == null)
+        {
+            return false;
+        }
+
+        UIKeyframeSheet sheet = this.getSheet(factory.getMotionKeyframe());
+
+        return sheet == null || "crowd_motion_path".equals(sheet.id) || "crowd_walk".equals(sheet.id);
     }
 
     /** The frame the anchor gizmo is drawn and dragged in. */

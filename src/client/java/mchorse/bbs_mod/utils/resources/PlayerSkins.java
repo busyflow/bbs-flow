@@ -379,6 +379,8 @@ public class PlayerSkins
     {
         for (Property property : profile.getProperties().get("textures"))
         {
+            /* 1.20.1: authlib's Property is still a class with getters. It became a record in
+             * 1.20.2 - property.value() there. */
             String url = skinUrlFromTextures(property.getValue());
 
             if (url != null)

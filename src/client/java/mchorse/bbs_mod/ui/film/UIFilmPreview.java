@@ -15,7 +15,9 @@ import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.ui.framework.UIScreen;
 import mchorse.bbs_mod.film.Films;
 import mchorse.bbs_mod.graphics.texture.Texture;
+import org.lwjgl.glfw.GLFW;
 import mchorse.bbs_mod.graphics.window.Window;
+import mchorse.bbs_mod.ui.film.clips.area.AreaBrush;
 import mchorse.bbs_mod.settings.ui.UISettingsOverlayPanel;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
@@ -72,6 +74,7 @@ public class UIFilmPreview extends UIElement
 
     public UIElement icons;
 
+    public UIIcon shiftReplay;
     public UIIcon onionSkin;
     public UIIcon motionPath;
     public UIIcon plause;
@@ -104,6 +107,9 @@ public class UIFilmPreview extends UIElement
         this.icons.relative(this).x(0.5F).y(1F).anchor(0.5F, 1F);
 
         /* Preview buttons */
+        this.shiftReplay = new UIIcon(Icons.SHIFT_TO, (b) -> this.panel.getController().toggleReplayShiftGizmo());
+        this.shiftReplay.highlight(() -> this.panel.getController().isReplayShiftGizmo(), Direction.BOTTOM);
+        this.shiftReplay.tooltip(UIKeys.FILM_CONTROLLER_REPLAY_SHIFT_GIZMO);
         this.onionSkin = new UIIcon(Icons.ONION_SKIN, (b) -> this.openOnionSkin());
         this.onionSkin.highlight(() -> this.panel.getController().getOnionSkin().enabled.get(), Direction.BOTTOM);
         this.onionSkin.tooltip(UIKeys.FILM_CONTROLLER_ONION_SKIN_TITLE);
@@ -260,7 +266,8 @@ public class UIFilmPreview extends UIElement
             });
         });
 
-        this.icons.add(this.onionSkin, this.motionPath, this.teleport, this.flight, this.plause, this.control, this.perspective, this.recordReplay, this.recordVideo);
+        /* Upstream's order, with the fork's shift button kept next to the motion path it moves. */
+        this.icons.add(this.onionSkin, this.motionPath, this.shiftReplay, this.teleport, this.flight, this.plause, this.control, this.perspective, this.recordReplay, this.recordVideo);
         this.add(this.icons);
 
         for (Function<UIFilmPreview, UIElement> factory : OVERLAYS)
@@ -379,6 +386,13 @@ public class UIFilmPreview extends UIElement
 
         if (area.isInside(context))
         {
+            /* Ahead of the gizmo and of form picking: an armed area brush owns dragging in the
+             * viewport, or a stroke over a replay would select it instead of painting. */
+            if (AreaBrush.click(context, area, this.panel.getCamera()))
+            {
+                return true;
+            }
+
             if (this.panel.getController().orbitGizmo.mouseClicked(context, this.navBlock))
             {
                 return true;
@@ -398,6 +412,8 @@ public class UIFilmPreview extends UIElement
     @Override
     protected boolean subMouseReleased(UIContext context)
     {
+        AreaBrush.stopPainting();
+
         if (this.placementGizmo.mouseReleased(context))
         {
             return true;
@@ -441,6 +457,14 @@ public class UIFilmPreview extends UIElement
     @Override
     public void render(UIContext context)
     {
+        UIFilmController shiftController = this.panel.getController();
+
+        /* Enabled while there is a selection to shift, or while it is already on so it can be
+         * turned back off; lit in the UI colour while it owns the viewport. */
+        this.shiftReplay.setEnabled(shiftController.canToggleReplayShiftGizmo() || shiftController.isReplayShiftGizmo());
+        this.shiftReplay.active(shiftController.isReplayShiftGizmo());
+        this.shiftReplay.activeColor = BBSSettings.primaryColor(0);
+
         Texture texture = BBSRendering.getTexture();
         Area area = this.getViewport();
         Camera camera = this.panel.getCamera();
@@ -448,6 +472,29 @@ public class UIFilmPreview extends UIElement
         camera.copy(this.panel.getWorldCamera());
         camera.view.set(this.panel.lastView);
         camera.projection.set(this.panel.lastProjection);
+
+        /* The brush reads the mouse button directly rather than waiting for a click event: the
+         * viewport's press is contested by the orbit camera, the gizmos and form picking, and the
+         * brush must work regardless of which of them the editor decided to hand it to. Traced
+         * against the camera the viewport was actually drawn with, which is only true once the
+         * matrices above are in. */
+        if (AreaBrush.isArmed() && this.canBeSeen())
+        {
+            boolean left = Window.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+            boolean right = Window.isMouseButtonPressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+
+            AreaBrush.hover(context, area, camera);
+
+            if (area.isInside(context) && (left || right))
+            {
+                AreaBrush.held(context, area, camera, right);
+            }
+            else
+            {
+                AreaBrush.stopPainting();
+            }
+        }
+
         context.batcher.flush();
 
         if (texture != null)

@@ -32,8 +32,10 @@ public class FrameOverlays
      */
     public static void setup()
     {
+        register(UIPovHandRenderer::render);
         register((stack, batcher, context) -> UIImageRenderer.renderImages(stack, batcher, ImageClip.getImages(context)));
         register((stack, batcher, context) -> UISubtitleRenderer.renderSubtitles(stack, batcher, SubtitleClip.getSubtitles(context)));
+        register(UIPovHudRenderer::render);
     }
 
     public static void register(IFrameOverlayRenderer renderer)

@@ -4,6 +4,7 @@ import mchorse.bbs_mod.cubic.jem.CemVariables;
 import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.utils.AABB;
+import mchorse.bbs_mod.utils.animation.DesyncPhase;
 import mchorse.bbs_mod.utils.interps.Lerps;
 import net.minecraft.entity.EntityPose;
 import net.minecraft.entity.EquipmentSlot;
@@ -38,6 +39,7 @@ public class StubEntity implements IEntity
 
     private final int id = nextId++;
 
+
     private float prevLeaningPitch;
     private float leaningPitch;
     private int roll;
@@ -70,6 +72,7 @@ public class StubEntity implements IEntity
     private float[] prevExtraVariables = new float[10];
 
     private LimbAnimator limbAnimator = new LimbAnimator();
+    private float animationPhase;
     private final Map<EquipmentSlot, ItemStack> items = new HashMap<>();
     private final ItemStack[] hotbar = new ItemStack[ReplayKeyframes.HOTBAR_SIZE];
 
@@ -569,9 +572,23 @@ public class StubEntity implements IEntity
     }
 
     @Override
+    public float getAnimationPhase()
+    {
+        return this.animationPhase;
+    }
+
+    @Override
+    public void setAnimationPhase(float phase)
+    {
+        this.animationPhase = DesyncPhase.normalize(phase);
+    }
+
+    @Override
     public float getLimbPos(float tickDelta)
     {
-        return this.limbAnimator.getPos(tickDelta);
+        /* Offsetting the read rather than the accumulator: the accumulator is rebuilt whenever the
+         * film's entities are, and a shift written into it would not survive a scrub. */
+        return this.limbAnimator.getPos(tickDelta) + DesyncPhase.limbOffset(this.animationPhase);
     }
 
     @Override

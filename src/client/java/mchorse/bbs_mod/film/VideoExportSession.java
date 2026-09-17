@@ -7,6 +7,7 @@ import mchorse.bbs_mod.audio.MinecraftSoundMixer;
 import mchorse.bbs_mod.audio.Wave;
 import mchorse.bbs_mod.audio.wav.WaveReader;
 import mchorse.bbs_mod.client.BBSRendering;
+import mchorse.bbs_mod.network.ClientNetwork;
 import mchorse.bbs_mod.utils.StringUtils;
 import mchorse.bbs_mod.utils.VideoMuxer;
 import mchorse.bbs_mod.utils.VideoRecorder;
@@ -110,8 +111,14 @@ public abstract class VideoExportSession
         this.height = height;
         this.audioFile = null;
 
+        /* Before prepare, so that anything the server builds for this take - the crowd's full
+         * population above all - is built at export size rather than the size the editor was
+         * showing a moment ago. */
+        ClientNetwork.sendExportState(true);
+
         if (!this.prepare())
         {
+            ClientNetwork.sendExportState(false);
             this.reset();
 
             return false;
@@ -119,7 +126,10 @@ public abstract class VideoExportSession
 
         this.applyExportTarget();
 
-        if (delayMs > 0L)
+        /* A subclass may still be preparing an external resource after a zero-second delay.
+         * Crowd exports use this path while the server finishes the initial population. Never
+         * bypass that readiness gate merely because the user's wall-clock delay is zero. */
+        if (delayMs > 0L || !this.isWarmupReady())
         {
             this.state = State.WARMUP;
             this.warmupEndsAtMs = System.currentTimeMillis() + delayMs;
@@ -245,6 +255,8 @@ public abstract class VideoExportSession
         {
             return;
         }
+
+        ClientNetwork.sendExportState(false);
 
         VideoRecorder recorder = this.getRecorder();
         int recordedFrames = recorder.getCounter();

@@ -174,6 +174,10 @@ public class FilmControllerHud
          * sphere hover highlights composite on top of it. It moved out of the
          * world pass into the UI pipeline so its translucent parts blend
          * correctly (see Gizmo#renderInterface). */
+        /* The shift transform is never shown, so its own render never runs - without this the
+         * handle follows the cursor and the replays it moves stay where they were. */
+        this.controller.updateReplayShiftGesture(context);
+
         if (this.controller.canShowGizmo())
         {
             BBSProfiler.begin(BBSProfiler.Timer.GIZMO);
@@ -231,6 +235,21 @@ public class FilmControllerHud
             return UIReplaysEditor.ReplayCategory.REPLAY.label.get();
         }
 
+        if (target.is(FilmTarget.Kind.REPLAY_SHIFT))
+        {
+            return UIKeys.FILM_CONTROLLER_REPLAY_SHIFT_GIZMO.get();
+        }
+
+        if (target.is(FilmTarget.Kind.CROWD_MOTION))
+        {
+            return "Crowd Motion";
+        }
+
+        if (target.is(FilmTarget.Kind.ANCHOR))
+        {
+            return "Anchor";
+        }
+
         if (target.isNone())
         {
             return null;
@@ -240,6 +259,6 @@ public class FilmControllerHud
         String label = editor == null ? null : editor.getTargetLabel();
 
         /* Nothing to ask (the track was rebuilt under us) — the path is still better than nothing. */
-        return label != null ? label : StringUtils.fileName(target.bone());
+        return label != null ? label : (target.bone() != null ? StringUtils.fileName(target.bone()) : "");
     }
 }

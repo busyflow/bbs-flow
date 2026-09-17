@@ -2,10 +2,12 @@ package mchorse.bbs_mod.client.renderer.entity;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import mchorse.bbs_mod.BBSModClient;
+import mchorse.bbs_mod.actions.types.crowd.CrowdClientMembers;
 import mchorse.bbs_mod.client.renderer.DeathPose;
 import mchorse.bbs_mod.cubic.render.vanilla.ArmorRenderer;
 import mchorse.bbs_mod.entity.ActorEntity;
 import mchorse.bbs_mod.forms.FormUtilsClient;
+import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.forms.renderers.FormRenderType;
 import mchorse.bbs_mod.forms.renderers.FormRenderingContext;
 import net.minecraft.client.MinecraftClient;
@@ -50,6 +52,11 @@ public class ActorEntityRenderer extends EntityRenderer<ActorEntity>
     @Override
     public void render(ActorEntity livingEntity, float yaw, float tickDelta, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light)
     {
+        if (livingEntity.isInvisible())
+        {
+            return;
+        }
+
         /* A film running on this client draws its own actors, from their keyframes - drawing them
          * here as well would be a second body, a frame behind the first. This is for everyone else:
          * a player who happens to be standing in someone else's scene still sees the cast. */
@@ -60,18 +67,35 @@ public class ActorEntityRenderer extends EntityRenderer<ActorEntity>
 
         matrices.push();
 
+        if (CrowdClientMembers.isMember(livingEntity.getId()))
+        {
+            float target = livingEntity.getYaw();
+            float delta = MathHelper.wrapDegrees(target - livingEntity.bodyYaw);
+
+            if (Math.abs(delta) > 120F)
+            {
+                livingEntity.prevBodyYaw = target;
+                livingEntity.bodyYaw = target;
+            }
+        }
+
         float bodyYaw = MathHelper.lerpAngleDegrees(tickDelta, livingEntity.prevBodyYaw, livingEntity.bodyYaw);
         int overlay = LivingEntityRenderer.getOverlay(livingEntity, 0F);
 
         this.setupTransforms(livingEntity, matrices, bodyYaw, tickDelta);
 
-        RenderSystem.enableBlend();
-        RenderSystem.enableDepthTest();
-        FormUtilsClient.render(livingEntity.getForm(), new FormRenderingContext()
-            .set(FormRenderType.ENTITY, livingEntity.getEntity(), matrices, light, overlay, tickDelta)
-            .camera(MinecraftClient.getInstance().gameRenderer.getCamera()));
-        RenderSystem.disableDepthTest();
-        RenderSystem.disableBlend();
+        Form form = livingEntity.getForm();
+
+        if (form != null)
+        {
+            RenderSystem.enableBlend();
+            RenderSystem.enableDepthTest();
+            FormUtilsClient.render(form, new FormRenderingContext()
+                .set(FormRenderType.ENTITY, livingEntity.getEntity(), matrices, light, overlay, tickDelta)
+                .camera(MinecraftClient.getInstance().gameRenderer.getCamera()));
+            RenderSystem.disableDepthTest();
+            RenderSystem.disableBlend();
+        }
 
         matrices.pop();
 

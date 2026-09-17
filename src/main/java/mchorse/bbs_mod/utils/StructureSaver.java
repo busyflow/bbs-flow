@@ -66,6 +66,7 @@ public class StructureSaver
             NbtHelper.putDataVersion(nbt);
 
             file.getParentFile().mkdirs();
+            /* 1.20.1 writes to a File; the Path overload arrived in 1.20.2. */
             NbtIo.writeCompressed(nbt, file);
 
             return true;

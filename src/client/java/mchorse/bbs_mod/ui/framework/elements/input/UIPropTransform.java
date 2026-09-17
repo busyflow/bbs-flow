@@ -361,11 +361,24 @@ public class UIPropTransform extends UITransform implements TransformGesture.Hos
         return this.enableHotkeys(() -> true);
     }
 
+    /** Translation-only hotkeys for point editors that have no scale or rotation data. */
+    public UIPropTransform enableTranslateHotkeys()
+    {
+        IKey category = UIKeys.TRANSFORMS_KEYS_CATEGORY;
+        Supplier<Boolean> active = () -> this.gesture.isEditing();
+
+        this.keys().register(Keys.TRANSFORMATIONS_TRANSLATE, () -> this.gesture.enableMode(TransformOp.TRANSLATE)).category(category);
+        this.keys().register(Keys.TRANSFORMATIONS_X, () -> this.gesture.setAxis(Axis.X)).active(active).category(category);
+        this.keys().register(Keys.TRANSFORMATIONS_Y, () -> this.gesture.setAxis(Axis.Y)).active(active).category(category);
+        this.keys().register(Keys.TRANSFORMATIONS_Z, () -> this.gesture.setAxis(Axis.Z)).active(active).category(category);
+
+        return this;
+    }
+
     public UIPropTransform enableHotkeys(Supplier<Boolean> enabled)
     {
         return this.enableHotkeys(enabled, (op) -> true);
     }
-
     /**
      * As above, but only for the operations {@code ops} answers for — the hotkey twin of the gizmo's
      * handle mask, for a host whose target can't take all three (a rest has no scale; a rest shared

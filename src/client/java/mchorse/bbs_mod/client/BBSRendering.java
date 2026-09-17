@@ -439,6 +439,18 @@ public class BBSRendering
 
     public static void onRenderBeforeScreen()
     {
+        if (!toggleFramebuffer)
+        {
+            if (pendingExportResolutionAction != null)
+            {
+                Runnable action = pendingExportResolutionAction;
+                pendingExportResolutionAction = null;
+                MinecraftClient.getInstance().execute(action);
+            }
+
+            return;
+        }
+
         Texture texture = getTexture();
         int targetWidth = getVideoWidth();
         int targetHeight = getVideoHeight();

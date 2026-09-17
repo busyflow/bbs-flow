@@ -19,6 +19,13 @@ import mchorse.bbs_mod.film.replays.tracks.TrackDescriptor;
 import mchorse.bbs_mod.film.replays.tracks.TrackId;
 import mchorse.bbs_mod.film.replays.tracks.TrackStyle;
 import mchorse.bbs_mod.film.replays.tracks.TrackKind;
+import mchorse.bbs_mod.actions.crowd.CrowdPaint;
+import mchorse.bbs_mod.actions.crowd.CrowdWalk;
+import mchorse.bbs_mod.actions.types.crowd.CrowdUtils;
+import mchorse.bbs_mod.film.crowds.Crowd;
+import net.minecraft.util.math.Vec3d;
+import mchorse.bbs_mod.forms.forms.CrowdForm;
+import mchorse.bbs_mod.ui.film.crowds.UICrowdReplayProperties;
 import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.forms.FormUtils;
@@ -133,6 +140,10 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
     private Pair<Form, String> pendingPick;
     private boolean timelineVisible = true;
     private boolean propertiesVisible = true;
+
+    /** The crowd panel that shares the parameters area, shown only for a crowd replay. */
+    private UICrowdReplayProperties crowdProperties;
+    private boolean crowdIsShown;
     private Set<String> keys = new LinkedHashSet<>();
     /**
      * Which rows the user left unfolded, per replay. Every rebuild of the timeline throws the dope
@@ -519,6 +530,13 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
 
             this.replaysList.replays.refreshReplayList();
             this.setReplay(replays.isEmpty() ? null : replays.get(index), true, OrbitReaction.SWITCH);
+
+            /* The shift gizmo follows whatever is selected, so it hears about this here rather
+             * than watching for it every frame. */
+            if (this.filmPanel.getController() != null)
+            {
+                this.filmPanel.getController().onReplaySelectionChanged();
+            }
         }
     }
 
@@ -559,6 +577,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
             }
 
             this.replayProperties.setReplay(replay);
+            this.updateCrowdProperties(replay);
             this.filmPanel.actionEditor.setClips(replay == null ? null : replay.actions);
             this.updateChannelsList();
 
@@ -607,8 +626,17 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
 
         List<UIKeyframeSheet> sheets = new ArrayList<>();
 
-        this.collectCuratedSheets(sheets);
-        UIReplaysEditorUtils.buildSheets(catalog, sheets);
+        boolean crowdOnly = this.replay.form.get() instanceof CrowdForm;
+
+        if (crowdOnly)
+        {
+            this.collectCrowdSheets(sheets);
+        }
+        else
+        {
+            this.collectCuratedSheets(sheets);
+            UIReplaysEditorUtils.buildSheets(catalog, sheets);
+        }
 
         this.keys.clear();
 
@@ -625,7 +653,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
 
         /* A body part's row belongs to no category — it says whose the tracks under it are, whatever
          * they animate. It leaves with its last child instead (see dropEmptyHeaders). */
-        sheets.removeIf((v) -> !v.header && !this.allMode && categoryOf(v) != this.category);
+        sheets.removeIf((v) -> !crowdOnly && !v.header && !this.allMode && categoryOf(v) != this.category);
 
         /* The tab isn't empty by itself - so if the filter empties it, the timeline has to stay (see below). */
         boolean hadTracks = !sheets.isEmpty();
@@ -834,6 +862,51 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
     }
 
     /**
+     * A crowd replay animates the crowd, never a body. Its timeline is the crowd channels alone -
+     * showing the ordinary pose and item tracks beside them would offer keyframes that drive
+     * nothing, since no actor is performing this replay.
+     */
+    private void collectCrowdSheets(List<UIKeyframeSheet> sheets)
+    {
+        for (String key : ReplayKeyframes.CROWD_CHANNELS)
+        {
+            BaseValue value = this.replay.keyframes.get(key);
+            KeyframeChannel channel = (KeyframeChannel) value;
+            UIKeyframeSheet sheet = new UIKeyframeSheet(getColor(key), channel, null).icon(getIcon(key));
+
+            if ("crowd_motion_path".equals(key))
+            {
+                sheet.seed(() ->
+                {
+                    CrowdWalk walk = new CrowdWalk();
+                    Vec3d center = CrowdUtils.getCrowdCenter(this.film, this.replay, null, this.filmPanel.getCursor());
+
+                    walk.x = (float) center.x;
+                    walk.y = (float) center.y;
+                    walk.z = (float) center.z;
+
+                    return walk;
+                });
+            }
+            else if ("crowd_paint".equals(key))
+            {
+                sheet.seed(() ->
+                {
+                    Crowd crowd = this.replay.form.get() instanceof CrowdForm cf ? this.film.crowds.byTag(cf.crowd.get()) : null;
+
+                    return new CrowdPaint(crowd == null ? null : crowd.getCells());
+                });
+            }
+            else if ("crowd_visible".equals(key))
+            {
+                sheet.seed(() -> !this.replay.keyframes.crowdVisible.interpolate(this.filmPanel.getCursor(), true));
+            }
+
+            sheets.add(sheet);
+        }
+    }
+
+    /**
      * Show a category's tab only while the replay actually has tracks of that kind, and bounce the
      * active category back to Model when it does not. Asked of the catalog, so "does this replay have
      * IK" is the same question as "which tracks land in the IK tab" — it used to be a separate walk
@@ -962,6 +1035,49 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
             this.actionTimeline.setTimelineVisible(this.timelineVisible && this.actionsMode);
             this.actionTimeline.setPropertiesVisible(this.propertiesVisible && this.actionsMode);
         }
+
+        this.updateCrowdPropertiesVisibility();
+    }
+
+    /**
+     * The crowd panel fills the parameters area for as long as a crowd replay is selected.
+     *
+     * <p>It stands down whenever a keyframe or an action clip is being edited, since that editor
+     * wants the same space - which is what stops the crowd's settings sitting on top of the
+     * keyframe editor while the timeline is up, which is most of the time while a crowd is being
+     * built.</p>
+     */
+    private void updateCrowdPropertiesVisibility()
+    {
+        if (this.crowdProperties == null)
+        {
+            return;
+        }
+
+        boolean occupied = this.actionsMode
+            ? this.actionTimeline != null && this.actionTimeline.getClip() != null
+            : this.keyframeEditor != null && this.keyframeEditor.editor != null;
+
+        this.crowdProperties.setVisible(this.propertiesVisible && this.crowdIsShown && !occupied);
+    }
+
+    /**
+     * Give the parameters area the crowd panel when this replay is a crowd, and take it away
+     * again when it is not.
+     *
+     * <p>Built on first need rather than up front, because the film panel it parents into is
+     * still being assembled when this editor is constructed.</p>
+     */
+    private void updateCrowdProperties(Replay replay)
+    {
+        if (this.crowdProperties == null)
+        {
+            this.crowdProperties = new UICrowdReplayProperties(this.filmPanel, () -> this.filmPanel.getUndoHandler().getUndoManager().markLastUndoNoMerging());
+            this.crowdProperties.relative(this.filmPanel.editArea).full(this.filmPanel.editArea);
+            this.filmPanel.editArea.add(this.crowdProperties);
+        }
+
+        this.crowdIsShown = this.crowdProperties.setReplay(replay);
     }
 
     /** Keep the category bar and the actions toggle above the timelines. */
@@ -1179,6 +1295,11 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
     @Override
     public void render(UIContext context)
     {
+        /* Per frame, because what decides it - whether a keyframe is currently selected - is not
+         * something that announces itself, and a stale answer here means the crowd's settings
+         * sitting on top of the keyframe editor. It is two field reads. */
+        this.updateCrowdPropertiesVisibility();
+
         /* Hide category bar + actions toggle while the "edit track" overlay is open */
         boolean notEditing = this.keyframeEditor == null || !this.keyframeEditor.view.isEditing();
 

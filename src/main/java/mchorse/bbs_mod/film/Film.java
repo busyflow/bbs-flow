@@ -4,6 +4,8 @@ import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.data.migration.FilmStableIds;
 import mchorse.bbs_mod.data.migration.SaveVersion;
 import mchorse.bbs_mod.data.types.BaseType;
+import mchorse.bbs_mod.film.crowds.CrowdReconciler;
+import mchorse.bbs_mod.film.crowds.Crowds;
 import mchorse.bbs_mod.film.markers.FilmMarkers;
 import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.film.replays.Replays;
@@ -34,6 +36,11 @@ public class Film extends ValueGroup
      */
     public final Categories replayCategories = new Categories("replay_categories");
 
+    /**
+     * The crowds this film contains. Not events on anyone's timeline - things that are present
+     * over a stretch of the film, kept in line with the world by {@link CrowdReconciler}.
+     */
+    public final Crowds crowds = new Crowds("crowds");
     /** Author's notes pinned to ticks, drawn on every timeline's ruler. */
     public final FilmMarkers markers = new FilmMarkers("markers");
 
@@ -67,6 +74,7 @@ public class Film extends ValueGroup
 
         this.add(this.camera);
         this.add(this.replays);
+        this.add(this.crowds);
         this.add(this.replayCategories);
         this.add(this.markers);
 
@@ -162,10 +170,14 @@ public class Film extends ValueGroup
 
             for (KeyframeChannel<?> channel : replay.keyframes.getChannels())
             {
-                duration = Math.max(duration, (int) channel.getLength() + 1);
+                if (!channel.isEmpty())
+                {
+                    duration = Math.max(duration, (int) channel.getLength() + 1);
+                }
             }
         }
 
         return duration;
     }
 }
+

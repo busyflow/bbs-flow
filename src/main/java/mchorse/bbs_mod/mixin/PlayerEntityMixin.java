@@ -77,7 +77,13 @@ public class PlayerEntityMixin
             {
                 Form form = morph.getForm();
 
-                if (form != null && form.hitbox.get())
+                /*
+                 * Eye height is a camera/model property and must not depend on
+                 * the optional collision hitbox override.  Previously this was
+                 * gated by hitbox, which made the model eye-height control have
+                 * no effect in first person for normal (non-hitbox) forms.
+                 */
+                if (form != null)
                 {
                     PlayerEntity player = (PlayerEntity) (Object) this;
                     float height = form.hitboxHeight.get() * (player.isSneaking() ? form.hitboxSneakMultiplier.get() : 1F);

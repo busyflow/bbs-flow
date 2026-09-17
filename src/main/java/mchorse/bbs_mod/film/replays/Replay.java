@@ -11,6 +11,7 @@ import mchorse.bbs_mod.camera.values.ValuePoint;
 import mchorse.bbs_mod.film.Film;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.Form;
+import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.core.ValueForm;
 import mchorse.bbs_mod.settings.values.core.ValueGroup;
 import mchorse.bbs_mod.settings.values.core.ValueString;
@@ -41,6 +42,7 @@ public class Replay extends ValueGroup
     public final ValueString category = new ValueString("category", "");
     public final ValueString label = new ValueString("label", "");
     public final ValueString nameTag = new ValueString("name_tag", "");
+    public final ValueFloat nameTagHeight = new ValueFloat("name_tag_height", 0F);
     public final ValueBoolean shadow = new ValueBoolean("shadow", true);
     public final ValueFloat shadowSize = new ValueFloat("shadow_size", 0.5F);
     /** When enabled, the shadow follows the form's perceived position (anchor/transform motion). */
@@ -48,6 +50,12 @@ public class Replay extends ValueGroup
     /** Extra world-space offset added to the followed shadow position (corrects a model's shifted floor level). */
     public final ValuePoint shadowOffset = new ValuePoint("shadow_offset", new Point(0, 0, 0));
     public final ValueInt looping = new ValueInt("looping", 0);
+    /**
+     * Where in its cycle this replay's procedural animation sits, {@code [0, 1)} - see
+     * {@link mchorse.bbs_mod.utils.animation.DesyncPhase}. Zero is the shared default, so a film
+     * that has never been desynced behaves exactly as it did.
+     */
+    public final ValueFloat animationPhase = new ValueFloat("animation_phase", 0F);
 
     public final ValueBoolean actor = new ValueBoolean("actor", false);
     /** Whether the actor's body sweeps up items it walks over. What it takes is given back when the film stops. */
@@ -72,11 +80,13 @@ public class Replay extends ValueGroup
         this.add(this.category);
         this.add(this.label);
         this.add(this.nameTag);
+        this.add(this.nameTagHeight);
         this.add(this.shadow);
         this.add(this.shadowSize);
         this.add(this.shadowFollow);
         this.add(this.shadowOffset);
         this.add(this.looping);
+        this.add(this.animationPhase);
 
         this.add(this.actor);
         this.add(this.actorPickup);
@@ -202,6 +212,32 @@ public class Replay extends ValueGroup
                 actionClip.applyClient(entity, film, this, tick);
             }
         }
+    }
+
+    /**
+     * Copy all replay settings and metadata (nametag, label, category, flags, shadows,
+     * actor properties, etc.) from another replay, without copying keyframes, property tracks,
+     * action clips or forms.
+     */
+    public void copySettings(Replay replay)
+    {
+        for (BaseValue value : replay.getAll())
+        {
+            if (value == replay.keyframes || value == replay.properties || value == replay.actions || value == replay.form)
+            {
+                continue;
+            }
+
+            BaseValue target = this.get(value.getId());
+
+            if (target != null)
+            {
+                target.copy(value);
+            }
+        }
+
+        this.nameTag.set(replay.nameTag.get());
+        this.label.set(replay.label.get());
     }
 
     public int getTick(int tick)

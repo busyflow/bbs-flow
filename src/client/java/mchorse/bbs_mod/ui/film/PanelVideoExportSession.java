@@ -2,6 +2,7 @@ package mchorse.bbs_mod.ui.film;
 
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.actions.ActionState;
+import mchorse.bbs_mod.actions.types.crowd.CrowdExportPreload;
 import mchorse.bbs_mod.audio.AudioRenderer;
 import mchorse.bbs_mod.camera.clips.misc.AudioClip;
 import mchorse.bbs_mod.camera.utils.TimeUtils;
@@ -32,6 +33,7 @@ public class PanelVideoExportSession extends VideoExportSession
     private int duration;
     private int end;
     private boolean restorePaused;
+    private String preloadFilmId;
 
     public PanelVideoExportSession(UIFilmRecorder ui, UIFilmPanel editor)
     {
@@ -76,6 +78,8 @@ public class PanelVideoExportSession extends VideoExportSession
         }
 
         this.restorePaused = this.editor.getController().isPaused();
+        this.preloadFilmId = this.editor.getData().getId();
+        CrowdExportPreload.begin(this.preloadFilmId);
 
         int min = this.editor.cameraEditor.clips.loopMin;
         int max = this.editor.cameraEditor.clips.loopMax;
@@ -175,8 +179,16 @@ public class PanelVideoExportSession extends VideoExportSession
     }
 
     @Override
+    protected boolean isWarmupReady()
+    {
+        return CrowdExportPreload.isReady(this.preloadFilmId);
+    }
+
+    @Override
     protected void teardown(boolean cancelled)
     {
+        CrowdExportPreload.finish(this.preloadFilmId);
+        this.preloadFilmId = null;
         this.editor.getController().setPaused(this.restorePaused);
         this.editor.restorePreviewSize();
 

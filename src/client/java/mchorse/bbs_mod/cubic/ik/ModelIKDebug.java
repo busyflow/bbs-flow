@@ -268,7 +268,10 @@ public final class ModelIKDebug
         boolean targetDot = config.target.visible.get();
         boolean poleDot = pole != null && config.pole.visible.get();
 
-        boolean anyLine = config.lines.visible.get() || targetDot || poleDot;
+        /* Controller markers are manipulators, not debug geometry. Keeping their
+         * visibility independent from the relationship wires lets an animator work
+         * with the green/orange controls without distracting staple lines. */
+        boolean anyLine = config.lines.visible.get();
         float thickness = unit * config.lines.size.get();
         boolean boxes = anyLine && thickness > 0F;
         boolean anyDot = joints || tipDot || targetDot || poleDot;
@@ -345,12 +348,12 @@ public final class ModelIKDebug
             }
         }
 
-        if (config.target.visible.get())
+        if (config.lines.visible.get() && config.target.visible.get())
         {
             DebugOverlay.segment(builder, matrix, thickness, true, dash, pts.get(pts.size() - 1), target, DebugOverlay.rgb(config.target.color.get()), 0.4F * a);
         }
 
-        if (pole != null && config.pole.visible.get())
+        if (config.lines.visible.get() && pole != null && config.pole.visible.get())
         {
             DebugOverlay.segment(builder, matrix, thickness, true, dash, pts.get(1), pole, DebugOverlay.rgb(config.pole.color.get()), 0.4F * a);
         }

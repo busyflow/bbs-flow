@@ -1,11 +1,13 @@
 package mchorse.bbs_mod.film;
 
+import mchorse.bbs_mod.actions.crowd.CrowdWalk;
 import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.ui.framework.elements.utils.StencilMap;
 import mchorse.bbs_mod.utils.colors.Colors;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -44,7 +46,15 @@ public class FilmControllerContext
     /** The preview axes' frame; always LOCAL today — the preview shows the bone's own axes. */
     public TransformSpace space2 = TransformSpace.LOCAL;
 
+    /** Payload for {@link FilmTarget.Kind#CROWD_MOTION}: the waypoint being dragged, and its tick. */
+    public CrowdWalk crowdMotionPoint;
+    public float crowdMotionTick;
+
+    /** Payload for {@link FilmTarget.Kind#REPLAY_SHIFT}: where the shared handle stands. */
+    public Vector3d replayShiftPosition;
+
     public String nameTag = "";
+    public float nameTagHeight;
     public boolean relative;
 
     private FilmControllerContext()
@@ -59,7 +69,11 @@ public class FilmControllerContext
         this.gizmoView = null;
         this.bone2 = null;
         this.space2 = TransformSpace.LOCAL;
+        this.crowdMotionPoint = null;
+        this.crowdMotionTick = 0F;
+        this.replayShiftPosition = null;
         this.nameTag = "";
+        this.nameTagHeight = 0F;
         this.relative = false;
     }
 
@@ -152,9 +166,30 @@ public class FilmControllerContext
         return this;
     }
 
+    public FilmControllerContext crowdMotionGizmo(CrowdWalk point, float tick)
+    {
+        this.crowdMotionPoint = point;
+        this.crowdMotionTick = tick;
+
+        return this;
+    }
+
+    public FilmControllerContext replayShiftGizmo(Vector3d position)
+    {
+        this.replayShiftPosition = position;
+
+        return this;
+    }
+
     public FilmControllerContext nameTag(String nameTag)
     {
+        return this.nameTag(nameTag, 0F);
+    }
+
+    public FilmControllerContext nameTag(String nameTag, float nameTagHeight)
+    {
         this.nameTag = nameTag;
+        this.nameTagHeight = nameTagHeight;
 
         return this;
     }

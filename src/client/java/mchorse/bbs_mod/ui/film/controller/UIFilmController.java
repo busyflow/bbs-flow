@@ -38,11 +38,23 @@ import mchorse.bbs_mod.ui.film.UIFilmPanel;
 import mchorse.bbs_mod.ui.film.replays.UIReplayList;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditor;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditorUtils;
+import mchorse.bbs_mod.actions.crowd.CrowdWalk;
+import mchorse.bbs_mod.forms.forms.CrowdForm;
 import mchorse.bbs_mod.ui.forms.UIFormPalette;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UICrowdWalkKeyframeFactory;
+import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.ui.framework.UIBaseMenu;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.context.UISimpleContextMenu;
+import mchorse.bbs_mod.ui.film.replays.ReplayGizmoTransform;
+import mchorse.bbs_mod.utils.pose.Transform;
+import mchorse.bbs_mod.ui.utils.GizmoDrag;
+import mchorse.bbs_mod.ui.framework.elements.utils.StencilMap;
+import java.util.ArrayList;
+import mchorse.bbs_mod.settings.values.IValueListener;
+import mchorse.bbs_mod.film.FilmEntityRenderer;
+import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeEditor;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.utils.Area;
@@ -123,6 +135,14 @@ public class UIFilmController extends UIElement implements GizmoViewport
     {
         this.panel = panel;
         this.setPov(BBSSettings.editorCameraMode.get());
+
+        this.replayShiftTransform.callbacks(
+            this::beginReplayShiftChange,
+            this::applyReplayShiftChange,
+            this::finishReplayShiftGesture
+        );
+        this.replayShiftTransform.setVisible(false);
+        this.add(this.replayShiftTransform);
 
         IKey category = UIKeys.FILM_CONTROLLER_KEYS_CATEGORY;
 
@@ -551,6 +571,22 @@ public class UIFilmController extends UIElement implements GizmoViewport
             return true;
         }
 
+        /* A walk waypoint's pole. Below the gizmo handles, so dragging the point you already have
+         * still wins, and above the replay pick, so a pole standing in front of an actor picks the
+         * pole. Selecting the keyframe is all this does - the gizmo follows the selection, which
+         * is what makes every waypoint reachable without going to the timeline for it. */
+        if (context.mouseButton == 0)
+        {
+            Keyframe<CrowdWalk> waypoint = this.pickWalkPoint(context);
+
+            if (waypoint != null)
+            {
+                this.panel.replayEditor.keyframeEditor.view.pickKeyframe(waypoint);
+
+                return true;
+            }
+        }
+
         /* Alt pick the replay */
         if (context.mouseButton == 0 && this.picker.getHoveredReplayIndex() >= 0)
         {
@@ -588,6 +624,13 @@ public class UIFilmController extends UIElement implements GizmoViewport
     @Override
     public boolean startGizmo(UIContext context, int stencilIndex)
     {
+        if (this.isReplayShiftGizmo())
+        {
+            GizmoDrag drag = GizmoDrag.fromRenderedGizmo(this.panel.getCamera(), this.panel.preview.getViewport());
+
+            return Gizmo.INSTANCE.start(stencilIndex, context.mouseX, context.mouseY, this.replayShiftTransform, drag);
+        }
+
         float gizmoTransition = this.isPlaying() ? context.getTransition() : 0F;
 
         return UIReplaysEditorUtils.startFilmGizmo(this.panel, context, stencilIndex, gizmoTransition);
@@ -904,6 +947,8 @@ public class UIFilmController extends UIElement implements GizmoViewport
             }
         }
 
+        this.renderReplayShiftGizmo(context, null);
+
         this.renderOrbitCenterMarker(context);
 
         ValueMotionPath motionPath = this.getMotionPath();
@@ -962,8 +1007,27 @@ public class UIFilmController extends UIElement implements GizmoViewport
         return context == null ? 0F : context.getTransition();
     }
 
+    /**
+     * Moves whole replays - their paths, their facing, their velocities - with one gizmo.
+     *
+     * <p>Its own transform rather than the keyframe editor's: what it edits is an offset applied
+     * to every selected replay, not a value stored anywhere, so it starts at identity each time it
+     * is bound and the paths themselves are rewritten as it moves.</p>
+     */
+    private final UIPropTransform replayShiftTransform = new UIPropTransform();
+    private ReplayGizmoTransform replayShift;
+
+    /** The selection {@link #replayShift} was built from, so a change of selection can be noticed. */
+    private List<Replay> replayShiftSelection;
+
     public Pair<String, TransformSpace> getBone()
     {
+        /* The shift gizmo owns the viewport while it is up. */
+        if (this.isReplayShiftGizmo())
+        {
+            return null;
+        }
+
         UIKeyframeEditor keyframeEditor = this.panel.replayEditor.keyframeEditor;
 
         return keyframeEditor != null ? keyframeEditor.getBone() : null;
@@ -978,6 +1042,11 @@ public class UIFilmController extends UIElement implements GizmoViewport
     /** Whether the selected keyframe is the form's anchor track, so its transform gets a gizmo. */
     public boolean isAnchorGizmo()
     {
+        if (this.isReplayShiftGizmo())
+        {
+            return false;
+        }
+
         UIKeyframeEditor keyframeEditor = this.panel.replayEditor.keyframeEditor;
 
         return keyframeEditor != null && keyframeEditor.isFormAnchorTrack();
@@ -1009,6 +1078,20 @@ public class UIFilmController extends UIElement implements GizmoViewport
         if (this.isRecording() || this.isCovered())
         {
             return FilmTarget.NONE;
+        }
+
+        /* The fork's two gizmos come first, and both already make the ones below stand down -
+         * getBone and isAnchorGizmo return nothing while the replay shift is up. Answering it
+         * here as well is what puts them on upstream's single cascade rather than beside it:
+         * every pass that draws or picks a gizmo asks this one question. */
+        if (this.isReplayShiftGizmo())
+        {
+            return FilmTarget.replayShift();
+        }
+
+        if (this.isCrowdMotionGizmo())
+        {
+            return FilmTarget.crowdMotion();
         }
 
         Pair<String, TransformSpace> bone = this.getBone();
@@ -1058,12 +1141,336 @@ public class UIFilmController extends UIElement implements GizmoViewport
     }
 
     /**
+     * The walk keyframe currently being edited, if one is - which is what the gizmo moves.
+     *
+     * <p>2.5 also returned null while a replay was being shifted, since that gizmo owned the
+     * viewport; 2.6 has no replay-shift gizmo, so there is nothing to stand aside for.</p>
+     */
+    public UICrowdWalkKeyframeFactory getCrowdMotionEditor()
+    {
+        if (this.isReplayShiftGizmo())
+        {
+            return null;
+        }
+
+        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.keyframeEditor;
+
+        return keyframeEditor != null && keyframeEditor.isCrowdWalkTrack()
+            ? keyframeEditor.getCrowdMotionEditor()
+            : null;
+    }
+
+    public boolean isCrowdMotionGizmo()
+    {
+        return this.getCrowdMotionEditor() != null;
+    }
+
+    /**
+     * The walk waypoint the pointer is over, or null.
+     *
+     * <p>Tested against the poles the panel draws, so what can be clicked is exactly what can be
+     * seen. The pole is sampled along its height rather than solved as a segment: it is a thin
+     * vertical line and a handful of points down it is both simpler and impossible to get subtly
+     * wrong.</p>
+     *
+     * <p>The tolerance grows with distance so a pole across the set is no harder to hit than one
+     * underfoot - it is a marker, not a target.</p>
+     */
+    private Keyframe<CrowdWalk> pickWalkPoint(UIContext context)
+    {
+        Replay replay = this.panel.replayEditor == null ? null : this.panel.replayEditor.getReplay();
+
+        if (replay == null || !(replay.form.get() instanceof CrowdForm) || replay.keyframes.crowdWalk.isEmpty())
+        {
+            return null;
+        }
+
+        Camera camera = this.panel.getCamera();
+        Area viewport = this.panel.preview.getViewport();
+
+        if (camera == null || viewport == null)
+        {
+            return null;
+        }
+
+        Vector3f rayOffset = new Vector3f();
+        Vector3f direction = camera.getMouseRay(context.mouseX, context.mouseY, viewport.x, viewport.y, viewport.w, viewport.h, rayOffset);
+        Vector3d origin = new Vector3d(camera.position).add(rayOffset.x, rayOffset.y, rayOffset.z);
+        Vector3d dir = new Vector3d(direction.x, direction.y, direction.z).normalize();
+
+        Keyframe<CrowdWalk> best = null;
+        double bestDistance = Double.MAX_VALUE;
+
+        for (Keyframe<CrowdWalk> keyframe : (List<Keyframe<CrowdWalk>>) replay.keyframes.crowdWalk.getKeyframes())
+        {
+            CrowdWalk walk = keyframe.getValue();
+
+            if (walk == null || !walk.showPoint)
+            {
+                continue;
+            }
+
+            for (int i = 0; i <= WALK_POLE_SAMPLES; i++)
+            {
+                double sampleY = walk.y + UIFilmPanel.CROWD_WALK_POLE_HEIGHT * (i / (double) WALK_POLE_SAMPLES);
+                Vector3d toPoint = new Vector3d(walk.x, sampleY, walk.z).sub(origin);
+                double along = toPoint.dot(dir);
+
+                if (along <= 0D)
+                {
+                    continue;
+                }
+
+                double away = new Vector3d(dir).mul(along).sub(toPoint).length();
+
+                /* A quarter block underfoot, widening with range so distance costs no accuracy. */
+                if (away > 0.25D + along * 0.02D)
+                {
+                    continue;
+                }
+
+                if (along < bestDistance)
+                {
+                    bestDistance = along;
+                    best = keyframe;
+                }
+            }
+        }
+
+        return best;
+    }
+
+    /** Points down a pole to test against. Seven is smooth enough for a three block line. */
+    private static final int WALK_POLE_SAMPLES = 6;
+
+    /**
      * Whether the preview gizmo is actually drawn right now — the same gate the
      * renderer uses ({@link BaseFilmController#render}): axes enabled and something
      * selected. The gizmo interaction must honour it, or its trackball sphere keeps
      * grabbing clicks (and blocking actor markers) after a keyframe is deselected and
      * nothing is rendered.
      */
+    public boolean isReplayShiftGizmo()
+    {
+        return this.replayShift != null && !this.replayShift.isEmpty() && this.replayShiftTransform.getTransform() != null;
+    }
+
+    public boolean canToggleReplayShiftGizmo()
+    {
+        if (this.panel.getData() == null || this.panel.replayEditor == null)
+        {
+            return false;
+        }
+
+        if (this.panel.replayEditor.replaysList != null && this.panel.replayEditor.replaysList.replays.hasReplaySelection())
+        {
+            return true;
+        }
+
+        return this.panel.replayEditor.getReplay() != null;
+    }
+
+    public void toggleReplayShiftGizmo()
+    {
+        if (this.isReplayShiftGizmo())
+        {
+            this.stopReplayShiftGizmo();
+
+            return;
+        }
+
+        if (!this.canToggleReplayShiftGizmo())
+        {
+            return;
+        }
+
+        List<Replay> selected = null;
+
+        if (this.panel.replayEditor.replaysList != null && this.panel.replayEditor.replaysList.replays.hasReplaySelection())
+        {
+            selected = this.panel.replayEditor.replaysList.replays.getSelectedReplays();
+        }
+
+        if ((selected == null || selected.isEmpty()) && this.panel.replayEditor.getReplay() != null)
+        {
+            selected = List.of(this.panel.replayEditor.getReplay());
+        }
+
+        if (selected == null || selected.isEmpty())
+        {
+            return;
+        }
+
+        this.bindReplayShiftGizmo(selected);
+    }
+
+    private void bindReplayShiftGizmo(List<Replay> selected)
+    {
+        this.replayShiftSelection = new ArrayList<>(selected);
+        this.replayShift = new ReplayGizmoTransform(selected, this.panel.getCursor());
+        this.replayShiftTransform.setTransform(new Transform());
+        this.replayShiftTransform.hotkeyDrag(() -> GizmoDrag.fromRenderedGizmo(this.panel.getCamera(), this.panel.preview.getViewport()));
+    }
+
+    /**
+     * Rebind the shift gizmo to a newly selected replay, if it is on.
+     *
+     * <p>Called when the selection actually changes rather than polled every frame. Polling was
+     * the first attempt and it broke the thing it was meant to help: a rebuild resets the offset
+     * and re-snapshots the paths, so any frame that decided the selection had "changed" while a
+     * drag was under way wiped the drag - the gizmo moved and the replay stayed where it was.
+     * Nothing that runs during a gesture can do that if nothing runs during a gesture.</p>
+     *
+     * <p>Still guarded against a live gesture, because a selection can be changed from elsewhere
+     * while the mouse is down.</p>
+     */
+    public void onReplaySelectionChanged()
+    {
+        if (this.replayShift == null || this.replayShiftTransform.getTransform() == null)
+        {
+            return;
+        }
+
+        if (this.replayShiftTransform.isEditing())
+        {
+            return;
+        }
+
+        List<Replay> selected = null;
+
+        if (this.panel.replayEditor != null && this.panel.replayEditor.replaysList != null && this.panel.replayEditor.replaysList.replays.hasReplaySelection())
+        {
+            selected = this.panel.replayEditor.replaysList.replays.getSelectedReplays();
+        }
+
+        if ((selected == null || selected.isEmpty()) && this.panel.replayEditor != null && this.panel.replayEditor.getReplay() != null)
+        {
+            selected = List.of(this.panel.replayEditor.getReplay());
+        }
+
+        /* Nothing selected is not a reason to tear the gizmo down - the selection can empty for a
+         * moment while the list rebuilds. Left as it is; the toggle turns it off. */
+        if (selected == null || selected.isEmpty() || this.sameReplaySelection(selected))
+        {
+            return;
+        }
+
+        this.bindReplayShiftGizmo(selected);
+    }
+
+    private boolean sameReplaySelection(List<Replay> selected)
+    {
+        List<Replay> previous = this.replayShiftSelection;
+
+        if (previous == null || previous.size() != selected.size())
+        {
+            return false;
+        }
+
+        for (int i = 0; i < selected.size(); i++)
+        {
+            if (previous.get(i) != selected.get(i))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public void stopReplayShiftGizmo()
+    {
+        this.stopGizmoInteraction();
+        this.replayShiftTransform.setTransform(null);
+        this.replayShiftTransform.hotkeyDrag(null);
+        this.replayShift = null;
+        this.replayShiftSelection = null;
+    }
+
+    private void beginReplayShiftChange()
+    {
+        Film film = this.panel.getData();
+
+        if (film != null && this.replayShift != null)
+        {
+            film.preNotify();
+        }
+    }
+
+    private void applyReplayShiftChange()
+    {
+        Film film = this.panel.getData();
+
+        if (film != null && this.replayShift != null)
+        {
+            this.replayShift.apply(this.replayShiftTransform.getTransform());
+            film.postNotify();
+        }
+    }
+
+    private void finishReplayShiftGesture()
+    {
+        Film film = this.panel.getData();
+
+        if (film != null && this.replayShift != null)
+        {
+            film.preNotify(IValueListener.FLAG_UNMERGEABLE);
+        }
+    }
+
+    private void renderReplayShiftGizmo(WorldRenderContext context, StencilMap map)
+    {
+        if (!this.isReplayShiftGizmo() || !UIBaseMenu.shouldRenderAxes())
+        {
+            return;
+        }
+
+        Transform transform = this.replayShiftTransform.getTransform();
+
+        FilmEntityRenderer.renderReplayTransformGizmo(
+            context,
+            this.replayShift.getGizmoPosition(transform),
+            transform,
+            map
+        );
+    }
+
+    /** Draw the shift gizmo into the pick buffer, or its handles show and cannot be grabbed. */
+    public void renderReplayShiftStencil(WorldRenderContext context, StencilMap map)
+    {
+        this.renderReplayShiftGizmo(context, map);
+    }
+
+    /**
+     * Where the shared shift handle stands, for the passes that draw and pick it.
+     *
+     * <p>Null when the shift is not up, which is what {@link FilmControllerContext} stores and
+     * what tells the renderer there is nothing to place.</p>
+     */
+    public Vector3d getReplayShiftPosition()
+    {
+        return this.isReplayShiftGizmo()
+            ? this.replayShift.getGizmoPosition(this.replayShiftTransform.getTransform())
+            : null;
+    }
+
+    /**
+     * Keep a live shift drag following the cursor.
+     *
+     * <p>Upstream grew the same need for its replay-root gizmo and answered it generally: the
+     * transform is pumped every frame from {@code GizmoInteraction#update}, and the fork's own
+     * {@code updateGesture} was that idea in one place only. Kept as a call into upstream's
+     * {@link UIPropTransform#pumpDrag} rather than deleted, because this transform is not
+     * reachable from the keyframe editor that the general pump walks.</p>
+     */
+    public void updateReplayShiftGesture(UIContext context)
+    {
+        if (this.isReplayShiftGizmo())
+        {
+            this.replayShiftTransform.getGesture().pumpIfHidden(context);
+        }
+    }
+
     boolean canShowGizmo()
     {
         return UIBaseMenu.shouldRenderAxes() && !this.getEditTarget().isNone();

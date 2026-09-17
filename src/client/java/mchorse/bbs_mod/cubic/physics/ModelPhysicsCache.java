@@ -13,7 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-final class ModelPhysicsCache
+public final class ModelPhysicsCache
 {
     public static final class CompiledChain
     {

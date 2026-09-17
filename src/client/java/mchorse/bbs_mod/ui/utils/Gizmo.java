@@ -75,6 +75,59 @@ public class Gizmo
     /** Highest gizmo handle id; form-part stencil ids begin right after it. */
     public final static int STENCIL_MAX = STENCIL_SCALE_ALL;
 
+    public static class GizmoTheme
+    {
+        public final int x;
+        public final int y;
+        public final int z;
+        public final int planeXZ;
+        public final int planeXY;
+        public final int planeZY;
+        public final int center;
+        public final int viewRing;
+
+        public GizmoTheme(int x, int y, int z, int planeXZ, int planeXY, int planeZY, int center, int viewRing)
+        {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.planeXZ = planeXZ;
+            this.planeXY = planeXY;
+            this.planeZY = planeZY;
+            this.center = center;
+            this.viewRing = viewRing;
+        }
+
+        public static final GizmoTheme DEFAULT = new GizmoTheme(
+            Colors.RED,
+            Colors.GREEN,
+            Colors.BLUE,
+            Colors.PLANE_XZ,
+            Colors.PLANE_XY,
+            Colors.PLANE_ZY,
+            Colors.WHITE,
+            Colors.LIGHTEST_GRAY
+        );
+
+        /* Unique strong vibrant colors for "shift selected replays":
+         * X: Electric Neon Pink/Magenta (0xFFFF007F)
+         * Y: Brilliant Golden Yellow (0xFFFFD700)
+         * Z: Vivid Bright Cyan (0xFF00E5FF)
+         * Planes: Translucent matching shades
+         * Center: Electric Amber Gold
+         */
+        public static final GizmoTheme SHIFT_REPLAY = new GizmoTheme(
+            0xFFFF007F,
+            0xFFFFD700,
+            0xFF00E5FF,
+            0x80CC00FF,
+            0x80FF6600,
+            0x8000FF88,
+            0xFFFFDD44,
+            0xFFFFFFFF
+        );
+    }
+
     /** Radius of the view-plane ring relative to the per-axis rings. */
 
     /** Move/scale handles shrink so they nest inside the rotation rings. */
@@ -189,6 +242,7 @@ public class Gizmo
      *  the plain capture calls, so a restricted target cannot leak its mask into
      *  the next editor's gizmo. */
     private HandleMask mask = HandleMask.ALL;
+    private GizmoTheme theme = GizmoTheme.DEFAULT;
 
     private Gizmo()
     {}
@@ -709,10 +763,15 @@ public class Gizmo
      */
     public void captureVisual(MatrixStack stack)
     {
-        this.captureVisual(stack, HandleMask.ALL);
+        this.captureVisual(stack, HandleMask.ALL, GizmoTheme.DEFAULT);
     }
 
     public void captureVisual(MatrixStack stack, HandleMask mask)
+    {
+        this.captureVisual(stack, mask, GizmoTheme.DEFAULT);
+    }
+
+    public void captureVisual(MatrixStack stack, HandleMask mask, GizmoTheme theme)
     {
         if (BBSRendering.isIrisShadowPass())
         {
@@ -720,6 +779,7 @@ public class Gizmo
         }
 
         this.mask = mask == null ? HandleMask.ALL : mask;
+        this.theme = theme == null ? GizmoTheme.DEFAULT : theme;
 
         stack.push();
         MatrixStackUtils.scaleBack(stack);
@@ -1038,17 +1098,17 @@ public class Gizmo
 
         if (debugIndex == STENCIL_X || debugIndex == STENCIL_XZ || debugIndex == STENCIL_XY)
         {
-            Draw.fillBox(builder, stack, -size, -t, -t, size, t, t, Colors.RED);
+            Draw.fillBox(builder, stack, -size, -t, -t, size, t, t, this.theme.x);
         }
         
         if (debugIndex == STENCIL_Y || debugIndex == STENCIL_XY || debugIndex == STENCIL_ZY)
         {
-            Draw.fillBox(builder, stack, -t, -size, -t, t, size, t, Colors.GREEN);
+            Draw.fillBox(builder, stack, -t, -size, -t, t, size, t, this.theme.y);
         }
         
         if (debugIndex == STENCIL_Z || debugIndex == STENCIL_XZ || debugIndex == STENCIL_ZY)
         {
-            Draw.fillBox(builder, stack, -t, -t, -size, t, t, size, Colors.BLUE);
+            Draw.fillBox(builder, stack, -t, -t, -size, t, t, size, this.theme.z);
         }
 
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
@@ -1289,6 +1349,8 @@ public class Gizmo
         this.hasLastSphereMatrix = false;
         this.hasLastCameraView = false;
         this.lastSphereLocalRadius = 0F;
+        this.theme = GizmoTheme.DEFAULT;
+        this.mask = HandleMask.ALL;
     }
 
     /**
@@ -1453,16 +1515,16 @@ public class Gizmo
             /* A target may own only some of the three rotation axes (a replay's root turns
              * about Y and pitches about X, but has nowhere to put roll), so each ring is
              * filtered on its own axis rather than the group as a whole. */
-            if (layout.mask.allowsRotateAxis(Axis.Z) && (active == null || active == Handle.ROTATE_Z)) sink.ring(Handle.ROTATE_Z, Axis.Z, radius, ringThickness, Colors.BLUE);
-            if (layout.mask.allowsRotateAxis(Axis.X) && (active == null || active == Handle.ROTATE_X)) sink.ring(Handle.ROTATE_X, Axis.X, radius, ringThickness, Colors.RED);
-            if (layout.mask.allowsRotateAxis(Axis.Y) && (active == null || active == Handle.ROTATE_Y)) sink.ring(Handle.ROTATE_Y, Axis.Y, radius, ringThickness, Colors.GREEN);
+            if (layout.mask.allowsRotateAxis(Axis.Z) && (active == null || active == Handle.ROTATE_Z)) sink.ring(Handle.ROTATE_Z, Axis.Z, radius, ringThickness, layout.theme.z);
+            if (layout.mask.allowsRotateAxis(Axis.X) && (active == null || active == Handle.ROTATE_X)) sink.ring(Handle.ROTATE_X, Axis.X, radius, ringThickness, layout.theme.x);
+            if (layout.mask.allowsRotateAxis(Axis.Y) && (active == null || active == Handle.ROTATE_Y)) sink.ring(Handle.ROTATE_Y, Axis.Y, radius, ringThickness, layout.theme.y);
         }
 
         /* The screen-space (billboard) view-rotation ring hides on its own element, not with
          * the axis rings — the two are separate settings. */
         if (layout.showViewRing)
         {
-            sink.viewRing(Handle.VIEW, Colors.LIGHTEST_GRAY);
+            sink.viewRing(Handle.VIEW, layout.theme.viewRing);
         }
     }
 
@@ -1492,9 +1554,9 @@ public class Gizmo
         Handle planeXY = showMove ? Handle.MOVE_XY : Handle.SCALE_XY;
         Handle planeZY = showMove ? Handle.MOVE_ZY : Handle.SCALE_ZY;
 
-        if (active == null || active == barX) sink.box(barX, 0, -axisOffset, -axisOffset, axisSize, axisOffset, axisOffset, Colors.RED);
-        if (active == null || active == barY) sink.box(barY, -axisOffset, 0, -axisOffset, axisOffset, axisSize, axisOffset, Colors.GREEN);
-        if (active == null || active == barZ) sink.box(barZ, -axisOffset, -axisOffset, 0, axisOffset, axisOffset, axisSize, Colors.BLUE);
+        if (active == null || active == barX) sink.box(barX, 0, -axisOffset, -axisOffset, axisSize, axisOffset, axisOffset, layout.theme.x);
+        if (active == null || active == barY) sink.box(barY, -axisOffset, 0, -axisOffset, axisOffset, axisSize, axisOffset, layout.theme.y);
+        if (active == null || active == barZ) sink.box(barZ, -axisOffset, -axisOffset, 0, axisOffset, axisOffset, axisSize, layout.theme.z);
 
         sink.centreMask(axisOffset);
 
@@ -1505,7 +1567,7 @@ public class Gizmo
         {
             float screenHalf = SCREEN_CUBE_HALF * scale * thickness;
 
-            sink.box(Handle.SCREEN, -screenHalf, -screenHalf, -screenHalf, screenHalf, screenHalf, screenHalf, Colors.WHITE);
+            sink.box(Handle.SCREEN, -screenHalf, -screenHalf, -screenHalf, screenHalf, screenHalf, screenHalf, layout.theme.center);
         }
 
         /* Uniform-scale handle: the same centre cube, shown only when move isn't (with
@@ -1515,7 +1577,7 @@ public class Gizmo
         {
             float scaleAllHalf = SCREEN_CUBE_HALF * scale * thickness;
 
-            sink.box(Handle.SCALE_ALL, -scaleAllHalf, -scaleAllHalf, -scaleAllHalf, scaleAllHalf, scaleAllHalf, scaleAllHalf, Colors.WHITE);
+            sink.box(Handle.SCALE_ALL, -scaleAllHalf, -scaleAllHalf, -scaleAllHalf, scaleAllHalf, scaleAllHalf, scaleAllHalf, layout.theme.center);
         }
 
         /* The plane quad's footprint is a fraction of the axis length, independent of
@@ -1526,17 +1588,17 @@ public class Gizmo
         float planeEnd = planeStart + axisSize * 0.2F * planeSize;
         float planeThickness = axisOffset * 0.5F;
 
-        if (active == null || active == planeXZ) sink.box(planeXZ, planeStart, -planeThickness, planeStart, planeEnd, planeThickness, planeEnd, Colors.PLANE_XZ);
-        if (active == null || active == planeXY) sink.box(planeXY, planeStart, planeStart, -planeThickness, planeEnd, planeEnd, planeThickness, Colors.PLANE_XY);
-        if (active == null || active == planeZY) sink.box(planeZY, -planeThickness, planeStart, planeStart, planeThickness, planeEnd, planeEnd, Colors.PLANE_ZY);
+        if (active == null || active == planeXZ) sink.box(planeXZ, planeStart, -planeThickness, planeStart, planeEnd, planeThickness, planeEnd, layout.theme.planeXZ);
+        if (active == null || active == planeXY) sink.box(planeXY, planeStart, planeStart, -planeThickness, planeEnd, planeEnd, planeThickness, layout.theme.planeXY);
+        if (active == null || active == planeZY) sink.box(planeZY, -planeThickness, planeStart, planeStart, planeThickness, planeEnd, planeEnd, layout.theme.planeZY);
 
         if (showScale)
         {
             float cubeHalf = SCALE_CUBE_HALF * scale * thickness;
 
-            if (active == null || active == Handle.SCALE_X) sink.box(Handle.SCALE_X, axisSize - cubeHalf, -cubeHalf, -cubeHalf, axisSize + cubeHalf, cubeHalf, cubeHalf, Colors.RED);
-            if (active == null || active == Handle.SCALE_Y) sink.box(Handle.SCALE_Y, -cubeHalf, axisSize - cubeHalf, -cubeHalf, cubeHalf, axisSize + cubeHalf, cubeHalf, Colors.GREEN);
-            if (active == null || active == Handle.SCALE_Z) sink.box(Handle.SCALE_Z, -cubeHalf, -cubeHalf, axisSize - cubeHalf, cubeHalf, cubeHalf, axisSize + cubeHalf, Colors.BLUE);
+            if (active == null || active == Handle.SCALE_X) sink.box(Handle.SCALE_X, axisSize - cubeHalf, -cubeHalf, -cubeHalf, axisSize + cubeHalf, cubeHalf, cubeHalf, layout.theme.x);
+            if (active == null || active == Handle.SCALE_Y) sink.box(Handle.SCALE_Y, -cubeHalf, axisSize - cubeHalf, -cubeHalf, cubeHalf, axisSize + cubeHalf, cubeHalf, layout.theme.y);
+            if (active == null || active == Handle.SCALE_Z) sink.box(Handle.SCALE_Z, -cubeHalf, -cubeHalf, axisSize - cubeHalf, cubeHalf, cubeHalf, axisSize + cubeHalf, layout.theme.z);
         }
     }
 
@@ -1549,6 +1611,7 @@ public class Gizmo
     private final class Layout
     {
         final Handle active = Gizmo.this.activeDragHandle();
+        final GizmoTheme theme = Gizmo.this.theme;
 
         /* Settings say what the user wants to see, the mask says what the target can
          * accept at all — a handle needs both to reach the screen and the cursor. */
@@ -1647,7 +1710,7 @@ public class Gizmo
                 building = true;
             }
 
-            Draw.fillBox(builder, stack, -centreHalf, -centreHalf, -centreHalf, centreHalf, centreHalf, centreHalf, Colors.WHITE);
+            Draw.fillBox(builder, stack, -centreHalf, -centreHalf, -centreHalf, centreHalf, centreHalf, centreHalf, layout.theme.center);
         }
 
         if (building)

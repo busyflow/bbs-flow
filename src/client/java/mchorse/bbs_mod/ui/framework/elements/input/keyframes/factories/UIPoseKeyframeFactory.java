@@ -10,6 +10,7 @@ import mchorse.bbs_mod.forms.forms.MobForm;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
 import mchorse.bbs_mod.settings.values.IValueListener;
+import mchorse.bbs_mod.ui.film.live.LiveKeyframeRecorder;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditorUtils;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
@@ -19,6 +20,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.list.UIStringList;
 import mchorse.bbs_mod.ui.utils.pose.UIPoseEditor;
 import mchorse.bbs_mod.utils.CollectionUtils;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
+import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import mchorse.bbs_mod.utils.pose.Pose;
 import mchorse.bbs_mod.utils.pose.PoseTransform;
 import mchorse.bbs_mod.utils.pose.Transform;
@@ -105,6 +107,13 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
     {
         private UIKeyframes editor;
         private Keyframe<Pose> keyframe;
+        /** Overlay poses are corrections to vanilla animation: a touched bone should hold its
+         * authored rotation instead of inheriting the walk cycle unless the user explicitly turns
+         * Fix off. */
+        private boolean overlay;
+
+        /** The track this editor's keyframe sits on, so a live take writing into it can be recognised. */
+        private KeyframeChannel channel;
 
         public static void apply(UIKeyframes editor, Keyframe keyframe, Consumer<Pose> consumer)
         {
@@ -169,6 +178,9 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
 
             this.editor = editor;
             this.keyframe = keyframe;
+            UIKeyframeSheet sheet = editor.getGraph().getSheet(keyframe);
+            this.overlay = sheet != null && sheet.id.contains("pose_overlay");
+            this.channel = sheet == null ? null : sheet.channel;
 
             /* This popup is short and the user resizes it, so the list asks for less than the form
              * editor's does — it expands into the leftover anyway, and this is the floor it hits
@@ -204,7 +216,18 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
         {
             List<String> current = new ArrayList<>(this.groups.list.getCurrent());
 
-            apply(this.editor, this.keyframe, (pose) -> pose.fromData(data));
+            apply(this.editor, this.keyframe, (pose) ->
+            {
+                pose.fromData(data);
+
+                if (data == null || data.isEmpty())
+                {
+                    for (String bone : this.groups.list.getList())
+                    {
+                        pose.getOrCreate(bone).identity();
+                    }
+                }
+            });
             this.groups.list.setCurrent(current);
             this.pickBones(this.groups.list.getCurrent());
         }
@@ -300,9 +323,7 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
         {
             UIPoseFactoryEditor.apply(this.editor.editor, this.editor.keyframe, this.editor.groups.list.getCurrent(), (poseT) ->
             {
-                poseT.translate.set(0F, 0F, 0F);
-                poseT.scale.set(1F, 1F, 1F);
-                poseT.resetRotation();
+                poseT.identity();
             });
             this.refillTransform();
         }

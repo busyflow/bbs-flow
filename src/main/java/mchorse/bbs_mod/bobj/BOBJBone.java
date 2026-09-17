@@ -194,6 +194,16 @@ public class BOBJBone implements RigBone
     }
 
     /**
+     * The rotation the channels left, ignoring the constraint stack's own writes — see
+     * {@link mchorse.bbs_mod.cubic.data.model.ModelGroup#channelRotation()} for why a weighted
+     * stage must blend from here rather than from {@link #evaluatedRotation()}.
+     */
+    public Quaternionf channelRotation()
+    {
+        return this.channelOrientSet ? new Quaternionf(this.channelOrient) : this.transform.createRotation();
+    }
+
+    /**
      * Composes one rotation layer into {@link #orient} (BOBJ rotations are radians). Mirrors
      * {@link mchorse.bbs_mod.cubic.data.model.ModelGroup#composeOrient}: the first layer seeds from the euler
      * accumulated so far (rotate folded with rotate2) so a single layer is byte-identical; later layers

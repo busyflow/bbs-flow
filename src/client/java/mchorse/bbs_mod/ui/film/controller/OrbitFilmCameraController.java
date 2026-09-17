@@ -120,9 +120,13 @@ public class OrbitFilmCameraController extends OrbitViewportController
     }
 
     /** Kept for the call sites that speak of replays; the orbit itself only knows subjects. */
+    /**
+     * What the orbit's reset key does: pivot back onto the replay and the distance back to
+     * default, with the rotation left as it was.
+     */
     public void teleportPivotToReplay()
     {
-        this.teleportPivotToSubject();
+        this.resetPivotAndDistance();
     }
 
     /* The replay it hangs off */
@@ -214,7 +218,13 @@ public class OrbitFilmCameraController extends OrbitViewportController
         Matrix4f axes = MatrixStackUtils.stripScale(matrix);
 
         this.anchorPosition.set(translation.x, translation.y, translation.z);
-        this.anchorYaw = (float) Math.atan2(-axes.m02(), axes.m00());
+
+        /* Off, the camera is carried along by the replay but not turned by it: useful for a shot
+         * that has to hold one bearing while its subject turns around underneath it. On, the whole
+         * frame including the facing comes along, which keeps a shot composed on the subject. */
+        this.anchorYaw = BBSSettings.orbitAttachRotates.get()
+            ? (float) Math.atan2(-axes.m02(), axes.m00())
+            : 0F;
     }
 
     private IEntity resolveEntity(Replay replay)

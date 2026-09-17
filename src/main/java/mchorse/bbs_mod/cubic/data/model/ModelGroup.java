@@ -237,6 +237,31 @@ public class ModelGroup implements IMapSerializable, RigBone
     }
 
     /**
+     * The rotation the channels left, ignoring anything the constraint stack has since written.
+     *
+     * <p>{@link #evaluatedRotation()} answers with {@link #orient} once a stage has written one,
+     * which is right for stacking IK under physics under limits — but wrong for a stage blending
+     * against its OWN previous output. IK runs several times per frame (the render, the matrix
+     * collection, the debug overlay), so a weighted chain blending from evaluatedRotation() walked
+     * a further fraction of the way each pass and landed on full strength whatever the weight said.
+     * Blending from here is idempotent: the same answer however often it runs.</p>
+     */
+    public Quaternionf channelRotation()
+    {
+        if (this.channelOrientSet)
+        {
+            return new Quaternionf(this.channelOrient);
+        }
+
+        if (this.current.rotationMode == Transform.RotationMode.QUATERNION)
+        {
+            return new Quaternionf(this.current.quat);
+        }
+
+        return Matrices.toLocalRotationZYXDegrees(this.current.rotate);
+    }
+
+    /**
      * The bone's evaluated local rotation as of this point in the pipeline — {@link #orient} when a layer
      * or constraint stage has composed one, otherwise the rotation the renderer would reconstruct from the
      * channels (mode-aware; cubic channels are degrees). THE read for every constraint-stack stage: blend
@@ -244,7 +269,6 @@ public class ModelGroup implements IMapSerializable, RigBone
      * each other. Returns a fresh instance safe to mutate.
      */
     @Override
-
     public Quaternionf evaluatedRotation()
     {
         if (this.orient != null)

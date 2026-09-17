@@ -1,0 +1,37 @@
+{
+    "ik_r6":  {
+                  "left_arm_end":  {
+                                       "pole_target":  "pole_left_arm",
+                                       "chain_length":  2,
+                                       "enabled":  true,
+                                       "target":  "controller_left_arm"
+                                   },
+                  "right_arm_end":  {
+                                        "pole_target":  "pole_right_arm",
+                                        "chain_length":  2,
+                                        "enabled":  true,
+                                        "target":  "controller_right_arm"
+                                    },
+                  "left_leg_end":  {
+                                       "pole_target":  "pole_left_leg",
+                                       "chain_length":  2,
+                                       "enabled":  true,
+                                       "target":  "controller_left_leg",
+                                       "depenetrate":  true
+                                   },
+                  "right_leg_end":  {
+                                        "pole_target":  "pole_right_leg",
+                                        "chain_length":  2,
+                                        "enabled":  true,
+                                        "target":  "controller_right_leg",
+                                        "depenetrate":  true
+                                    },
+                  "body_end":  {
+                                   "pole_target":  "pole_body",
+                                   "chain_length":  2,
+                                   "enabled":  true,
+                                   "target":  "controller_body",
+                                   "weight":  0.85
+                               }
+              }
+}

@@ -1,6 +1,7 @@
 package mchorse.bbs_mod.camera.clips;
 
 import mchorse.bbs_mod.camera.data.Position;
+import mchorse.bbs_mod.film.Film;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.utils.clips.Clip;
 import mchorse.bbs_mod.utils.clips.ClipContext;
@@ -12,6 +13,8 @@ import java.util.function.Predicate;
 
 public class CameraClipContext extends ClipContext<CameraClip, Position>
 {
+    public Film film;
+
     /** The film's entities keyed by their replay's stable id, in replay-list order. */
     public Map<String, IEntity> entities = new LinkedHashMap<>();
     private Position lastPosition = new Position();

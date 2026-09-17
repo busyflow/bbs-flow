@@ -14,6 +14,11 @@
         "ServerPlayerEntityMixin",
         "LimbAnimatorAccessor",
         "LevelPropertiesAccessor",
+        "EntityCrowdBoundsMixin",
+        "LivingEntityCrowdCostMixin",
+        "LivingEntityCrowdBodyMixin",
+        "LookControlCrowdMixin",
+        "EntityViewCrowdCollisionMixin",
         "EntityInvoker",
         "LivingEntityRollAccessor"
     ],

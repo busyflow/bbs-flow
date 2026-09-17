@@ -1,8 +1,15 @@
 package mchorse.bbs_mod.film.replays;
 
+import mchorse.bbs_mod.actions.crowd.CrowdBehavior;
+import mchorse.bbs_mod.actions.crowd.CrowdJump;
+import mchorse.bbs_mod.actions.crowd.CrowdPaint;
+import mchorse.bbs_mod.actions.crowd.CrowdTexture;
+import mchorse.bbs_mod.actions.crowd.CrowdWalk;
+import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.data.types.ListType;
 import mchorse.bbs_mod.forms.entities.EntityState;
 import mchorse.bbs_mod.forms.entities.IEntity;
+import mchorse.bbs_mod.utils.colors.Color;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.core.ValueGroup;
 import mchorse.bbs_mod.utils.MathUtils;
@@ -61,6 +68,7 @@ public class ReplayKeyframes extends ValueGroup
     }
 
     public static final List<String> CURATED_CHANNELS = buildCuratedChannels();
+    public static final List<String> CROWD_CHANNELS = Arrays.asList("crowd_visible", "crowd_behavior", "crowd_look_target", "crowd_jump", "crowd_motion_path", "crowd_paint", "crowd_texture", "crowd_color");
 
     /**
      * The states sit together in one run rather than scattered through the list, so the timeline
@@ -136,6 +144,15 @@ public class ReplayKeyframes extends ValueGroup
     public final KeyframeChannel<ItemStack> armorLegs = new KeyframeChannel<>("item_legs", KeyframeFactories.ITEM_STACK);
     public final KeyframeChannel<ItemStack> armorFeet = new KeyframeChannel<>("item_feet", KeyframeFactories.ITEM_STACK);
     public final KeyframeChannel<Integer> selectedSlot = new KeyframeChannel<>("selected_slot", KeyframeFactories.INTEGER);
+    public final KeyframeChannel<String> crowdLookTarget = new KeyframeChannel<>("crowd_look_target", KeyframeFactories.CROWD_LOOK_TARGET);
+    public final KeyframeChannel<Boolean> crowdVisible = new KeyframeChannel<>("crowd_visible", KeyframeFactories.BOOLEAN);
+    public final KeyframeChannel<CrowdBehavior> crowdBehavior = new KeyframeChannel<>("crowd_behavior", KeyframeFactories.CROWD_BEHAVIOR);
+    public final KeyframeChannel<CrowdJump> crowdJump = new KeyframeChannel<>("crowd_jump", KeyframeFactories.CROWD_JUMP);
+    public final KeyframeChannel<CrowdWalk> crowdWalk = new KeyframeChannel<>("crowd_motion_path", KeyframeFactories.CROWD_WALK);
+    public final KeyframeChannel<CrowdPaint> crowdPaint = new KeyframeChannel<>("crowd_paint", KeyframeFactories.CROWD_PAINT);
+    public final KeyframeChannel<CrowdTexture> crowdTexture = new KeyframeChannel<>("crowd_texture", KeyframeFactories.CROWD_TEXTURE);
+    /** Tints every member together. A crowd is lit and coloured as one thing, never per member. */
+    public final KeyframeChannel<Color> crowdColor = new KeyframeChannel<>("crowd_color", KeyframeFactories.COLOR);
 
     public ReplayKeyframes(String id)
     {
@@ -186,6 +203,14 @@ public class ReplayKeyframes extends ValueGroup
         this.add(this.armorLegs);
         this.add(this.armorFeet);
         this.add(this.selectedSlot);
+        this.add(this.crowdVisible);
+        this.add(this.crowdLookTarget);
+        this.add(this.crowdBehavior);
+        this.add(this.crowdJump);
+        this.add(this.crowdWalk);
+        this.add(this.crowdPaint);
+        this.add(this.crowdTexture);
+        this.add(this.crowdColor);
     }
 
     /** The channel a state is recorded into, created on first ask. */
@@ -456,10 +481,19 @@ public class ReplayKeyframes extends ValueGroup
             }
 
             this.offHand.insert(tick, entity.getEquipmentStack(EquipmentSlot.OFFHAND).copy());
-            this.armorHead.insert(tick, entity.getEquipmentStack(EquipmentSlot.HEAD).copy());
-            this.armorChest.insert(tick, entity.getEquipmentStack(EquipmentSlot.CHEST).copy());
-            this.armorLegs.insert(tick, entity.getEquipmentStack(EquipmentSlot.LEGS).copy());
-            this.armorFeet.insert(tick, entity.getEquipmentStack(EquipmentSlot.FEET).copy());
+
+            /* Whatever the player happened to be wearing is not usually the costume, and once it is
+             * written down as a keyframe per tick it is a chore to take off again. Left out, the
+             * channels stay empty and the actor wears nothing until armour keyframes are added by
+             * hand - which is what an empty armour channel already means everywhere else. */
+            if (BBSSettings.recordingArmor.get())
+            {
+                this.armorHead.insert(tick, entity.getEquipmentStack(EquipmentSlot.HEAD).copy());
+                this.armorChest.insert(tick, entity.getEquipmentStack(EquipmentSlot.CHEST).copy());
+                this.armorLegs.insert(tick, entity.getEquipmentStack(EquipmentSlot.LEGS).copy());
+                this.armorFeet.insert(tick, entity.getEquipmentStack(EquipmentSlot.FEET).copy());
+            }
+
             this.selectedSlot.insert(tick, entity.getSelectedSlot());
         }
     }

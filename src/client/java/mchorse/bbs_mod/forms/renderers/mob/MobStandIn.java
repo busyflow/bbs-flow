@@ -130,7 +130,7 @@ public class MobStandIn
             {
                 a.setPrevSpeed(b.getPrevSpeed());
                 a.setSpeed(b.getSpeed());
-                a.setPos(b.getPos());
+                a.setPos(b.getPos() + mchorse.bbs_mod.utils.animation.DesyncPhase.limbOffset(source.getAnimationPhase()));
             }
 
             /* Arm swing */

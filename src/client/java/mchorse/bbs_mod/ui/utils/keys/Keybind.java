@@ -142,6 +142,14 @@ public class Keybind
 
     public boolean checkMouse(int mouseButton, boolean inside)
     {
+        /* An unbound combo answers -1 for its main key, and right click negates to the same -1,
+         * so without this every unbound keybind fires on right click - and consumes it, which is
+         * what stopped lists from ever opening their context menu. */
+        if (this.combo.keys.isEmpty())
+        {
+            return false;
+        }
+
         mouseButton = -mouseButton;
 
         if (mouseButton != this.combo.getMainKey())

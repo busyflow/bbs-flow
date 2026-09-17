@@ -1,9 +1,15 @@
 package mchorse.bbs_mod.actions;
 
 import mchorse.bbs_mod.BBSMod;
+import mchorse.bbs_mod.actions.types.DamageActionClip;
+import mchorse.bbs_mod.actions.types.crowd.CrowdUtils;
+import mchorse.bbs_mod.actions.types.crowd.CrowdUtils;
 import mchorse.bbs_mod.data.types.BaseType;
 import mchorse.bbs_mod.entity.ActorEntity;
 import mchorse.bbs_mod.film.Film;
+import mchorse.bbs_mod.film.FilmExportState;
+import mchorse.bbs_mod.film.crowds.CrowdKeyframeRuntime;
+import mchorse.bbs_mod.film.crowds.CrowdReconciler;
 import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.forms.FormUtils;
@@ -47,6 +53,14 @@ public class ActionPlayer
 
     private ServerPlayerEntity serverPlayer;
     private ServerWorld world;
+
+    /**
+     * Keeps the film's crowds standing wherever the film says they should be.
+     *
+     * <p>Per playback rather than per film, since it tracks what this run put into the world.</p>
+     */
+    private final CrowdReconciler crowds = new CrowdReconciler();
+    private boolean crowdExportReadySent;
     private int duration;
 
     private Map<String, LivingEntity> actors = new HashMap<>();
@@ -487,13 +501,29 @@ public class ActionPlayer
 
         this.tick += 1;
 
+        if (this.type == PlayerType.FILM_EDITOR)
+        {
+            if (this.tick >= this.duration)
+            {
+                this.playing = false;
+            }
+
+            return false;
+        }
+
         return !this.syncing && this.tick >= this.duration;
     }
 
     private void applyAction()
     {
+        this.applyCrowds();
+
         SuperFakePlayer fakePlayer = SuperFakePlayer.get(this.world);
         List<Replay> list = this.film.replays.getList();
+
+        /* Publish the cast before anyone acts, so a clip can resolve another replay into the
+         * actor currently performing it. Crowd fighting uses this to charge a named replay. */
+        DamageActionClip.setPlaybackContext(list, this.actors, this.serverPlayer, this.exception);
 
         for (int i = 0; i < list.size(); i++)
         {
@@ -519,6 +549,53 @@ public class ActionPlayer
         /* Chests the clips of this tick still hold open go up, the rest come
          * down - including when the film was scrubbed rather than played */
         fakePlayer.flushLids();
+    }
+
+    /**
+     * Build and pose the crowd without advancing the film or firing any action clips.
+     *
+     * <p>The film-panel exporter deliberately pauses its server player during the configured
+     * export delay. Crowd reconciliation used to live only in {@link #applyAction()}, so the
+     * pause also postponed every expensive spawn until the first frame was already recording.
+     * Calling this immediately after an export restart lets that work consume the delay instead.
+     * The reconciler remembers the result, making the first real tick effectively free.</p>
+     */
+    public void preloadCrowdsForExport()
+    {
+        this.crowdExportReadySent = false;
+
+        if (this.serverPlayer != null && FilmExportState.isExporting(this.serverPlayer.getUuid()))
+        {
+            this.applyCrowds();
+        }
+    }
+
+    public void resetCrowdExportReady()
+    {
+        this.crowdExportReadySent = false;
+    }
+
+    private void applyCrowds()
+    {
+        /* Before anything acts, so that a behaviour clip firing on this tick finds the crowd it
+         * addresses already standing there. This is also why it is here rather than in tick():
+         * scrubbing replays actions through goTo without ticking, and a crowd that only appeared
+         * on a real tick would be missing from every scrubbed frame. */
+        this.crowds.reconcile(this.world, this.film, this.tick);
+
+        /* After the crowd is standing there and before the behaviour clips run, so a keyframed
+         * walk or look is what the members end the tick with rather than something a behaviour
+         * clip overwrites. */
+        CrowdKeyframeRuntime.apply(this.world, this.film, this.tick, this.actors);
+
+        /* This packet is queued after every entity spawn and crowd-members packet emitted by
+         * reconciliation. The client can hold the warm-up open until it has processed them and
+         * completed one uncaptured render with the finished crowd. */
+        if (!this.crowdExportReadySent && this.serverPlayer != null && FilmExportState.isExporting(this.serverPlayer.getUuid()))
+        {
+            ServerNetwork.sendCrowdPreloadReady(this.serverPlayer, this.film.getId());
+            this.crowdExportReadySent = true;
+        }
     }
 
     public void syncData(DataPath key, BaseType data)
@@ -612,6 +689,12 @@ public class ActionPlayer
 
     public void stop()
     {
+        CrowdUtils.removeAllForFilm(this.world, this.film);
+
+        /* Those members are gone, so the reconciler must not go on believing it has them
+         * standing - a run started again against this player would spawn nothing. */
+        this.crowds.forget();
+
         SuperFakePlayer fakePlayer = SuperFakePlayer.getIfPresent(this.world);
 
         /* Nothing asks for a lid any more, so every one the film opened closes */

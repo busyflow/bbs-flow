@@ -1,6 +1,7 @@
 package mchorse.bbs_mod.film;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import mchorse.bbs_mod.actions.crowd.CrowdWalk;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.camera.data.Point;
 import mchorse.bbs_mod.client.BBSRendering;
@@ -21,6 +22,8 @@ import mchorse.bbs_mod.ui.framework.UIBaseMenu;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.ui.framework.elements.utils.StencilMap;
 import mchorse.bbs_mod.ui.film.replays.UIReplayPropTransform;
+import mchorse.bbs_mod.utils.pose.Transform;
+import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import mchorse.bbs_mod.ui.utils.Gizmo;
 import mchorse.bbs_mod.utils.MatrixStackUtils;
 import mchorse.bbs_mod.utils.Pair;
@@ -49,6 +52,41 @@ import java.util.Map;
  */
 public class FilmEntityRenderer
 {
+    /** Capture or stencil a world-space replay-path transform gizmo. */
+    public static void renderReplayTransformGizmo(WorldRenderContext context, Vector3d position, Transform transform, StencilMap map)
+    {
+        if (context == null || position == null || transform == null || BBSRendering.isIrisShadowPass())
+        {
+            return;
+        }
+
+        MatrixStack stack = context.matrixStack();
+        Camera camera = context.camera();
+        Transform orientation = transform.copy();
+
+        orientation.translate.zero();
+        orientation.scale.set(1F);
+
+        stack.push();
+        stack.translate(
+            position.x - camera.getPos().x,
+            position.y - camera.getPos().y,
+            position.z - camera.getPos().z
+        );
+        MatrixStackUtils.multiply(stack, orientation.createMatrix());
+
+        if (map == null)
+        {
+            Gizmo.INSTANCE.captureVisual(stack, Gizmo.HandleMask.ALL, Gizmo.GizmoTheme.SHIFT_REPLAY);
+        }
+        else
+        {
+            Gizmo.INSTANCE.renderStencil(stack);
+        }
+
+        stack.pop();
+    }
+
     public static void renderEntity(FilmControllerContext context)
     {
         Map<String, IEntity> entities = context.entities;
@@ -193,6 +231,18 @@ public class FilmEntityRenderer
             }
         }
 
+        /* Gated on the target rather than on the payload being non-null, so this draw and the
+         * stencil pick are built from the same answer - a waypoint that reaches one pass and not
+         * the other is a handle on screen that cannot be clicked, which is the whole reason
+         * FilmTarget exists. */
+        if (UIBaseMenu.shouldRenderAxes()
+            && gizmoTarget.is(FilmTarget.Kind.CROWD_MOTION)
+            && context.crowdMotionPoint != null
+            && context.replay != null)
+        {
+            renderCrowdMotionGizmo(context, stack);
+        }
+
         if (!relative && context.map == null && opacity > 0F && context.shadowRadius > 0F && form.visible.get())
         {
             /* No shadow while the form is hidden (form.visible, keyframable) — the form renders
@@ -245,11 +295,62 @@ public class FilmEntityRenderer
             stack.push();
             stack.translate(position.x - cx, position.y - cy, position.z - cz);
 
-            renderNameTag(entity, Text.literal(StringUtils.processColoredText(context.nameTag)), stack, context.consumers, light);
+            renderNameTag(entity, Text.literal(StringUtils.processColoredText(context.nameTag)), stack, context.consumers, light, context.nameTagHeight);
 
             stack.pop();
         }
 
+        RenderSystem.enableDepthTest();
+    }
+
+    private static final Gizmo.HandleMask CROWD_MOTION_MASK = Gizmo.HandleMask.of(
+        java.util.EnumSet.of(Gizmo.Op.MOVE, Gizmo.Op.SCREEN),
+        java.util.EnumSet.noneOf(mchorse.bbs_mod.utils.Axis.class)
+    );
+
+    private static void renderCrowdMotionGizmo(FilmControllerContext context, MatrixStack stack)
+    {
+        CrowdWalk point = context.crowdMotionPoint;
+
+        /* A waypoint is world space, not an offset from the replay. The runtime reads it that way
+         * (CrowdWalkEvaluator#positionAt returns the value untouched), the white poles draw it
+         * that way, and the gizmo writes it back that way - only this drew it with the replay's
+         * position added, which put the handle a whole replay-position away from the point it
+         * edits. Anywhere but the origin, that is a gizmo standing somewhere the crowd will never
+         * walk, next to a pole marking where it actually will. */
+        double x = point.x;
+        double y = point.y;
+        double z = point.z;
+
+        if (x == 0 && y == 0 && z == 0 && context.replay != null)
+        {
+            net.minecraft.util.math.Vec3d center = mchorse.bbs_mod.actions.types.crowd.CrowdUtils.getCrowdCenter(null, context.replay, null, (int) context.crowdMotionTick);
+
+            if (center.x != 0 || center.y != 0 || center.z != 0)
+            {
+                x = center.x;
+                y = center.y;
+                z = center.z;
+            }
+        }
+
+        stack.push();
+        stack.translate(
+            x - context.camera.getPos().x,
+            y - context.camera.getPos().y,
+            z - context.camera.getPos().z
+        );
+
+        if (context.map == null)
+        {
+            Gizmo.INSTANCE.captureVisual(stack, CROWD_MOTION_MASK);
+        }
+        else
+        {
+            Gizmo.INSTANCE.renderStencil(stack, CROWD_MOTION_MASK);
+        }
+
+        stack.pop();
         RenderSystem.enableDepthTest();
     }
 
@@ -414,10 +515,10 @@ public class FilmEntityRenderer
         stack.pop();
     }
 
-    static void renderNameTag(IEntity entity, Text text, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light)
+    static void renderNameTag(IEntity entity, Text text, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, float nameTagHeight)
     {
         boolean sneaking = !entity.isSneaking();
-        float hitboxH = (float) entity.getPickingHitbox().h + 0.5F;
+        float hitboxH = (float) entity.getPickingHitbox().h + 0.5F + nameTagHeight;
 
         matrices.push();
         matrices.translate(0F, hitboxH, 0F);

@@ -38,6 +38,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeEditor;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeSheet;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIAnchorKeyframeFactory;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UICrowdWalkKeyframeFactory;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIPoseKeyframeFactory;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIPoseTransformKeyframeFactory;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UITransformKeyframeFactory;
@@ -54,6 +55,7 @@ import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.base.BaseValueBasic;
 import mchorse.bbs_mod.utils.pose.Pose;
 import mchorse.bbs_mod.utils.pose.PoseTransform;
+import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
@@ -287,6 +289,10 @@ public class UIReplaysEditorUtils
         {
             return keyframeFactory.transform;
         }
+        else if (editor.editor instanceof UICrowdWalkKeyframeFactory keyframeFactory)
+        {
+            return keyframeFactory.transform;
+        }
 
         return null;
     }
@@ -299,6 +305,11 @@ public class UIReplaysEditorUtils
      */
     public static UIPropTransform getFilmGizmoTransform(UIFilmPanel panel, float transition)
     {
+        if (panel.getController().isReplayShiftGizmo())
+        {
+            return null;
+        }
+
         if (panel.getController().getEditTarget().is(FilmTarget.Kind.ROOT))
         {
             UIReplayPropTransform replayTransform = panel.replayEditor.replayTransform;
@@ -346,6 +357,11 @@ public class UIReplaysEditorUtils
 
     public static void configureFilmHotkeyDrag(UIFilmPanel panel, UIContext context)
     {
+        if (panel.getController().isReplayShiftGizmo())
+        {
+            return;
+        }
+
         float transition = panel.replayEditor.getContext() == null ? 0F : panel.replayEditor.getContext().getTransition();
 
         /* The replay's own placement is a target of its own, refreshed every frame so a
@@ -453,6 +469,12 @@ public class UIReplaysEditorUtils
         }
 
         IEntity entity = panel.getController().getCurrentEntity();
+
+        if (panel.getController().getEditTarget().is(FilmTarget.Kind.CROWD_MOTION))
+        {
+            drag.setGlobalAxes(new Matrix3f());
+            return drag;
+        }
 
         /* The GLOBAL frame of a film edit is the edited replay's own facing, not
          * the map's axes — set before any early return, since it is the gizmo's

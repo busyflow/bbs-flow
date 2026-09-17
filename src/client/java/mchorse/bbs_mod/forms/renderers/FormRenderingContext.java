@@ -63,7 +63,9 @@ public class FormRenderingContext
             double y = Lerps.lerp(entity.getPrevY(), entity.getY(), transition);
             double z = Lerps.lerp(entity.getPrevZ(), entity.getZ(), transition);
 
-            float bodyYaw = Lerps.lerp(entity.getPrevBodyYaw(), entity.getBodyYaw(), transition);
+            /* The short way round: a body crossing 180 must not spin most of a circle inside one
+             * tick, which is the whole form - head included - whipping round for a frame. */
+            float bodyYaw = Lerps.lerp(entity.getPrevBodyYaw(), Lerps.normalizeYaw(entity.getPrevBodyYaw(), entity.getBodyYaw()), transition);
 
             this.world.translate(x, y, z);
             this.world.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-bodyYaw));

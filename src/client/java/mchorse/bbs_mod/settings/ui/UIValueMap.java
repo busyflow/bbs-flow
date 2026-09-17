@@ -28,6 +28,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.UINumericInput;
 import mchorse.bbs_mod.ui.framework.elements.context.UIInterpolationContextMenu;
 import mchorse.bbs_mod.utils.interps.Interpolation;
 import mchorse.bbs_mod.utils.interps.Interpolations;
+import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.ui.framework.elements.input.text.UITextbox;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.overlays.UIKeyframeStyleOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UILabelOverlayPanel;
@@ -204,7 +205,11 @@ public class UIValueMap
         {
             UIButton button = new UIButton(UIKeys.CONFIG_KEYFRAME_STYLE_EDIT, (b) -> UIOverlay.addOverlay(
                 ui.getContext(),
-                new UIKeyframeStyleOverlayPanel(value.get(), (style) -> value.set(style.copy())),
+                new UIKeyframeStyleOverlayPanel(value.get(), (style) ->
+                {
+                    value.set(style.copy());
+                    Keyframe.applyDefaultStyleToAll();
+                }),
                 220, 200
             ));
 

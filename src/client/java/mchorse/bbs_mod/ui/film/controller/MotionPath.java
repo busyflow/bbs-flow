@@ -2,6 +2,7 @@ package mchorse.bbs_mod.ui.film.controller;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.actions.crowd.CrowdWalkEvaluator;
 import mchorse.bbs_mod.cubic.animation.ActionConfig;
 import mchorse.bbs_mod.cubic.animation.ActionsConfig;
 import mchorse.bbs_mod.film.FilmMatrices;
@@ -91,10 +92,29 @@ public class MotionPath
 
         /* The same target the gizmo is on, so the path is the trajectory of the thing being
          * dragged. Root is the fallback in both senses: the target's own, and what a bone or
-         * anchor falls back to when its path cannot be sampled (no form, no world yet). */
-        Trajectory trajectory = target == null || target.is(FilmTarget.Kind.ROOT) || target.isNone()
-            ? null
-            : sampledTrajectory(controller, replay, target);
+         * anchor falls back to when its path cannot be sampled (no form, no world yet).
+         *
+         * A crowd waypoint is sampled from the crowd's own walk rather than from a bone: there
+         * is no entity whose bone it could be, the path IS the thing being edited. */
+        Trajectory trajectory;
+
+        if (target == null || target.is(FilmTarget.Kind.ROOT) || target.isNone())
+        {
+            trajectory = null;
+        }
+        else if (target.is(FilmTarget.Kind.CROWD_MOTION))
+        {
+            trajectory = crowdTrajectory(replay);
+        }
+        else if (target.is(FilmTarget.Kind.REPLAY_SHIFT))
+        {
+            /* The shift moves every selected replay at once - no single trajectory to draw. */
+            trajectory = null;
+        }
+        else
+        {
+            trajectory = sampledTrajectory(controller, replay, target);
+        }
 
         if (trajectory == null)
         {
@@ -314,6 +334,46 @@ public class MotionPath
     }
 
     /* Root trajectory: straight from the position channels (cheap). */
+
+    private static Trajectory crowdTrajectory(Replay replay)
+    {
+        KeyframeChannel<?> channel = replay.keyframes.crowdWalk;
+        float[] range = range(channel);
+
+        if (range == null)
+        {
+            return null;
+        }
+
+        TreeSet<Float> ticks = new TreeSet<>();
+
+        collectTicks(ticks, channel);
+
+        return new CrowdTrajectory(replay, range[0], range[1], ticks);
+    }
+
+    private record CrowdTrajectory(Replay replay, float first, float last, TreeSet<Float> keyframeTicks) implements Trajectory
+    {
+        @Override
+        public void worldAt(float tick, Vector3d out)
+        {
+            CrowdWalkEvaluator.Frame frame = CrowdWalkEvaluator.frame(this.replay, tick);
+
+            if (frame == null)
+            {
+                var origin = CrowdWalkEvaluator.replayOrigin(this.replay, tick);
+                out.set(origin.x, origin.y, origin.z);
+            }
+            else
+            {
+                out.set(
+                    frame.center().x,
+                    frame.center().y,
+                    frame.center().z
+                );
+            }
+        }
+    }
 
     private static Trajectory rootTrajectory(Replay replay)
     {

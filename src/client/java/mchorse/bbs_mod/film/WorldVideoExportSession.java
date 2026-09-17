@@ -3,6 +3,7 @@ package mchorse.bbs_mod.film;
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.actions.ActionState;
+import mchorse.bbs_mod.actions.types.crowd.CrowdExportPreload;
 import mchorse.bbs_mod.audio.AudioRenderer;
 import mchorse.bbs_mod.camera.clips.misc.AudioClip;
 import mchorse.bbs_mod.client.BBSRendering;
@@ -31,6 +32,7 @@ public class WorldVideoExportSession extends VideoExportSession
     /** The film being recorded (F6), used to render its audio track; {@code null} for a plain world recording (F4). */
     private Film film;
     private boolean firstTickPaused;
+    private boolean filmSeen;
 
     public String getFilmId()
     {
@@ -58,12 +60,19 @@ public class WorldVideoExportSession extends VideoExportSession
         this.filmId = filmId;
         this.film = film;
         this.firstTickPaused = false;
+        this.filmSeen = false;
+
+        if (filmId != null)
+        {
+            CrowdExportPreload.begin(filmId);
+        }
 
         long delayMs = (long) (Math.max(0F, BBSSettings.videoDelay.get()) * 1000F);
         boolean started = this.begin(BBSRendering.getTexture().id, size.width, size.height, delayMs);
 
         if (!started)
         {
+            CrowdExportPreload.finish(this.filmId);
             this.windowSession.restore();
             this.filmId = null;
             this.film = null;
@@ -117,16 +126,24 @@ public class WorldVideoExportSession extends VideoExportSession
     @Override
     protected boolean shouldAbortWarmup()
     {
-        /* We are playing a film and it is no longer running (never started, or an empty film already finished). */
-        return this.filmId != null && !BBSModClient.getFilms().has(this.filmId);
+        /* We are playing a film and it is no longer running (an empty film already finished).
+         * On a server the play is a round trip, so the film is legitimately absent for the first
+         * few ticks - aborting then killed every F6 take before it ever recorded a frame, while
+         * the film went on to play as if it were being captured. */
+        return this.filmId != null && this.filmSeen && !BBSModClient.getFilms().has(this.filmId);
     }
 
     @Override
     protected boolean isWarmupReady()
     {
-        if (this.filmId == null || this.firstTickPaused)
+        if (this.filmId == null)
         {
             return true;
+        }
+
+        if (this.firstTickPaused)
+        {
+            return CrowdExportPreload.isReady(this.filmId);
         }
 
         BaseFilmController controller = BBSModClient.getFilms().getController(this.filmId);
@@ -135,6 +152,8 @@ public class WorldVideoExportSession extends VideoExportSession
         {
             return false;
         }
+
+        this.filmSeen = true;
 
         if (!controller.paused)
         {
@@ -148,7 +167,7 @@ public class WorldVideoExportSession extends VideoExportSession
 
         this.firstTickPaused = true;
 
-        return true;
+        return CrowdExportPreload.isReady(this.filmId);
     }
 
     @Override
@@ -196,9 +215,12 @@ public class WorldVideoExportSession extends VideoExportSession
         BBSRendering.setCustomSize(false, 0, 0);
         this.windowSession.restore();
 
+        CrowdExportPreload.finish(this.filmId);
+
         this.filmId = null;
         this.film = null;
         this.firstTickPaused = false;
+        this.filmSeen = false;
     }
 
     private void applyWindowSize(VideoSize size)

@@ -51,6 +51,7 @@ public class UIModelIKFormPanel extends UIBoneListFormPanel
     private static final int MARKER_OFF = Colors.GRAY;
 
     public UIToggle debug;
+    public UISliderTrackpad controllerSize;
     public UIToggle enabled;
     public UIBonePicker target;
     public UITrackpad chainLength;
@@ -114,6 +115,19 @@ public class UIModelIKFormPanel extends UIBoneListFormPanel
         this.debug = new UIToggle(UIKeys.FORMS_EDITORS_MODEL_IK_DEBUG, (b) -> BBSSettings.ikDebug.enabled.set(b.getValue()));
         this.debug.setValue(BBSSettings.ikDebug.enabled.get());
         this.debug.context(() -> new UIDebugOverlayContextMenu(BBSSettings.ikDebug));
+
+        /* A single, visible size control for the green target and orange pole
+         * handles. Their individual sizes remain available from the Debug
+         * popover, but normal posing nearly always wants both reduced together. */
+        this.controllerSize = new UISliderTrackpad((v) ->
+        {
+            float size = v.floatValue();
+
+            BBSSettings.ikDebug.target.size.set(size);
+            BBSSettings.ikDebug.pole.size.set(size);
+        });
+        this.controllerSize.limit(BBSSettings.ikDebug.target.size).setValue(BBSSettings.ikDebug.target.size.get());
+        this.controllerSize.tooltip(UIKeys.FORMS_EDITORS_MODEL_IK_CONTROLLER_SIZE);
 
         this.enabled = new UIToggle(UIKeys.FORMS_EDITORS_MODEL_IK_ENABLED, (b) ->
         {
@@ -310,6 +324,7 @@ public class UIModelIKFormPanel extends UIBoneListFormPanel
 
         this.options.add(
             this.debugRow(this.debug, BBSSettings.ikDebug),
+            UI.labelRow(UIKeys.FORMS_EDITORS_MODEL_IK_CONTROLLER_SIZE, this.controllerSize),
             this.bonesSearch,
             settings,
             this.advancedSection,
@@ -412,6 +427,7 @@ public class UIModelIKFormPanel extends UIBoneListFormPanel
     public void startEdit(ModelForm form)
     {
         this.debug.setValue(BBSSettings.ikDebug.enabled.get());
+        this.controllerSize.setValue(BBSSettings.ikDebug.target.size.get());
 
         super.startEdit(form);
     }

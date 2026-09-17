@@ -98,6 +98,7 @@ public class Films
         {
             PlayCameraController controller = new PlayCameraController(film.camera);
 
+            controller.getContext().film = film;
             controller.getContext().entities.putAll(filmController.getEntities());
             BBSModClient.getCameraController().add(controller);
         }

@@ -39,6 +39,8 @@ public class FormBone extends ValueGroup
     public final ValueBoolean ikStretch = new ValueBoolean("ik_stretch", false);
     public final ValueBoolean ikSquash = new ValueBoolean("ik_squash", false);
     public final ValueBoolean ikClassic = new ValueBoolean("ik_classic", false);
+    /** Push the chain's root clear of a goal it cannot reach, instead of letting the tip leave the controller behind. */
+    public final ValueBoolean ikDepenetrate = new ValueBoolean("ik_depenetrate", false);
     public final ValueBoneIK ik = new ValueBoneIK("ik", new IKControl());
 
     /** The bone's joint freedom for any IK chain that solves through it (locks, limits, stiffness). */
@@ -70,6 +72,7 @@ public class FormBone extends ValueGroup
         this.ikStretch.invisible();
         this.ikSquash.invisible();
         this.ikClassic.invisible();
+        this.ikDepenetrate.invisible();
         this.ik.invisible();
         this.joint.invisible();
         this.physicsEnd.invisible();
@@ -91,6 +94,7 @@ public class FormBone extends ValueGroup
         this.add(this.ikStretch);
         this.add(this.ikSquash);
         this.add(this.ikClassic);
+        this.add(this.ikDepenetrate);
         this.add(this.ik);
         this.add(this.joint);
         this.add(this.physicsEnd);
@@ -129,6 +133,7 @@ public class FormBone extends ValueGroup
             && !this.ikStretch.get()
             && !this.ikSquash.get()
             && !this.ikClassic.get()
+            && !this.ikDepenetrate.get()
             && this.ik.get().isDefault()
             && this.joint.get().isFree()
             && !this.hasPhysicsChain()

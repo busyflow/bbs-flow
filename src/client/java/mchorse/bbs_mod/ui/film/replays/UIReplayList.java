@@ -9,6 +9,8 @@ import mchorse.bbs_mod.data.types.BaseType;
 import mchorse.bbs_mod.data.types.ListType;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.film.Film;
+import mchorse.bbs_mod.film.crowds.Crowd;
+import mchorse.bbs_mod.forms.forms.CrowdForm;
 import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.film.replays.Replays;
 import mchorse.bbs_mod.forms.FormUtils;
@@ -28,6 +30,7 @@ import mchorse.bbs_mod.forms.structure.StructureCut;
 import mchorse.bbs_mod.forms.structure.StructureManager;
 import mchorse.bbs_mod.forms.structure.StructureSelection;
 import mchorse.bbs_mod.ui.UIKeys;
+import mchorse.bbs_mod.ui.utils.keys.Keybind;
 import mchorse.bbs_mod.ui.film.UIFilmPanel;
 import mchorse.bbs_mod.ui.forms.UIFormPalette;
 import mchorse.bbs_mod.ui.framework.UIContext;
@@ -53,6 +56,7 @@ import mchorse.bbs_mod.utils.categories.CategoryPath;
 import mchorse.bbs_mod.utils.categories.CategoryTree;
 import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.RayTracing;
+import mchorse.bbs_mod.utils.animation.DesyncPhase;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
@@ -68,6 +72,7 @@ import org.joml.Vector3d;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -91,6 +96,19 @@ public class UIReplayList extends UIList<ReplayListEntry>
 
     /** The box a row's form is drawn in, centred on the row however tall the row is. */
     private static final int PREVIEW = 40;
+
+    /** Disabled replays (and fully-off folders) read in red rather than a dim grey, selected or not. */
+    private static final int DISABLED_COLOR = 0xff5555;
+    private static final int DISABLED_HOVER_COLOR = 0xff8888;
+
+    /** Size of the per-folder on/off eye on a folder header, at the row's right edge. */
+    private static final int GROUP_TOGGLE_SIZE = 16;
+
+    /**
+     * The visibility toggle, kept so a mouse binding can be honoured before the list claims the
+     * click for itself.
+     */
+    private Keybind toggleVisibleKeybind;
 
     /** Set while building the context menu when the cursor is on a folder row. */
     private String contextFolderPath;
@@ -174,6 +192,12 @@ public class UIReplayList extends UIList<ReplayListEntry>
 
                 menu.action(Icons.ALL_DIRECTIONS, UIKeys.SCENE_REPLAYS_CONTEXT_PROCESS, this::processReplays);
                 menu.action(Icons.TIME, UIKeys.SCENE_REPLAYS_CONTEXT_OFFSET_TIME, this::offsetTimeReplays);
+                menu.action(Icons.LIMB, UIKeys.SCENE_REPLAYS_CONTEXT_DESYNC, this::desyncReplays);
+
+                if (this.hasDesyncedSelection())
+                {
+                    menu.action(Icons.REFRESH, UIKeys.SCENE_REPLAYS_CONTEXT_RESYNC, this::resyncReplays);
+                }
 
                 if (this.getSelectedReplays().size() > 1)
                 {
@@ -235,6 +259,9 @@ public class UIReplayList extends UIList<ReplayListEntry>
             .inside()
             .label(UIKeys.SCENE_REPLAYS_CONTEXT_DUPE)
             .active(this::hasReplaySelection)
+            .category(UIKeys.FILM_REPLAY_TITLE);
+        this.toggleVisibleKeybind = this.keys().register(Keys.REPLAYS_TOGGLE_VISIBLE, this::toggleReplayVisibility)
+            .inside()
             .category(UIKeys.FILM_REPLAY_TITLE);
         this.keys().register(Keys.REPLAYS_SELECT_ALL, this::selectAllReplays)
             .inside()
@@ -892,6 +919,27 @@ public class UIReplayList extends UIList<ReplayListEntry>
     }
 
     /**
+     * Ahead of everything else this list does with a click. Bound to a mouse button, the toggle
+     * would otherwise never fire on the left one: selection consumes that button here, and the
+     * keybind dispatch only runs on what subMouseClicked leaves behind. Returning true is also
+     * what stops it firing a second time through that dispatch.
+     */
+    @Override
+    public boolean subMouseClicked(UIContext context)
+    {
+        if (this.toggleVisibleKeybind != null
+            && this.area.isInside(context)
+            && this.toggleVisibleKeybind.checkMouse(context.mouseButton, true))
+        {
+            this.toggleReplayVisibility();
+
+            return true;
+        }
+
+        return super.subMouseClicked(context);
+    }
+
+    /**
      * A press on a folder row, which the base list hands here through {@link #pressItem}. The arrow
      * folds the branch at once; Ctrl picks everything the folder holds; a plain press only arms the
      * drag, and the fold waits for the release — otherwise carrying a folder off would fold it on
@@ -946,6 +994,15 @@ public class UIReplayList extends UIList<ReplayListEntry>
 
                 if (entry.isFolder() && entry.folderPath.equals(pressed))
                 {
+                    /* The eye at the right edge flips the whole folder off/on; anywhere else on
+                     * the header still folds it, which is what the header did before the eye. */
+                    if (context.mouseX >= this.area.ex() - ROW_PADDING - GROUP_TOGGLE_SIZE)
+                    {
+                        this.setGroupEnabled(entry.folderPath, this.isGroupDisabled(entry.folderPath));
+
+                        return true;
+                    }
+
                     this.toggle(entry);
                     this.update();
                 }
@@ -1007,6 +1064,139 @@ public class UIReplayList extends UIList<ReplayListEntry>
         return dragged.isEmpty()
             || !dragged.get(0).isFolder()
             || !CategoryPath.isInside(element.folderPath, dragged.get(0).folderPath);
+    }
+
+    /** Every replay inside a folder, including everything nested below it. */
+    private List<Replay> groupReplays(String folderPath)
+    {
+        List<Replay> out = new ArrayList<>();
+        Film film = this.panel == null ? null : this.panel.getData();
+
+        if (film == null || folderPath == null || folderPath.isEmpty())
+        {
+            return out;
+        }
+
+        for (Replay r : film.replays.getList())
+        {
+            String category = CategoryPath.normalize(r.category.get());
+
+            if (category.equals(folderPath) || CategoryPath.isInside(category, folderPath))
+            {
+                out.add(r);
+            }
+        }
+
+        return out;
+    }
+
+    /** True when a folder holds replays and every one is disabled - the folder itself reads as off. */
+    private boolean isGroupDisabled(String folderPath)
+    {
+        List<Replay> replays = this.groupReplays(folderPath);
+
+        if (replays.isEmpty())
+        {
+            return false;
+        }
+
+        for (Replay r : replays)
+        {
+            if (r.enabled.get())
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Turn a whole folder on or off in one go - every replay inside follows. */
+    private void setGroupEnabled(String folderPath, boolean enabled)
+    {
+        List<Replay> replays = this.groupReplays(folderPath);
+
+        if (replays.isEmpty())
+        {
+            return;
+        }
+
+        for (Replay r : replays)
+        {
+            r.enabled.set(enabled);
+        }
+
+        if (this.panel != null)
+        {
+            this.panel.getController().createEntities();
+        }
+
+        this.update();
+    }
+
+    /**
+     * Flip visibility, same effect as the Enabled toggle. Acts on whatever the cursor is over - a
+     * single replay, or every replay in a folder when over its header - regardless of the
+     * selection. All on turns them off, else on.
+     */
+    private void toggleReplayVisibility()
+    {
+        List<Replay> targets = new ArrayList<>();
+        UIContext context = this.getContext();
+
+        if (context != null && this.area.isInside(context))
+        {
+            int index = this.indexAt(this.contentX(context), this.contentY(context));
+            List<ReplayListEntry> visible = this.visible();
+
+            if (index >= 0 && index < visible.size())
+            {
+                ReplayListEntry entry = visible.get(index);
+
+                if (entry.isReplay())
+                {
+                    targets.add(entry.replay);
+                }
+                else
+                {
+                    targets.addAll(this.groupReplays(entry.folderPath));
+                }
+            }
+        }
+
+        /* Only ever act on what the cursor is actually over. No falling back to the selection -
+         * that made the bind fire on a right-click anywhere in the menu and toggle whatever replay
+         * happened to be selected. */
+        if (targets.isEmpty())
+        {
+            return;
+        }
+
+        boolean allOn = true;
+
+        for (Replay replay : targets)
+        {
+            allOn &= replay.enabled.get();
+        }
+
+        for (Replay replay : targets)
+        {
+            replay.enabled.set(!allOn);
+        }
+
+        if (this.panel != null)
+        {
+            this.panel.getController().createEntities();
+
+            List<Replay> selected = this.getSelectedReplays();
+
+            if (!selected.isEmpty() && targets.contains(selected.get(0)))
+            {
+                this.panel.replayEditor.replayProperties.setReplay(selected.get(0));
+            }
+        }
+
+        this.update();
     }
 
     /** The caret runs from where a replay row's name starts, so a drop into a folder reads as one. */
@@ -1554,12 +1744,31 @@ public class UIReplayList extends UIList<ReplayListEntry>
     {
         MapType replays = new MapType();
         ListType replayList = new ListType();
+        ListType crowdList = new ListType();
 
         replays.put("replays", replayList);
+        replays.put("crowds", crowdList);
+
+        Film film = this.panel.getData();
+        java.util.Set<String> seenTags = new java.util.HashSet<>();
 
         for (Replay replay : this.getSelectedReplays())
         {
             replayList.add(replay.toData());
+
+            /* A crowd form names its crowd by tag; the armour, the BBS-model toggle, the chosen
+             * form and the rest live on the film's crowd, not the form. Carry that crowd along so
+             * a replay pasted into another film rebuilds it instead of pointing at nothing. */
+            if (film != null && replay.form.get() instanceof CrowdForm crowdForm)
+            {
+                String tag = crowdForm.crowd.get();
+                Crowd crowd = film.crowds.byTag(tag);
+
+                if (crowd != null && seenTags.add(tag))
+                {
+                    crowdList.add(crowd.toData());
+                }
+            }
         }
 
         return replays;
@@ -1581,6 +1790,52 @@ public class UIReplayList extends UIList<ReplayListEntry>
     public void pasteReplay(MapType data)
     {
         Film film = this.panel.getData();
+
+        /* Rebuild any crowd the copied replays drive, so the armour, the BBS-model toggle, the
+         * chosen form and the rest travel with the crowd form rather than just its tag.
+         *
+         * Tags are numbered per film, so the first crowd of every film is called crowd_1. Skipping
+         * an import because the name is taken therefore silently attached a replay pasted from
+         * another film to whatever crowd happened to hold that name here, wearing its settings
+         * instead of the ones it was copied with.
+         *
+         * A name already in use is only the same crowd if it holds the same thing. Where it does,
+         * it is shared - that is the same-film paste, and duplicating would be wrong. Where it does
+         * not, the newcomer is imported under a free name and the replays that drive it are
+         * repointed below. */
+        Map<String, String> retaggedCrowds = new HashMap<>();
+
+        for (BaseType crowdType : data.getList("crowds"))
+        {
+            String tag = crowdType instanceof MapType map ? map.getString("crowd_tag") : null;
+
+            if (tag == null || tag.isEmpty())
+            {
+                continue;
+            }
+
+            Crowd existing = film.crowds.byTag(tag);
+
+            if (existing == null)
+            {
+                film.crowds.addCopy(crowdType);
+
+                continue;
+            }
+
+            if (existing.toData().equals(crowdType))
+            {
+                continue;
+            }
+
+            String free = film.crowds.freeTag();
+            MapType renamed = (MapType) crowdType.copy();
+
+            renamed.putString("crowd_tag", free);
+            film.crowds.addCopy(renamed);
+            retaggedCrowds.put(tag, free);
+        }
+
         ListType replays = data.getList("replays");
         Replay last = null;
 
@@ -1592,6 +1847,18 @@ public class UIReplayList extends UIList<ReplayListEntry>
              * folder is simply made here when this one has never heard of it. */
             BaseValue.edit(replay, (r) -> r.fromData(replayType));
             this.assignReplayCategoryValue(replay, replay.category.get());
+            /* A crowd that had to be imported under a different name is only reachable if the
+             * form that drives it is told so - otherwise the paste rebuilds the crowd correctly
+             * and leaves the replay pointing at the one it collided with. */
+            if (replay.form.get() instanceof CrowdForm pastedCrowdForm)
+            {
+                String moved = retaggedCrowds.get(pastedCrowdForm.crowd.get());
+
+                if (moved != null)
+                {
+                    pastedCrowdForm.crowd.set(moved);
+                }
+            }
 
             last = replay;
         }
@@ -1772,6 +2039,72 @@ public class UIReplayList extends UIList<ReplayListEntry>
         this.panel.replayEditor.updateChannelsList();
     }
 
+    /**
+     * Take the selected replays out of step with each other.
+     *
+     * <p>Everything a replay animates by itself - vanilla's arm and leg swing, and a BBS model's
+     * own walk loop - is a function of how far it has walked and when it started walking. Replays
+     * built from the same path, or simply moving at the same speed, therefore agree on both, and a
+     * group of them swings as one body. Handing each a different phase is the whole of the fix; the
+     * poses, the paths and the timing are all untouched.</p>
+     *
+     * <p>The phases are spread over the cycle rather than drawn at random, so that two replays are
+     * never handed near-identical ones - which would leave exactly the pair the eye picks out still
+     * marching together. Pressing it again reshuffles, so a spread that happens to read badly costs
+     * one more click.</p>
+     */
+    /** Whether anything selected has been desynced, so that resyncing is worth offering. */
+    public boolean hasDesyncedSelection()
+    {
+        for (Replay replay : this.getSelectedReplays())
+        {
+            if (replay.animationPhase.get() != 0F)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void desyncReplays()
+    {
+        if (!this.hasReplaySelection())
+        {
+            return;
+        }
+
+        List<Replay> selected = this.getSelectedReplaysInViewOrder();
+        List<Float> phases = DesyncPhase.stratified(selected.size(), new Random());
+
+        for (int i = 0; i < selected.size(); i++)
+        {
+            float phase = phases.get(i);
+
+            BaseValue.edit(selected.get(i).animationPhase, (v) -> v.set(phase));
+        }
+
+        this.updateFilmEditor();
+    }
+
+    /**
+     * Put the selected replays back in step - the state a film that has never been desynced is in.
+     */
+    public void resyncReplays()
+    {
+        if (!this.hasReplaySelection())
+        {
+            return;
+        }
+
+        for (Replay replay : this.getSelectedReplays())
+        {
+            BaseValue.edit(replay.animationPhase, (v) -> v.set(0F));
+        }
+
+        this.updateFilmEditor();
+    }
+
     public void dupeReplay()
     {
         if (!this.hasReplaySelection())
@@ -1869,15 +2202,26 @@ public class UIReplayList extends UIList<ReplayListEntry>
             int iconX = x + this.rowContentX(element) + ARROW_SLOT;
             int textX = x + iconRowTextX(this.rowContentX(element));
 
+            boolean groupOff = this.isGroupDisabled(element.folderPath);
+
             this.renderTreeGuides(context, x, y, element.depth, element.lines, element.last, iconX);
             this.renderArrow(context, element, x, y, hover || selected);
             context.batcher.icon(Icons.FOLDER, RowStyle.iconColor(hover || selected), iconX, y + (rowHeight - 16) / 2);
-            context.batcher.textShadow(this.elementToString(context, i, element), textX, textY, RowStyle.textColor(hover || selected));
+
+            /* A whole folder whose replays are all off reads in red, like the replays themselves. */
+            int folderColor = groupOff
+                ? (hover ? DISABLED_HOVER_COLOR : DISABLED_COLOR)
+                : RowStyle.textColor(hover || selected);
+
+            context.batcher.textShadow(this.elementToString(context, i, element), textX, textY, folderColor);
+
+            /* The eye at the row's right edge switches the folder off or on - every replay in it. */
+            context.batcher.icon(groupOff ? Icons.INVISIBLE : Icons.VISIBLE, this.area.ex() - ROW_PADDING - GROUP_TOGGLE_SIZE, y + (rowHeight - 16) / 2);
 
             /* How much is in there, which a closed folder cannot say any other way. */
             String count = String.valueOf(element.count);
 
-            context.batcher.textShadow(count, this.area.ex() - ROW_PADDING - context.batcher.getFont().getWidth(count), textY, Colors.GRAY);
+            context.batcher.textShadow(count, this.area.ex() - ROW_PADDING - GROUP_TOGGLE_SIZE - 4 - context.batcher.getFont().getWidth(count), textY, Colors.GRAY);
 
             return;
         }
@@ -1892,7 +2236,9 @@ public class UIReplayList extends UIList<ReplayListEntry>
         }
         else
         {
-            context.batcher.textShadow(this.elementToString(context, i, element), x + this.rowContentX(element), textY, RowStyle.textColor(hover || selected, Colors.GRAY));
+            /* Disabled reads red, whether or not the row is selected (the selection box is drawn
+             * behind this by the base list), so a turned-off replay is obvious either way. */
+            context.batcher.textShadow(this.elementToString(context, i, element), x + this.rowContentX(element), textY, hover ? DISABLED_HOVER_COLOR : DISABLED_COLOR);
         }
 
         Form form = replay.form.get();

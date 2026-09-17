@@ -174,6 +174,16 @@ final class ModelIKApplier
 
             ModelPivotFrames.collect(model, wanted, frames, null);
 
+            /* Ahead of the solve, and on the very frames the solve is about to read: a chain whose
+             * goal has come closer than the chain can fold has its root pushed away instead. */
+            for (ModelIKCache.CompiledChain chain : group)
+            {
+                if (chain.depenetrate())
+                {
+                    depenetrate(model, chain, frames, controllerTargets, poleTargets, targetWeights, poleWeights, controls);
+                }
+            }
+
             /* A classic chain standing alone solves on the analytic two-bone path
              * — exact, quaternion-assembled, free of channel-space singularities.
              * Overlapping another chain it falls back to the core tree (shared
@@ -332,6 +342,122 @@ final class ModelIKApplier
      * {@code null} when the chain is off this frame (disabled, weightless, or
      * its target frame is missing).
      */
+    /**
+     * Push one chain clear of a goal it cannot reach, root and all.
+     *
+     * <p>Both the frames and the bone move: the frames because the solve reads them next and must
+     * aim from where the chain ended up, the bone because the render matrix has to agree with the
+     * angles the solve produces.</p>
+     */
+    private static void depenetrate(IModel model, ModelIKCache.CompiledChain chain, Map<String, PivotFrame> frames, Map<String, Vector3f> controllerTargets, Map<String, Vector3f> poleTargets, Map<String, Float> targetWeights, Map<String, Float> poleWeights, Map<String, IKControl> controls)
+    {
+        ResolvedChain r = resolveChain(model, chain, frames, controllerTargets, poleTargets, targetWeights, poleWeights, controls);
+
+        if (r == null)
+        {
+            return;
+        }
+
+        List<String> ids = r.workIds();
+        List<Vector3f> positions = new ArrayList<>(ids.size());
+
+        for (String id : ids)
+        {
+            PivotFrame frame = frames.get(id);
+
+            if (frame == null)
+            {
+                return;
+            }
+
+            positions.add(new Vector3f(frame.position()));
+        }
+
+        Vector3f push = depenetration(positions, r.target());
+
+        if (push == null)
+        {
+            return;
+        }
+
+        if (r.weight() < 1F)
+        {
+            push.mul(r.weight());
+        }
+
+        for (String id : ids)
+        {
+            PivotFrame frame = frames.get(id);
+
+            frames.put(id, new PivotFrame(new Vector3f(frame.position()).add(push), frame.parentRotation(), frame.worldRotation(), frame.scale()));
+        }
+
+        offsetChainRoot(model, ids.get(0), frames.get(ids.get(0)).parentRotation(), push);
+    }
+
+    /**
+     * How far a chain's root must retreat from a goal that has come closer than the chain can
+     * fold, or null when it can still reach.
+     *
+     * <p>{@code 2 * longest - total} is the least distance a chain can put between its root and
+     * its tip: fold every other segment against the longest one and that is what is left. A
+     * one-bone limb has nothing to fold against, so the figure is simply the bone's own length —
+     * which is what makes this the whole of a rigid limb's behaviour rather than an edge case.</p>
+     */
+    private static Vector3f depenetration(List<Vector3f> positions, Vector3f target)
+    {
+        int n = positions.size();
+
+        if (n < 2 || target == null)
+        {
+            return null;
+        }
+
+        float total = 0F;
+        float longest = 0F;
+
+        for (int i = 0; i < n - 1; i++)
+        {
+            float length = positions.get(i).distance(positions.get(i + 1));
+
+            total += length;
+            longest = Math.max(longest, length);
+        }
+
+        float minReach = 2F * longest - total;
+
+        if (minReach <= 1e-6F)
+        {
+            return null;
+        }
+
+        Vector3f outward = new Vector3f(positions.get(0)).sub(target);
+        float dist = outward.length();
+
+        if (dist >= minReach || dist <= 1e-6F)
+        {
+            return null;
+        }
+
+        return outward.mul((minReach - dist) / dist);
+    }
+
+    /** Carry the push into the root bone's parent frame, so it rides along with whatever poses it. */
+    private static void offsetChainRoot(IModel model, String rootId, Quaternionf rootParentRotation, Vector3f push)
+    {
+        RigBone bone = model.getBone(rootId);
+
+        if (bone == null)
+        {
+            return;
+        }
+
+        /* SET, never accumulate: IK runs several times per frame (render, matrix collection, debug
+         * overlay) and each pass recomputes this push from the same frames, so adding it would
+         * shove the limb three or four times as far as the reach shortfall actually is. */
+        bone.setOffset(new Quaternionf(rootParentRotation).conjugate().transform(new Vector3f(push)));
+    }
+
     private static ResolvedChain resolveChain(IModel model, ModelIKCache.CompiledChain chain, Map<String, PivotFrame> frames, Map<String, Vector3f> controllerTargets, Map<String, Vector3f> poleTargets, Map<String, Float> targetWeights, Map<String, Float> poleWeights, Map<String, IKControl> controls)
     {
         /* The chain's animatable scalars, read live from the bone's `ik` property by the runtime:

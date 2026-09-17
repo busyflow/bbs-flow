@@ -567,6 +567,25 @@ public abstract class OrbitViewportController implements ICameraController
         return new Vector3d(this.toWorld(new Vector3f(this.pivot)));
     }
 
+    /** The distance a fresh orbit sits at, and the one {@link #resetPivotAndDistance} returns to. */
+    public static final float DEFAULT_DISTANCE = 4F;
+
+    /**
+     * Put the pivot back on the subject and the camera back to its default distance, leaving the
+     * rotation alone.
+     *
+     * <p>Which way you are looking at a thing is the part worth keeping when you have lost it -
+     * the angle is usually chosen, while the distance and the pivot are where wandering around
+     * left them. {@link #reset()} clears all three and is for starting over.</p>
+     */
+    public void resetPivotAndDistance()
+    {
+        this.teleportPivotToSubject();
+
+        this.distance = DEFAULT_DISTANCE;
+        this.targetDistance = DEFAULT_DISTANCE;
+    }
+
     /** Put the pivot back onto the subject, wherever the camera has wandered to. */
     public void teleportPivotToSubject()
     {
@@ -633,8 +652,8 @@ public abstract class OrbitViewportController implements ICameraController
         this.targetPivot.set(0F, 0F, 0F);
         this.rotation.set(0F, MathUtils.PI);
         this.targetRotation.set(0F, MathUtils.PI);
-        this.distance = 4F;
-        this.targetDistance = 4F;
+        this.distance = DEFAULT_DISTANCE;
+        this.targetDistance = DEFAULT_DISTANCE;
         this.positioned = false;
         this.orbiting = false;
         this.orbitButton = -1;

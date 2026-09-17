@@ -9,9 +9,13 @@ import mchorse.bbs_mod.utils.interps.Interpolations;
 import mchorse.bbs_mod.utils.keyframes.factories.IKeyframeFactory;
 
 import java.util.Objects;
+import java.util.Collections;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 public class Keyframe <T> extends BaseValue
 {
+    private static final Set<Keyframe<?>> ALL = Collections.newSetFromMap(new WeakHashMap<>());
     private float tick;
     private T value;
 
@@ -45,12 +49,30 @@ public class Keyframe <T> extends BaseValue
         super(id);
 
         this.factory = factory;
+        synchronized (ALL)
+        {
+            ALL.add(this);
+        }
 
         /* Values that jump rather than travel hold their frame by default, so
          * the author doesn't switch every new keyframe to constant by hand */
         if (factory != null && factory.isStepped())
         {
             this.interp.setInterp(Interpolations.CONST);
+        }
+    }
+
+    /** Apply the user-selected default appearance to every currently existing keyframe. */
+    public static void applyDefaultStyleToAll()
+    {
+        KeyframeStyle style = BBSSettings.getDefaultKeyframeStyle();
+
+        synchronized (ALL)
+        {
+            for (Keyframe<?> keyframe : ALL)
+            {
+                keyframe.setStyle(style);
+            }
         }
     }
 

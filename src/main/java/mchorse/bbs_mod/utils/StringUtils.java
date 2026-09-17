@@ -248,6 +248,11 @@ public class StringUtils
 
     public static String fileName(String path)
     {
+        if (path == null)
+        {
+            return "";
+        }
+
         int lastSlash = path.endsWith("/") ? path.lastIndexOf('/', path.length() - 2) : path.lastIndexOf('/');
 
         return lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
@@ -255,6 +260,11 @@ public class StringUtils
 
     public static String parentPath(String path)
     {
+        if (path == null)
+        {
+            return "";
+        }
+
         int lastSlash = path.endsWith("/") ? path.lastIndexOf('/', path.length() - 2) : path.lastIndexOf('/');
 
         return lastSlash >= 0 ? path.substring(0, lastSlash) : "";

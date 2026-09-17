@@ -134,9 +134,14 @@ public class ProceduralAnimator implements IAnimator
         /* Common variables */
         float handSwingProgress = target.getHandSwingProgress(transition);
         float age = target.getAge() + transition;
-        float bodyYaw = Lerps.lerp(target.getPrevBodyYaw(), target.getBodyYaw(), transition);
-        float headYaw = Lerps.lerp(target.getPrevHeadYaw(), target.getHeadYaw(), transition);
-        float yaw = headYaw - bodyYaw;
+        /* The short way round the circle, not the long one. A head crossing from 179 to -176 has
+         * turned five degrees, but interpolating those as plain numbers is a three hundred and
+         * fifty five degree spin taken inside one tick - the head snapping round and back for a
+         * frame as it passes behind the model. normalizeYaw carries the second angle to whichever
+         * side of the first it is really nearer, and their difference wraps for the same reason. */
+        float bodyYaw = Lerps.lerp(target.getPrevBodyYaw(), Lerps.normalizeYaw(target.getPrevBodyYaw(), target.getBodyYaw()), transition);
+        float headYaw = Lerps.lerp(target.getPrevHeadYaw(), Lerps.normalizeYaw(target.getPrevHeadYaw(), target.getHeadYaw()), transition);
+        float yaw = Lerps.normalizeYaw(0F, headYaw - bodyYaw);
         float pitch = Lerps.lerp(target.getPrevPitch(), target.getPitch(), transition);
         float limbSpeed = target.getLimbSpeed(transition);
         float limbPhase = target.getLimbPos(transition);

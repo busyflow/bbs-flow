@@ -54,7 +54,7 @@ final class ClassicLimbSolver
     /** Whether the work chain has the classic shape: exactly two directed bones. */
     static boolean eligible(List<String> workIds)
     {
-        return workIds != null && workIds.size() == 3;
+        return workIds != null && (workIds.size() == 2 || workIds.size() == 3);
     }
 
     /**
@@ -91,7 +91,12 @@ final class ClassicLimbSolver
             }
         }
 
-        float total = positions.get(0).distance(positions.get(1)) + positions.get(1).distance(positions.get(2));
+        float total = 0F;
+
+        for (int i = 0; i < positions.size() - 1; i++)
+        {
+            total += positions.get(i).distance(positions.get(i + 1));
+        }
 
         if (total <= EPS)
         {
@@ -112,26 +117,53 @@ final class ClassicLimbSolver
          * this frame, else a stable side axis — so the bend plane always exists
          * and never lands on an arbitrary side. The pole, when present,
          * overrides either (and poleAngle rolls on top). */
-        Vector3f hinge = liveBendNormal(positions);
+        Vector3f bendSeed;
 
-        if (hinge == null)
+        if (positions.size() == 2)
         {
-            hinge = restBendNormal(model, workIds, rootParentRotation);
-        }
+            /* One bone has no bend to place — only a roll about its own axis, which is what the
+             * pole fixes here. Solved by aiming: the tip sits a bone-length along the goal. */
+            Vector3f aim = new Vector3f(goal).sub(root);
 
-        if (hinge == null)
+            if (!normalize(aim))
+            {
+                return false;
+            }
+
+            positions.set(1, new Vector3f(root).add(aim.mul(total)));
+
+            bendSeed = polePoint == null ? null : soloPoleNormal(positions, polePoint, poleAngle);
+
+            /* Without a pole there is no roll reference, and the orientation pass would pick a
+             * side arbitrarily — hand it back to the core solver instead. */
+            if (bendSeed == null)
+            {
+                return false;
+            }
+        }
+        else
         {
-            Vector3f limb = new Vector3f(positions.get(2)).sub(positions.get(0));
+            Vector3f hinge = liveBendNormal(positions);
 
-            hinge = normalize(limb) ? sideAxis(limb) : null;
+            if (hinge == null)
+            {
+                hinge = restBendNormal(model, workIds, rootParentRotation);
+            }
+
+            if (hinge == null)
+            {
+                Vector3f limb = new Vector3f(positions.get(2)).sub(positions.get(0));
+
+                hinge = normalize(limb) ? sideAxis(limb) : null;
+            }
+
+            solveTwoBone(positions, root, goal);
+
+            /* The bend-plane normal the solve settled on (null when undefined) seeds
+             * the orientation pass's roll reference, so a straightened limb keeps a
+             * stable twist through the reach boundary instead of jittering. */
+            bendSeed = orientBend(positions, hinge, polePoint, poleAngle);
         }
-
-        solveTwoBone(positions, root, goal);
-
-        /* The bend-plane normal the solve settled on (null when undefined) seeds
-         * the orientation pass's roll reference, so a straightened limb keeps a
-         * stable twist through the reach boundary instead of jittering. */
-        Vector3f bendSeed = orientBend(positions, hinge, polePoint, poleAngle);
 
         /* IK stretch, the legacy in-pass flavour: the gap the rotation solve could
          * not close is split among the bones as translations (see the orientation
@@ -261,6 +293,47 @@ final class ClassicLimbSolver
      * can seed a continuous roll reference. {@code null} when the bend plane is
      * undefined (no pole, no hinge, or degenerate geometry).
      */
+    /**
+     * The roll reference for a one-bone chain, ported from BBS 2.0.1's {@code soloPoleNormal}.
+     *
+     * <p>The pole direction is taken from the root, flattened against the bone's own axis (only
+     * the part across the bone says anything about roll), rolled by {@code poleAngle}, and crossed
+     * with the axis to give the plane normal the orientation pass transports. Null when the pole
+     * sits on the axis itself, where "which way round" has no answer.</p>
+     */
+    private static Vector3f soloPoleNormal(List<Vector3f> solved, Vector3f polePoint, float poleAngle)
+    {
+        Vector3f seg = new Vector3f(solved.get(1)).sub(solved.get(0));
+
+        if (seg.lengthSquared() < 1e-12F)
+        {
+            return null;
+        }
+
+        seg.normalize();
+
+        Vector3f poleDir = new Vector3f(polePoint).sub(solved.get(0));
+        float dot = poleDir.dot(seg);
+
+        poleDir.sub(seg.x * dot, seg.y * dot, seg.z * dot);
+
+        if (poleDir.lengthSquared() < 1e-12F)
+        {
+            return null;
+        }
+
+        poleDir.normalize();
+
+        if (poleAngle != 0F)
+        {
+            new Quaternionf().fromAxisAngleRad(seg.x, seg.y, seg.z, poleAngle).transform(poleDir);
+        }
+
+        Vector3f normal = new Vector3f(seg).cross(poleDir);
+
+        return normal.lengthSquared() < 1e-12F ? null : normal.normalize();
+    }
+
     private static Vector3f orientBend(List<Vector3f> p, Vector3f hinge, Vector3f polePoint, float poleAngle)
     {
         Vector3f root = p.get(0);
@@ -466,7 +539,7 @@ final class ClassicLimbSolver
             Vector3f normalLocal = invParent.transform(new Vector3f(solvedNormal[i]));
 
             Quaternionf localRot = Matrices.orientMirroredX(restDir[i], restNormal[i], segLocal, normalLocal);
-            Quaternionf oriented = weight >= 1F - EPS ? new Quaternionf(localRot) : bone.evaluatedRotation().slerp(localRot, weight);
+            Quaternionf oriented = weight >= 1F - EPS ? new Quaternionf(localRot) : bone.channelRotation().slerp(localRot, weight);
 
             bone.orient = oriented;
 
@@ -510,7 +583,7 @@ final class ClassicLimbSolver
         {
             Quaternionf tipLocal = new Quaternionf(parentWorld).conjugate().mul(tipTarget);
 
-            tip.orient = weight >= 1F - EPS ? tipLocal : tip.evaluatedRotation().slerp(tipLocal, weight);
+            tip.orient = weight >= 1F - EPS ? tipLocal : tip.channelRotation().slerp(tipLocal, weight);
         }
     }
 
@@ -584,7 +657,7 @@ final class ClassicLimbSolver
             Vector3f restNormalLocal = new Quaternionf(restFrame[i]).conjugate().transform(new Vector3f(restNormalWorld[i]));
 
             Quaternionf localRot = Matrices.orientMirroredX(restDir[i], restNormalLocal, segLocal, normalLocal);
-            Quaternionf oriented = weight >= 1F - EPS ? new Quaternionf(localRot) : chainBones[i].evaluatedRotation().slerp(localRot, weight);
+            Quaternionf oriented = weight >= 1F - EPS ? new Quaternionf(localRot) : chainBones[i].channelRotation().slerp(localRot, weight);
 
             chainBones[i].orient = oriented;
 
@@ -607,7 +680,7 @@ final class ClassicLimbSolver
                 Quaternionf tipParent = new Quaternionf(originRot).mul(chainBones[bones - 1].orient).mul(tipRelRot);
                 Quaternionf tipLocal = tipParent.conjugate().mul(tipTarget);
 
-                tip.orient = weight >= 1F - EPS ? new Quaternionf(tipLocal) : tip.evaluatedRotation().slerp(tipLocal, weight);
+                tip.orient = weight >= 1F - EPS ? new Quaternionf(tipLocal) : tip.channelRotation().slerp(tipLocal, weight);
             }
         }
 

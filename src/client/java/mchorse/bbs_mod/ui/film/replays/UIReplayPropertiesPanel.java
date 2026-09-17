@@ -27,6 +27,7 @@ public class UIReplayPropertiesPanel extends UIElement
     public UIToggle enabled;
     public UITextbox label;
     public UITextbox nameTag;
+    public UITrackpad nameTagHeight;
     public UIToggle shadow;
     public UITrackpad shadowSize;
     public UIToggle shadowFollow;
@@ -95,6 +96,8 @@ public class UIReplayPropertiesPanel extends UIElement
         this.label.textbox.setPlaceholder(UIKeys.FILM_REPLAY_LABEL);
         this.nameTag = this.bound(new UITextbox(1000, (s) -> this.edit((replay) -> replay.nameTag.set(s))), (r) -> this.nameTag.setText(r.nameTag.get()));
         this.nameTag.textbox.setPlaceholder(UIKeys.FILM_REPLAY_NAME_TAG);
+        this.nameTagHeight = this.bound(new UITrackpad((v) -> this.edit((replay) -> replay.nameTagHeight.set(v.floatValue()))), (r) -> this.nameTagHeight.setValue(r.nameTagHeight.get()));
+        this.nameTagHeight.tooltip(UIKeys.FILM_REPLAY_NAME_TAG_HEIGHT);
         this.shadow = this.bound(new UIToggle(UIKeys.CAMERA_PANELS_ENABLED, (b) -> this.edit((replay) -> replay.shadow.set(b.getValue()))), (r) -> this.shadow.setValue(r.shadow.get()));
         this.shadowSize = this.bound(new UITrackpad((v) -> this.edit((replay) -> replay.shadowSize.set(v.floatValue()))), (r) -> this.shadowSize.setValue(r.shadowSize.get()));
         this.shadowSize.tooltip(UIKeys.FILM_REPLAY_SHADOW_SIZE);
@@ -171,7 +174,7 @@ public class UIReplayPropertiesPanel extends UIElement
         other.setExpanded(false);
 
         this.properties = UI.scrollView(UIConstants.MARGIN, UIConstants.SCROLL_PADDING,
-            this.pickEdit, this.enabled, this.label, this.nameTag,
+            this.pickEdit, this.enabled, this.label, UI.row(this.nameTag, this.nameTagHeight),
             shadowSection,
             other
         );

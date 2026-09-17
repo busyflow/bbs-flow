@@ -59,6 +59,7 @@ public class Animator implements IAnimator
     /* States */
     public boolean wasOnGround = true;
     public int jumpingCounter;
+    public int stillTicks;
 
     private IModelInstance model;
 
@@ -261,6 +262,18 @@ public class Animator implements IAnimator
         final float threshold = 0.01F;
         boolean moves = Math.abs(dx) > threshold || Math.abs(dz) > threshold;
 
+        if (moves)
+        {
+            this.stillTicks = 0;
+        }
+        else
+        {
+            this.stillTicks++;
+        }
+
+        /* Prevent 1-2 tick network or keyframe jitter from falling back to idle and rewinding the walk animation */
+        boolean consideredMoving = moves || (this.stillTicks < 3 && (this.active == this.running || this.active == this.sprinting || this.active == this.crouching));
+
         ActionPlayback state = this.pickState(target, moves);
 
         if (state != null)
@@ -271,7 +284,7 @@ public class Animator implements IAnimator
         {
             if (target.isSneaking())
             {
-                this.setActiveAction(!moves ? this.crouchingIdle : this.crouching);
+                this.setActiveAction(!consideredMoving ? this.crouchingIdle : this.crouching);
             }
             else if (!target.isOnGround() && velocity.y < 0 && target.getFallDistance() > 1.25
                 && !target.isFlying() && !target.isFallFlying())
@@ -284,7 +297,7 @@ public class Animator implements IAnimator
             }
             else
             {
-                this.setActiveAction(!moves ? this.idle : this.running);
+                this.setActiveAction(!consideredMoving ? this.idle : this.running);
             }
 
             if (target.isOnGround() && !this.wasOnGround && /* !target.isSprinting() && */ this.prevMY < -0.5)

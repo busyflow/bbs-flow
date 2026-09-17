@@ -7,6 +7,7 @@ import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.film.FilmEntityRenderer;
 import mchorse.bbs_mod.film.FilmControllerContext;
 import mchorse.bbs_mod.film.FilmTarget;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UICrowdWalkKeyframeFactory;
 import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.Form;
@@ -247,9 +248,16 @@ public class FilmStencilPicker
                     this.stencilMap.objectIndex = replays.size() + REPLAY_STENCIL_OFFSET;
                     this.stencilMap.setIncrement(true);
 
+                    UICrowdWalkKeyframeFactory crowdMotion = this.controller.getCrowdMotionEditor();
+
                     filmContext
                         .gizmoTarget(target)
-                        .gizmoView(this.controller.getGizmoView());
+                        .gizmoView(this.controller.getGizmoView())
+                        .crowdMotionGizmo(
+                            crowdMotion == null ? null : crowdMotion.getPath(),
+                            crowdMotion == null ? 0F : crowdMotion.getMotionKeyframe().getTick()
+                        )
+                        .replayShiftGizmo(this.controller.getReplayShiftPosition());
                 }
                 else
                 {
@@ -263,6 +271,7 @@ public class FilmStencilPicker
         else
         {
             Replay replay = this.controller.panel.replayEditor.getReplay();
+            UICrowdWalkKeyframeFactory crowdMotion = this.controller.getCrowdMotionEditor();
 
             this.stencilMap.setIncrement(true);
 
@@ -272,8 +281,16 @@ public class FilmStencilPicker
                 .stencil(this.stencilMap)
                 .relative(replay.relative.get())
                 .gizmoTarget(this.controller.getEditTarget())
-                .gizmoView(this.controller.getGizmoView()));
+                .gizmoView(this.controller.getGizmoView())
+                .crowdMotionGizmo(
+                    crowdMotion == null ? null : crowdMotion.getPath(),
+                    crowdMotion == null ? 0F : crowdMotion.getMotionKeyframe().getTick()
+                )
+                .replayShiftGizmo(this.controller.getReplayShiftPosition()));
         }
+
+        this.stencilMap.setIncrement(true);
+        this.controller.renderReplayShiftStencil(renderContext, this.stencilMap);
 
         int x = (int) ((context.mouseX - viewport.x) / (float) viewport.w * mainTexture.width);
         int y = (int) ((1F - (context.mouseY - viewport.y) / (float) viewport.h) * mainTexture.height);

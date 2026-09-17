@@ -251,7 +251,18 @@ public class UIPoseEditor extends UIElement
 
     protected void pastePose(MapType data)
     {
-        this.restoreSelectionAfter(() -> this.pose.fromData(data));
+        this.restoreSelectionAfter(() ->
+        {
+            this.pose.fromData(data);
+
+            if (data == null || data.isEmpty())
+            {
+                for (String bone : this.groups.list.getList())
+                {
+                    this.pose.getOrCreate(bone).identity();
+                }
+            }
+        });
     }
 
     protected void flipPose()
@@ -272,6 +283,14 @@ public class UIPoseEditor extends UIElement
     {
         this.pose = pose;
         this.group = group;
+
+        if (this.pose != null && this.groups != null && this.groups.list != null)
+        {
+            for (String bone : this.groups.list.getList())
+            {
+                this.pose.getOrCreate(bone);
+            }
+        }
     }
 
     public void fillGroups(Collection<String> groups, boolean reset)
@@ -313,6 +332,14 @@ public class UIPoseEditor extends UIElement
     {
         this.groups.setSource(groups, sort);
         this.groups.filter(reset);
+
+        if (this.pose != null && groups != null)
+        {
+            for (String bone : groups)
+            {
+                this.pose.getOrCreate(bone);
+            }
+        }
     }
 
     private final BoneSelection detachedSelection = new BoneSelection();
@@ -464,9 +491,7 @@ public class UIPoseEditor extends UIElement
             this.preCallback();
             this.applyToTarget((t) ->
             {
-                t.translate.set(0F, 0F, 0F);
-                t.scale.set(1F, 1F, 1F);
-                t.resetRotation();
+                t.identity();
             });
             this.postCallback();
 

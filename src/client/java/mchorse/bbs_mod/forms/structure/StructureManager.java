@@ -283,6 +283,7 @@ public class StructureManager
 
         try (InputStream stream = BBSMod.getProvider().getAsset(link))
         {
+            /* 1.20.1 has no size-tracker overload; it arrived in 1.20.2. */
             return NbtIo.readCompressed(stream);
         }
     }
@@ -309,6 +310,7 @@ public class StructureManager
             return null;
         }
 
+        /* 1.20.1 reads a File, not a Path, and takes no size tracker. */
         return NbtIo.readCompressed(file.toFile());
     }
 }

@@ -383,6 +383,22 @@ public interface IEntity
 
     public LimbAnimator getLimbAnimator();
 
+    /**
+     * This entity's animation phase, {@code [0, 1)} - see {@link mchorse.bbs_mod.utils.animation.DesyncPhase}.
+     *
+     * <p>Defaulted rather than declared, because it means nothing for most of the things that are
+     * an IEntity: a real player has its own gait, and only an actor placed by a film is at risk of
+     * moving in step with a dozen identical copies of itself.</p>
+     */
+    public default float getAnimationPhase()
+    {
+        return 0F;
+    }
+
+    public default void setAnimationPhase(float phase)
+    {}
+
+    /** Already carries {@link #getAnimationPhase()} - callers should not add it a second time. */
     public float getLimbPos(float tickDelta);
 
     public float getLimbSpeed(float tickDelta);

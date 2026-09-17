@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.network;
 
+import it.unimi.dsi.fastutil.ints.IntList;
 import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.actions.ActionManager;
 import mchorse.bbs_mod.actions.ActionPlayer;
@@ -15,6 +16,7 @@ import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.entity.GunProjectileEntity;
 import mchorse.bbs_mod.entity.IEntityFormProvider;
 import mchorse.bbs_mod.film.Film;
+import mchorse.bbs_mod.film.FilmExportState;
 import mchorse.bbs_mod.film.FilmManager;
 import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.forms.FormUtils;
@@ -77,6 +79,13 @@ public class ServerNetwork
     public static final Identifier CLIENT_REQUEST_FILM_RESYNC = new Identifier(BBSMod.MOD_ID, "c18");
     public static final Identifier CLIENT_STRUCTURE_SAVED = new Identifier(BBSMod.MOD_ID, "c19");
     public static final Identifier CLIENT_STRUCTURE_CUT = new Identifier(BBSMod.MOD_ID, "c20");
+    /* The fork's crowd packets moved off c19/c20 when upstream claimed those for the structure
+     * wand. A channel id is only a name both sides agree on, and both sides ship in this jar, so
+     * renumbering is free - but two packets sharing an id is not: the later registration wins and
+     * the other silently never arrives. Kept above the upstream block so the next collision is
+     * obvious. */
+    public static final Identifier CLIENT_CROWD_MEMBERS = new Identifier(BBSMod.MOD_ID, "c21");
+    public static final Identifier CLIENT_CROWD_PRELOAD_READY = new Identifier(BBSMod.MOD_ID, "c22");
 
     public static final Identifier SERVER_MODEL_BLOCK_FORM_PACKET = new Identifier(BBSMod.MOD_ID, "s1");
     public static final Identifier SERVER_MODEL_BLOCK_TRANSFORMS_PACKET = new Identifier(BBSMod.MOD_ID, "s2");
@@ -94,6 +103,8 @@ public class ServerNetwork
     public static final Identifier SERVER_APPLY_FILM_PLAYER_SETTINGS = new Identifier(BBSMod.MOD_ID, "s14");
     public static final Identifier SERVER_SAVE_STRUCTURE = new Identifier(BBSMod.MOD_ID, "s15");
     public static final Identifier SERVER_CUT_STRUCTURE = new Identifier(BBSMod.MOD_ID, "s16");
+    /* Moved off s15 for the same reason as the crowd packets above. */
+    public static final Identifier SERVER_EXPORT_STATE = new Identifier(BBSMod.MOD_ID, "s17");
 
     private static ServerPacketCrusher crusher = new ServerPacketCrusher();
 
@@ -112,6 +123,7 @@ public class ServerNetwork
         ServerPlayNetworking.registerGlobalReceiver(SERVER_TOGGLE_FILM, (server, player, handler, buf, responder) -> handleToggleFilm(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_ACTION_CONTROL, (server, player, handler, buf, responder) -> handleActionControl(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_FILM_DATA_SYNC, (server, player, handler, buf, responder) -> handleSyncData(server, player, buf));
+        ServerPlayNetworking.registerGlobalReceiver(SERVER_EXPORT_STATE, (server, player, handler, buf, responder) -> handleExportState(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_PLAYER_TP, (server, player, handler, buf, responder) -> handleTeleportPlayer(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_ANIMATION_STATE_TRIGGER, (server, player, handler, buf, responder) -> handleAnimationStateTriggerPacket(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_SHARED_FORM, (server, player, handler, buf, responder) -> handleSharedFormPacket(server, player, buf));
@@ -487,6 +499,16 @@ public class ServerNetwork
                 }
 
                 sendStopFilm(player, filmId);
+
+                /* RESTART leaves the editor's server player paused. During an export, prepare
+                 * just the crowd now so its expensive full-size spawn runs inside the configured
+                 * delay rather than on the first captured tick. sendStopFilm must come first: it
+                 * clears the client's old crowd ids before the preload announces the new ones. */
+                if (actionPlayer != null)
+                {
+                    actionPlayer.resetCrowdExportReady();
+                    actionPlayer.preloadCrowdsForExport();
+                }
             }
             else if (state == ActionState.STOP)
             {
@@ -518,6 +540,21 @@ public class ServerNetwork
             {
                 BBSMod.getActions().syncData(filmId, new DataPath(path), data);
             });
+        });
+    }
+
+    private static void handleExportState(MinecraftServer server, ServerPlayerEntity player, PacketByteBuf buf)
+    {
+        boolean exporting = buf.readBoolean();
+
+        server.execute(() ->
+        {
+            FilmExportState.set(player.getUuid(), exporting);
+
+            if (!exporting)
+            {
+                BBSMod.getActions().resetCrowdExportReady(player);
+            }
         });
     }
 
@@ -706,6 +743,15 @@ public class ServerNetwork
                     packetByteBuf.writeString(filmId);
                     packetByteBuf.writeBoolean(withCamera);
                 });
+
+                /* Spawn the crowd right now during an export, so its cost lands inside the
+                 * configured export delay instead of the first recorded frames. */
+                ActionPlayer actionPlayer = BBSMod.getActions().getPlayer(filmId);
+
+                if (actionPlayer != null)
+                {
+                    actionPlayer.preloadCrowdsForExport();
+                }
             }
         }
         catch (Exception e)
@@ -729,6 +775,13 @@ public class ServerNetwork
                     packetByteBuf.writeString(filmId);
                     packetByteBuf.writeBoolean(withCamera);
                 });
+
+                ActionPlayer actionPlayer = BBSMod.getActions().getPlayer(filmId);
+
+                if (actionPlayer != null)
+                {
+                    actionPlayer.preloadCrowdsForExport();
+                }
             }
         }
         catch (Exception e)
@@ -845,6 +898,33 @@ public class ServerNetwork
     }
 
     /**
+     * Tell every client which entities are crowd members.
+     *
+     * <p>The server marks them with a command tag, which is never sent anywhere - and the client
+     * is where the crowd is drawn, and where vanilla decides a body's facing for itself rather
+     * than from anything the server said. Sent whole rather than as changes, and only when a
+     * crowd is spawned or cleared, which is the only time the answer moves.</p>
+     */
+    public static void sendCrowdMembers(ServerWorld world, IntList ids)
+    {
+        for (ServerPlayerEntity player : world.getPlayers())
+        {
+            /* A fresh buffer each time: sending one reads it to the end, and the next player
+             * would get an empty crowd. */
+            PacketByteBuf buf = PacketByteBufs.create();
+
+            buf.writeInt(ids.size());
+
+            for (int i = 0; i < ids.size(); i++)
+            {
+                buf.writeInt(ids.getInt(i));
+            }
+
+            ServerPlayNetworking.send(player, CLIENT_CROWD_MEMBERS, buf);
+        }
+    }
+
+    /**
      * One pairing, merged into whatever the client already knows. The full map only goes out when
      * the cast is rebuilt, which is of no use to a player who wasn't there at the time - they meet
      * the actor later, when they come within tracking range of it.
@@ -860,6 +940,16 @@ public class ServerNetwork
         buf.writeInt(entityId);
 
         ServerPlayNetworking.send(player, CLIENT_ACTORS, buf);
+    }
+
+    /** Tell the exporting client that every initial crowd member has been spawned and announced. */
+    public static void sendCrowdPreloadReady(ServerPlayerEntity player, String filmId)
+    {
+        PacketByteBuf buf = PacketByteBufs.create();
+
+        buf.writeString(filmId);
+
+        ServerPlayNetworking.send(player, CLIENT_CROWD_PRELOAD_READY, buf);
     }
 
     public static void sendGunProperties(ServerPlayerEntity player, GunProjectileEntity projectile)

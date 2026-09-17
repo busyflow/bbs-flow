@@ -4,6 +4,7 @@ import mchorse.bbs_mod.forms.FormCategories;
 import mchorse.bbs_mod.forms.categories.FormCategory;
 import mchorse.bbs_mod.forms.forms.AnchorForm;
 import mchorse.bbs_mod.forms.forms.BillboardForm;
+import mchorse.bbs_mod.forms.forms.CrowdForm;
 import mchorse.bbs_mod.forms.forms.BlockForm;
 import mchorse.bbs_mod.forms.forms.ExtrudedForm;
 import mchorse.bbs_mod.forms.forms.FramebufferForm;
@@ -56,6 +57,7 @@ public class ExtraFormSection extends FormSection
         StructureForm structure = new StructureForm();
         VanillaParticleForm vanillaParticle = new VanillaParticleForm();
         TrailForm trail = new TrailForm();
+        CrowdForm crowd = new CrowdForm();
         VideoForm video = new VideoForm();
 
         billboard.texture.set(Link.assets("textures/error.png"));
@@ -72,6 +74,7 @@ public class ExtraFormSection extends FormSection
         extra.addForm(structure);
         extra.addForm(vanillaParticle);
         extra.addForm(trail);
+        extra.addForm(crowd);
         extra.addForm(video);
         extra.addForm(new FramebufferForm());
 
