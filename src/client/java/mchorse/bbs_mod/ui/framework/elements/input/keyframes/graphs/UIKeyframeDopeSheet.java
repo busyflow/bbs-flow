@@ -55,6 +55,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
     private static final int LABEL_RIGHT_PAD = 2;
     private static final int LABEL_ICON_SIZE = 16;
     private static final int LABEL_TEXT_ICON_GAP = 3;
+    private static final int LABEL_COMPACT_WIDTH = 60;
 
     /** Horizontal cull slack: wider than any keyframe shape's radius, so edge keyframes draw whole. */
     private static final int CULL_MARGIN = 20;
@@ -1047,21 +1048,29 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         boolean foldable = this.hasChildren(sheet);
 
         int iconX = lx + w - LABEL_RIGHT_PAD - LABEL_ICON_SIZE;
-        FontRenderer font = context.batcher.getFont();
-        int textColor = hover ? Colors.WHITE : Colors.setA(Colors.WHITE, 0.75F);
-        int textX = lx + LABEL_TEXT_LEFT + this.getSheetIndent(sheet);
-        int textRight = hasIcon ? iconX - LABEL_TEXT_ICON_GAP : lx + w - LABEL_RIGHT_PAD;
 
         if (foldable)
         {
-            textRight -= LABEL_ARROW_SIZE;
-
             this.renderFoldArrow(context, this.getArrowX(lx, w, hasIcon) + LABEL_ARROW_SIZE / 2F, my, this.isUnfolded(sheet));
         }
 
-        String title = font.limitToWidth(sheet.title.get(), Math.max(0, textRight - textX));
+        /* Hide every title together when the column is reduced to its icon controls. */
+        if (w > LABEL_COMPACT_WIDTH)
+        {
+            FontRenderer font = context.batcher.getFont();
+            int textColor = hover ? Colors.WHITE : Colors.setA(Colors.WHITE, 0.75F);
+            int textX = lx + LABEL_TEXT_LEFT + this.getSheetIndent(sheet);
+            int textRight = hasIcon ? iconX - LABEL_TEXT_ICON_GAP : lx + w - LABEL_RIGHT_PAD;
 
-        context.batcher.textShadow(title, textX, my - font.getHeight() / 2, textColor);
+            if (foldable)
+            {
+                textRight -= LABEL_ARROW_SIZE;
+            }
+
+            String title = font.limitToWidth(sheet.title.get(), Math.max(0, textRight - textX));
+
+            context.batcher.textShadow(title, textX, my - font.getHeight() / 2, textColor);
+        }
 
         if (hasIcon)
         {
