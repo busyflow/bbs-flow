@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import mchorse.bbs_mod.data.types.MapType;
+import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.settings.SettingsBuilder;
 import mchorse.bbs_mod.settings.values.core.ValueLink;
@@ -593,6 +594,25 @@ public class BBSSettings {
 		migrated |= migrateLegacyValue(root, "recording", "pose_transform_overlays", "recording", "pose_overlays");
 		migrated |= migrateLegacyValue(root, "recording", "pose_transform_overlays", "recording", "transform_overlays");
 
+		/* Extra hotbar slots now fold under slot 1 instead of being hidden by default.
+		 * Clear the old filter once; subsequent manual filtering must survive reloads. */
+		MapType appearance = root.getMap("appearance");
+
+		if (!appearance.getBool("hotbar_filter_migrated"))
+		{
+			HashSet<String> slots = new HashSet<>();
+
+			for (int i = 1; i < ReplayKeyframes.HOTBAR_SIZE; i++)
+			{
+				slots.add(ReplayKeyframes.hotbarChannelId(i));
+			}
+
+			appearance.getList("disabled_sheets").elements.removeIf(value -> value.isString() && slots.contains(value.asString()));
+			appearance.putBool("hotbar_filter_migrated", true);
+			root.put("appearance", appearance);
+			migrated = true;
+		}
+
 		return migrated;
 	}
 
@@ -646,12 +666,10 @@ public class BBSSettings {
 
 	public static void register(SettingsBuilder builder)
 	{
-		/* Channels the timeline keeps folded away until they are asked for: the
-		 * inventory past the held slot, the armour, the states the entity is put
+		/* Channels the timeline hides until they are asked for: the
+		 * selected slot, the armour, the states the entity is put
 		 * into, the velocity readout, and the gamepad axes nothing binds by default. */
 		HashSet<String> defaultFilters = new HashSet<>(Arrays.asList(
-			"item_slot_1", "item_slot_2", "item_slot_3", "item_slot_4",
-			"item_slot_5", "item_slot_6", "item_slot_7", "item_slot_8",
 			"selected_slot",
 			"item_head", "item_chest", "item_legs", "item_feet",
 			"swimming", "riding", "flying", "gliding",
@@ -698,6 +716,7 @@ public class BBSSettings {
 		builder.register(favoriteColors);
 		builder.register(recentColors);
 		builder.register(disabledSheets);
+		builder.getBoolean("hotbar_filter_migrated", true).invisible();
 		trackStyles = new ValueTrackStyles("track_styles");
 		builder.register(trackStyles);
 		disabledMorphFormCategories = new ValueStringKeys("disabled_morph_form_categories");

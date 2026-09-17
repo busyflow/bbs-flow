@@ -883,12 +883,28 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
 
     private void collectCuratedSheets(List<UIKeyframeSheet> sheets)
     {
+        UIKeyframeSheet hotbarRoot = null;
+
         for (String key : ReplayKeyframes.CURATED_CHANNELS)
         {
             BaseValue value = this.replay.keyframes.get(key);
             KeyframeChannel channel = (KeyframeChannel) value;
+            UIKeyframeSheet sheet = new UIKeyframeSheet(getColor(key), channel, null).icon(getIcon(key));
 
-            sheets.add(new UIKeyframeSheet(getColor(key), channel, null).icon(getIcon(key)));
+            /* Curated channels list the hotbar in slot order, starting with its parent row. */
+            if (this.replay.keyframes.hotbar.stream().anyMatch(slot -> slot == channel))
+            {
+                if (hotbarRoot == null)
+                {
+                    hotbarRoot = sheet;
+                }
+                else
+                {
+                    sheet.setParent(hotbarRoot);
+                }
+            }
+
+            sheets.add(sheet);
         }
     }
 
