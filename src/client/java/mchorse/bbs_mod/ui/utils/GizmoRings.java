@@ -39,8 +39,8 @@ public class GizmoRings
      */
     private final static float RING_FACE_ON_BIAS = 0.18F;
 
-    /** Points sampled around a ring when working out its camera-facing arc. */
-    private final static int RING_OCCLUSION_SAMPLES = 90;
+    /** Angular length of the pointed ends where a ring disappears behind the sphere. */
+    private final static float RING_TAPER_DEGREES = 22F;
 
     private VertexBuffer ringVbo;
     private VertexBuffer sphereVbo;
@@ -57,7 +57,6 @@ public class GizmoRings
     private final ArcSlot[] arcSlots = {new ArcSlot(), new ArcSlot(), new ArcSlot()};
 
     private final Vector2f arcScratch = new Vector2f();
-    private final boolean[] occlusionScratch = new boolean[RING_OCCLUSION_SAMPLES];
 
     private static class ArcSlot
     {
@@ -136,10 +135,7 @@ public class GizmoRings
 
         Vector2f arc = this.arcScratch;
 
-        if (!this.visibleArc(stack, axis, arc))
-        {
-            return;
-        }
+        this.visibleArc(stack, axis, arc);
 
         ArcSlot slot = this.arcSlots[axis.ordinal()];
 
@@ -159,7 +155,8 @@ public class GizmoRings
             /* Tessellated in the ring's own frame (a Y-axis torus); the axis turn is applied
              * to the draw matrix below, so all three axes share one shape family. */
             builder.begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
-            Draw.arc3D(builder, IDENTITY, Axis.Y, radius, thickness, 1F, 1F, 1F, arc.x, arc.y);
+            Draw.arc3D(builder, IDENTITY, Axis.Y, radius, thickness, 1F, 1F, 1F, arc.x, arc.y,
+                64, 12, arc.y < 360F ? RING_TAPER_DEGREES : 0F);
             slot.vbo.bind();
             slot.vbo.upload(builder.end());
             VertexBuffer.unbind();
@@ -230,10 +227,9 @@ public class GizmoRings
      * Computes a rotation ring's camera-facing arc — the part not hidden behind the central
      * sphere — as {@code [startDeg, sweepDeg]} in the ring's own plane (the angle convention
      * {@link Draw#arc3D} draws in). A ring seen face-on returns the full {@code 360}; an
-     * edge-on ring returns roughly half. Writes the result into {@code out}; returns
-     * {@code false} only in the degenerate case where the whole ring is hidden.
+     * edge-on ring returns roughly half. Writes the result into {@code out}.
      */
-    private boolean visibleArc(MatrixStack stack, Axis axis, Vector2f out)
+    private void visibleArc(MatrixStack stack, Axis axis, Vector2f out)
     {
         Matrix4f matrix = stack.peek().getPositionMatrix();
 
@@ -264,52 +260,21 @@ public class GizmoRings
          * in-plane dot is ~0 all the way round — stays fully drawn. */
         float length = camera.length();
         float bias = length > 1.0E-6F ? RING_FACE_ON_BIAS * (camera.y * camera.y) / length : 0F;
-        int n = RING_OCCLUSION_SAMPLES;
-        boolean[] visible = this.occlusionScratch;
-        int count = 0;
+        float inPlane = (float) Math.hypot(camera.x, camera.z);
 
-        for (int i = 0; i < n; i++)
-        {
-            float angle = (float) (i * 2D * Math.PI / n);
-            float ct = (float) Math.cos(angle);
-            float st = (float) Math.sin(angle);
-            boolean vis = camera.x * ct + camera.z * st + bias > 0F;
-
-            visible[i] = vis;
-
-            if (vis) count++;
-        }
-
-        if (count == 0)
-        {
-            return false;
-        }
-
-        if (count == n)
+        if (inPlane <= bias || length <= 1.0E-6F)
         {
             out.set(0F, 360F);
 
-            return true;
+            return;
         }
 
-        /* The visible region is one contiguous arc; find where it begins after a
-         * hidden sample and how far it runs, wrapping around. */
-        int hidden = 0;
+        /* Solve the silhouette crossing directly so the pointed ends move smoothly
+         * with the camera instead of jumping between four-degree samples. */
+        double center = Math.atan2(camera.z, camera.x);
+        double halfSweep = Math.acos(-bias / inPlane);
+        float start = (float) Math.toDegrees(center - halfSweep);
 
-        while (visible[hidden]) hidden++;
-
-        int start = hidden;
-
-        while (!visible[start % n]) start++;
-
-        int run = 0;
-
-        while (visible[(start + run) % n]) run++;
-
-        float step = 360F / n;
-
-        out.set(start * step, run * step);
-
-        return true;
+        out.set((start % 360F + 360F) % 360F, (float) Math.toDegrees(2D * halfSweep));
     }
 }

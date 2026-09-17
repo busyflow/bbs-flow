@@ -212,6 +212,12 @@ public class Draw
      */
     public static void arc3D(BufferBuilder builder, MatrixStack stack, Axis axis, float radius, float thickness, float r, float g, float b, float startDeg, float sweepDeg, int segU, int segV)
     {
+        arc3D(builder, stack, axis, radius, thickness, r, g, b, startDeg, sweepDeg, segU, segV, 0F);
+    }
+
+    /** Tessellates an arc with its tube tapering to a point over taperDeg at either end. */
+    public static void arc3D(BufferBuilder builder, MatrixStack stack, Axis axis, float radius, float thickness, float r, float g, float b, float startDeg, float sweepDeg, int segU, int segV, float taperDeg)
+    {
         double u0 = Math.toRadians(startDeg);
         double uStep = Math.toRadians(sweepDeg / (double) segU);
         double vStep = Math.PI * 2D / (double) segV;
@@ -236,11 +242,19 @@ public class Draw
             ringY[iv] = (float) (tubeR * Math.sin(v));
         }
 
+        float taper = Math.min(taperDeg, Math.abs(sweepDeg) * 0.5F);
+        float width2 = taper > 0F ? 0F : 1F;
         double cosU2 = Math.cos(u0);
         double sinU2 = Math.sin(u0);
 
         for (int iu = 0; iu < segU; iu++)
         {
+            float width1 = width2;
+            float endDistance = Math.abs(sweepDeg) * Math.min(iu + 1, segU - iu - 1) / segU;
+            float t = taper > 0F ? Math.min(endDistance / taper, 1F) : 1F;
+
+            width2 = t * t * (3F - 2F * t);
+
             double cosU1 = cosU2;
             double sinU1 = sinU2;
             double u2 = u0 + uStep * (iu + 1);
@@ -255,25 +269,30 @@ public class Draw
                 float y1 = ringY[iv];
                 float y2 = ringY[iv + 1];
 
-                float x11 = (float) (r1 * cosU1);
-                float z11 = (float) (r1 * sinU1);
+                double r11 = radius + (r1 - radius) * width1;
+                double r12 = radius + (r2 - radius) * width1;
+                double r21 = radius + (r1 - radius) * width2;
+                double r22 = radius + (r2 - radius) * width2;
 
-                float x12 = (float) (r2 * cosU1);
-                float z12 = (float) (r2 * sinU1);
+                float x11 = (float) (r11 * cosU1);
+                float z11 = (float) (r11 * sinU1);
 
-                float x21 = (float) (r1 * cosU2);
-                float z21 = (float) (r1 * sinU2);
+                float x12 = (float) (r12 * cosU1);
+                float z12 = (float) (r12 * sinU1);
 
-                float x22 = (float) (r2 * cosU2);
-                float z22 = (float) (r2 * sinU2);
+                float x21 = (float) (r21 * cosU2);
+                float z21 = (float) (r21 * sinU2);
 
-                builder.vertex(mat, x11, y1, z11).color(r, g, b, 1F).next();
-                builder.vertex(mat, x12, y2, z12).color(r, g, b, 1F).next();
-                builder.vertex(mat, x22, y2, z22).color(r, g, b, 1F).next();
+                float x22 = (float) (r22 * cosU2);
+                float z22 = (float) (r22 * sinU2);
 
-                builder.vertex(mat, x11, y1, z11).color(r, g, b, 1F).next();
-                builder.vertex(mat, x22, y2, z22).color(r, g, b, 1F).next();
-                builder.vertex(mat, x21, y1, z21).color(r, g, b, 1F).next();
+                builder.vertex(mat, x11, y1 * width1, z11).color(r, g, b, 1F).next();
+                builder.vertex(mat, x12, y2 * width1, z12).color(r, g, b, 1F).next();
+                builder.vertex(mat, x22, y2 * width2, z22).color(r, g, b, 1F).next();
+
+                builder.vertex(mat, x11, y1 * width1, z11).color(r, g, b, 1F).next();
+                builder.vertex(mat, x22, y2 * width2, z22).color(r, g, b, 1F).next();
+                builder.vertex(mat, x21, y1 * width2, z21).color(r, g, b, 1F).next();
             }
         }
 
