@@ -33,6 +33,16 @@ public class KeyframeClip extends CameraClip
 
     public KeyframeChannel<Double>[] channels;
 
+    /* Flight bypasses clip evaluation; retain the last input camera for
+     * converting the edited world position back into an additive offset. */
+    private final Position underneath = new Position();
+    private boolean evaluated;
+
+    public Position getUnderneath()
+    {
+        return this.evaluated ? this.underneath : null;
+    }
+
     public KeyframeClip()
     {
         super();
@@ -64,6 +74,9 @@ public class KeyframeClip extends CameraClip
     @Override
     public void applyClip(ClipContext context, Position position)
     {
+        this.underneath.set(position);
+        this.evaluated = true;
+
         float t = context.relativeTick + context.transition;
 
         if (this.additive.get())
