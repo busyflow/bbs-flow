@@ -304,13 +304,14 @@ public class UIKeyframeLoops
                 boolean selected = loop.id().equals(this.selectedId);
                 boolean hover = hovered != null && hovered.sheet == sheet && hovered.loop == loop
                     && context.mouseY >= y && context.mouseY < y + height;
+                boolean highlight = selected || hover;
                 int color = selected ? Colors.ACTIVE : sheet.color;
                 context.batcher.box(start, y + 1, end, y + height - 1, Colors.setA(color, 0.12F));
-                context.batcher.box(start, y + 1, end, y + 2, hover ? Colors.WHITE : Colors.setA(color, 0.9F));
-                context.batcher.box(start, y + height - 2, end, y + height - 1, hover ? Colors.WHITE : Colors.setA(color, 0.7F));
-                context.batcher.box(start, y + 1, start + 1, y + height - 1, hover ? Colors.WHITE : Colors.setA(color, 0.8F));
+                context.batcher.box(start, y + 1, end, y + 2, highlight ? Colors.WHITE : Colors.setA(color, 0.9F));
+                context.batcher.box(start, y + height - 2, end, y + height - 1, highlight ? Colors.WHITE : Colors.setA(color, 0.7F));
+                context.batcher.box(start, y + 1, start + 1, y + height - 1, highlight ? Colors.WHITE : Colors.setA(color, 0.8F));
                 context.batcher.box(sourceEnd, y + 3, sourceEnd + 1, y + height - 2, Colors.setA(color, 0.5F));
-                context.batcher.box(end - 2, y + 1, end + 2, y + height - 1, hover ? Colors.WHITE : Colors.setA(color, 1F));
+                context.batcher.box(end - 2, y + 1, end + 2, y + height - 1, highlight ? Colors.WHITE : Colors.setA(color, 1F));
 
                 this.renderGhosts(context, sheet, loop, endTick, y + height / 2);
             }
