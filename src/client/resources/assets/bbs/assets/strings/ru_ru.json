@@ -1,4 +1,10 @@
 {
+	"bbs.ui.film.replay.sections.position_rotation": "Позиция",
+	"bbs.ui.film.replay.sections.states": "Состояния",
+	"bbs.ui.film.replay.sections.hotbar": "Хотбар",
+	"bbs.ui.film.replay.sections.equipment": "Экипировка",
+	"bbs.ui.film.replay.sections.controls": "Переменные",
+	"bbs.ui.film.replay.sections.velocity": "Скорость",
 	"bbs.config.appearance.click_sound": "Звуки кликов",
 	"bbs.config.appearance.click_sound-comment": "Когда эта опция включена, нажатие по кнопкам будет проигрывать звуковой эффект из ББС Студии",
 	"bbs.config.appearance.force_qwerty": "Отображать QWERTY",

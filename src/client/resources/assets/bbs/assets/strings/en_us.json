@@ -1,4 +1,10 @@
 {
+	"bbs.ui.film.replay.sections.position_rotation": "Position",
+	"bbs.ui.film.replay.sections.states": "States",
+	"bbs.ui.film.replay.sections.hotbar": "Hotbar",
+	"bbs.ui.film.replay.sections.equipment": "Equipment",
+	"bbs.ui.film.replay.sections.controls": "Variables",
+	"bbs.ui.film.replay.sections.velocity": "Velocity",
 	"bbs.config.appearance.click_sound": "Click sounds",
 	"bbs.config.appearance.click_sound-comment": "By enabling this option, button clicks will play BBS Studio's custom clicking sound effect",
 	"bbs.config.appearance.force_qwerty": "Force QWERTY",

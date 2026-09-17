@@ -38,7 +38,6 @@ import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.l10n.L10n;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.resources.Link;
-import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.film.UIClipsPanel;
@@ -883,29 +882,41 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
 
     private void collectCuratedSheets(List<UIKeyframeSheet> sheets)
     {
-        UIKeyframeSheet hotbarRoot = null;
+        String[] groups = {"position_rotation", "states", "hotbar", "equipment", "controls", "velocity"};
+        Icon[] icons = {Icons.PLAYER, Icons.ACTION, getIcon("item_slot_0"), Icons.ARMOR_CHESTPLATE, getIcon("stick_lx"), Icons.FORWARD};
+        int[] colors = {0x40bfff, Colors.ORANGE, Colors.YELLOW, Colors.BLUE, 0xb580ff, Colors.GREEN};
 
-        for (String key : ReplayKeyframes.CURATED_CHANNELS)
+        for (int i = 0; i < groups.length; i++)
         {
-            BaseValue value = this.replay.keyframes.get(key);
-            KeyframeChannel channel = (KeyframeChannel) value;
-            UIKeyframeSheet sheet = new UIKeyframeSheet(getColor(key), channel, null).icon(getIcon(key));
+            String group = groups[i];
+            UIKeyframeSheet.Section section = new UIKeyframeSheet.Section("replay_section/" + group,
+                L10n.lang("bbs.ui.film.replay.sections." + group), icons[i], colors[i]);
 
-            /* Curated channels list the hotbar in slot order, starting with its parent row. */
-            if (this.replay.keyframes.hotbar.stream().anyMatch(slot -> slot == channel))
+            for (String key : ReplayKeyframes.CURATED_CHANNELS)
             {
-                if (hotbarRoot == null)
+                if (replaySection(key).equals(group))
                 {
-                    hotbarRoot = sheet;
-                }
-                else
-                {
-                    sheet.setParent(hotbarRoot);
+                    KeyframeChannel channel = (KeyframeChannel) this.replay.keyframes.get(key);
+                    UIKeyframeSheet sheet = new UIKeyframeSheet(getColor(key), channel, null).icon(getIcon(key));
+                    sheet.section = section;
+                    sheets.add(sheet);
                 }
             }
-
-            sheets.add(sheet);
         }
+    }
+
+    private static String replaySection(String key)
+    {
+        if (key.startsWith("item_slot_") || key.equals("selected_slot") || key.equals("item_off_hand")) return "hotbar";
+        if (key.startsWith("item_")) return "equipment";
+        if (key.startsWith("stick_") || key.startsWith("trigger_") || key.startsWith("extra")) return "controls";
+
+        return switch (key)
+        {
+            case "x", "y", "z", "pitch", "yaw", "headYaw", "bodyYaw" -> "position_rotation";
+            case "vX", "vY", "vZ" -> "velocity";
+            default -> "states";
+        };
     }
 
     /**
@@ -1010,7 +1021,12 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
      */
     public FoldState<String> getExpandedTracks()
     {
-        return this.expandedTracksByReplay.computeIfAbsent(this.replay == null ? "" : this.replay.getId(), (k) -> new FoldState<>());
+        return this.expandedTracksByReplay.computeIfAbsent(this.replay == null ? "" : this.replay.getId(), (k) ->
+        {
+            FoldState<String> folds = new FoldState<>();
+            folds.set("replay_section/position_rotation", true);
+            return folds;
+        });
     }
 
     /** Pose tracks unfolded right now — what {@code insertFrame} keys by, per limb or as a whole pose. */

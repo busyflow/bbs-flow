@@ -31,6 +31,11 @@ public class UIKeyframeSheet
 
     /* Meta data */
     public final String id;
+
+    /** Display-only grouping: never a channel, selection, or entry in the track filters. */
+    public record Section(String id, IKey title, Icon icon, int color) {}
+
+    public Section section;
     private Icon icon;
 
     /**

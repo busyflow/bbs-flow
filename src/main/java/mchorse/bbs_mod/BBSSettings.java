@@ -594,21 +594,17 @@ public class BBSSettings {
 		migrated |= migrateLegacyValue(root, "recording", "pose_transform_overlays", "recording", "pose_overlays");
 		migrated |= migrateLegacyValue(root, "recording", "pose_transform_overlays", "recording", "transform_overlays");
 
-		/* Extra hotbar slots now fold under slot 1 instead of being hidden by default.
-		 * Clear the old filter once; subsequent manual filtering must survive reloads. */
+		/* Sections now keep the replay list compact. Reveal their channels once;
+		 * later manual filtering must survive reloads. */
 		MapType appearance = root.getMap("appearance");
 
-		if (!appearance.getBool("hotbar_filter_migrated"))
+		if (!appearance.getBool("replay_sections_filter_migrated"))
 		{
-			HashSet<String> slots = new HashSet<>();
-
-			for (int i = 1; i < ReplayKeyframes.HOTBAR_SIZE; i++)
-			{
-				slots.add(ReplayKeyframes.hotbarChannelId(i));
-			}
-
-			appearance.getList("disabled_sheets").elements.removeIf(value -> value.isString() && slots.contains(value.asString()));
-			appearance.putBool("hotbar_filter_migrated", true);
+			HashSet<String> revealed = new HashSet<>(ReplayKeyframes.CURATED_CHANNELS);
+			revealed.addAll(Arrays.asList("leaning", "roll", "fall"));
+			revealed.removeAll(Arrays.asList("yaw", "vX", "vY", "vZ"));
+			appearance.getList("disabled_sheets").elements.removeIf(value -> value.isString() && revealed.contains(value.asString()));
+			appearance.putBool("replay_sections_filter_migrated", true);
 			root.put("appearance", appearance);
 			migrated = true;
 		}
@@ -666,18 +662,8 @@ public class BBSSettings {
 
 	public static void register(SettingsBuilder builder)
 	{
-		/* Channels the timeline hides until they are asked for: the
-		 * selected slot, the armour, the states the entity is put
-		 * into, the velocity readout, and the gamepad axes nothing binds by default. */
-		HashSet<String> defaultFilters = new HashSet<>(Arrays.asList(
-			"selected_slot",
-			"item_head", "item_chest", "item_legs", "item_feet",
-			"swimming", "riding", "flying", "gliding",
-			"grounded", "leaning", "yaw", "roll",
-			"vX", "vY", "vZ",
-			"stick_rx", "stick_ry", "trigger_l", "trigger_r",
-			"extra1_x", "extra1_y", "extra2_x", "extra2_y"
-		));
+		/* Replay sections replace the old hidden-by-default groups. */
+		HashSet<String> defaultFilters = new HashSet<>(Arrays.asList("yaw", "vX", "vY", "vZ"));
 
 		/* Interface */
 		builder.category("appearance", Icons.LAYOUT);
@@ -716,7 +702,7 @@ public class BBSSettings {
 		builder.register(favoriteColors);
 		builder.register(recentColors);
 		builder.register(disabledSheets);
-		builder.getBoolean("hotbar_filter_migrated", true).invisible();
+		builder.getBoolean("replay_sections_filter_migrated", true).invisible();
 		trackStyles = new ValueTrackStyles("track_styles");
 		builder.register(trackStyles);
 		disabledMorphFormCategories = new ValueStringKeys("disabled_morph_form_categories");

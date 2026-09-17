@@ -38,6 +38,7 @@ import org.joml.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -69,6 +70,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
     /** Which row each sheet is, counted down the visible list — what the striped background alternates on. */
     private Map<UIKeyframeSheet, Integer> sheetRowCache = new HashMap<>();
     private UIKeyframeSheet lastSheet;
+    private final Map<UIKeyframeSheet.Section, Integer> sectionYCache = new LinkedHashMap<>();
 
     /**
      * Which rows the user has unfolded, by address. Owned by whoever built this timeline (so it
@@ -149,12 +151,20 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
     {
         this.sheetYCache.clear();
         this.sheetRowCache.clear();
+        this.sectionYCache.clear();
 
         int y = 0;
         int row = 0;
 
         for (UIKeyframeSheet sheet : this.sheets)
         {
+            if (sheet.section != null && !this.sectionYCache.containsKey(sheet.section))
+            {
+                this.sectionYCache.put(sheet.section, y);
+                y += (int) this.trackHeight;
+                row += 1;
+            }
+
             if (this.isVisible(sheet))
             {
                 this.sheetYCache.put(sheet, y);
@@ -183,6 +193,11 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
     /** A row is drawn while every row it folds under is unfolded. */
     private boolean isVisible(UIKeyframeSheet sheet)
     {
+        if (sheet.section != null && !this.folds.isExpanded(sheet.section.id()))
+        {
+            return false;
+        }
+
         for (UIKeyframeSheet parent = sheet.parent; parent != null; parent = parent.parent)
         {
             if (!this.isUnfolded(parent))
@@ -202,7 +217,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
     private int getSheetIndent(UIKeyframeSheet sheet)
     {
-        int depth = sheet.getDepth();
+        int depth = sheet.getDepth() + (sheet.section == null ? 0 : 1);
 
         if (depth == 0)
         {
@@ -569,15 +584,39 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
                 return false;
             }
 
-            return this.clickSheets(context, this.getDopeSheetY());
+            return this.clickSheets(context);
         }
 
         return false;
     }
 
-    private boolean clickSheets(UIContext context, int y)
+    private boolean clickSheets(UIContext context)
     {
         int labelWidth = this.keyframes.getLabelWidth();
+
+        for (Map.Entry<UIKeyframeSheet.Section, Integer> entry : this.sectionYCache.entrySet())
+        {
+            int sectionY = this.getDopeSheetY() + entry.getValue();
+
+            if (context.mouseY >= sectionY && context.mouseY < sectionY + (int) this.trackHeight)
+            {
+                UIKeyframeSheet.Section section = entry.getKey();
+                boolean expanded = !this.folds.isExpanded(section.id());
+                this.folds.set(section.id(), expanded);
+
+                for (UIKeyframeSheet sheet : this.sheets)
+                {
+                    if (section.equals(sheet.section) && !expanded)
+                    {
+                        sheet.selection.clear();
+                    }
+                }
+
+                this.updateScrollSize();
+                this.pickSelected();
+                return true;
+            }
+        }
 
         for (UIKeyframeSheet sheet : this.sheets)
         {
@@ -587,6 +626,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
             }
 
             int height = this.getTrackHeight(sheet);
+            int y = this.getDopeSheetY(sheet);
 
             if (context.mouseY >= y && context.mouseY < y + height)
             {
@@ -601,8 +641,6 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
                 return true;
             }
-
-            y += height;
         }
 
         return false;
@@ -965,7 +1003,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         Matrix4f matrix = context.batcher.getContext().getMatrices().peek().getPositionMatrix();
 
         context.batcher.clipBox(area.x, rulerBottom, area.ex(), area.ey(), context);
-        this.renderSheets(context, builder, matrix, area, this.getDopeSheetY());
+        this.renderSheets(context, builder, matrix, area);
         this.renderOutOfRangeShading(context, builder, matrix, area);
         context.batcher.unclip(context);
     }
@@ -1004,12 +1042,45 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         }
     }
 
-    private void renderLabels(UIContext context, int y)
+    private void renderLabels(UIContext context)
     {
         Area area = this.keyframes.area;
         int w = this.keyframes.getLabelWidth();
 
         context.batcher.clipBox(area.x, area.y, area.x + w, area.ey(), context);
+
+        for (Map.Entry<UIKeyframeSheet.Section, Integer> entry : this.sectionYCache.entrySet())
+        {
+            UIKeyframeSheet.Section section = entry.getKey();
+            int sy = this.getDopeSheetY() + entry.getValue();
+            int height = (int) this.trackHeight;
+
+            if (sy + height < area.y || sy > area.ey())
+            {
+                continue;
+            }
+
+            boolean hover = area.isInside(context) && context.mouseY >= sy && context.mouseY < sy + height;
+            RowStyle.row(context.batcher, area.x, sy, w, height, section.color(), true, hover, false);
+            Icon icon = section.icon();
+            boolean hasIcon = icon != null && height >= 12;
+            int iconX = area.x + w - LABEL_RIGHT_PAD - LABEL_ICON_SIZE;
+            this.renderFoldArrow(context, this.getArrowX(area.x, w, hasIcon) + LABEL_ARROW_SIZE / 2F,
+                sy + height / 2, this.folds.isExpanded(section.id()));
+
+            if (hasIcon)
+            {
+                context.batcher.icon(icon, iconX, sy + (height - icon.h) / 2);
+            }
+
+            if (w > LABEL_COMPACT_WIDTH)
+            {
+                FontRenderer font = context.batcher.getFont();
+                int right = (hasIcon ? iconX - LABEL_TEXT_ICON_GAP : area.x + w - LABEL_RIGHT_PAD) - LABEL_ARROW_SIZE;
+                String title = font.limitToWidth(section.title().get(), Math.max(0, right - area.x - LABEL_TEXT_LEFT));
+                context.batcher.textShadow(title, area.x + LABEL_TEXT_LEFT, sy + (height - font.getHeight()) / 2, Colors.WHITE);
+            }
+        }
 
         for (UIKeyframeSheet sheet : this.sheets)
         {
@@ -1018,9 +1089,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
                 continue;
             }
 
-            this.renderSheetLabel(context, area, sheet, y, w);
-
-            y += this.getTrackHeight(sheet);
+            this.renderSheetLabel(context, area, sheet, this.getDopeSheetY(sheet), w);
         }
 
         context.batcher.unclip(context);
@@ -1078,7 +1147,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         }
     }
 
-    private void renderSheets(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area, int y)
+    private void renderSheets(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area)
     {
         for (UIKeyframeSheet sheet : this.sheets)
         {
@@ -1087,9 +1156,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
                 continue;
             }
 
-            this.renderSheet(context, builder, matrix, area, sheet, y);
-
-            y += this.getTrackHeight(sheet);
+            this.renderSheet(context, builder, matrix, area, sheet, this.getDopeSheetY(sheet));
         }
     }
 
@@ -1292,7 +1359,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         }
     }
 
-    private void renderSheetsTopmostKeyframes(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area, int y)
+    private void renderSheetsTopmostKeyframes(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area)
     {
         for (UIKeyframeSheet sheet : this.sheets)
         {
@@ -1301,9 +1368,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
                 continue;
             }
 
-            this.renderSheetKeyframeShapes(context, builder, matrix, area, sheet, y);
-
-            y += this.getTrackHeight(sheet);
+            this.renderSheetKeyframeShapes(context, builder, matrix, area, sheet, this.getDopeSheetY(sheet));
         }
     }
 
@@ -1322,7 +1387,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
         context.batcher.clipBox(area.x, rulerBottom, area.ex(), area.ey(), context);
         builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
-        this.renderSheetsTopmostKeyframes(context, builder, matrix, area, this.getDopeSheetY());
+        this.renderSheetsTopmostKeyframes(context, builder, matrix, area);
         RenderSystem.enableBlend();
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
         BufferRenderer.drawWithGlobalProgram(builder.end());
@@ -1370,7 +1435,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
     {
         if (!this.sheets.isEmpty())
         {
-            this.renderLabels(context, this.getDopeSheetY());
+            this.renderLabels(context);
         }
 
         this.dopeSheet.renderScrollbar(context.batcher);
