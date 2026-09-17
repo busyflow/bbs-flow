@@ -39,6 +39,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeDo
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIDraggable;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIRenderable;
+import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCategoryBar;
 import mchorse.bbs_mod.ui.utils.Gizmo;
 import mchorse.bbs_mod.ui.utils.GizmoDrag;
 import mchorse.bbs_mod.ui.utils.StencilFormFramebuffer;
@@ -72,8 +73,15 @@ public class UIAnimationStateEditor extends UIElement
     public final UIForms bodyParts;
 
     private final UIElement sidebar = new UIElement();
-    private final UIElement timelineArea = new UIElement();
-    private final UIElement categoryBar = new UIElement();
+    private final UIElement timelineArea = new UIElement()
+    {
+        @Override
+        protected void afterResizeApplied()
+        {
+            UIAnimationStateEditor.this.layoutCategoryBar();
+        }
+    };
+    private final UITimelineCategoryBar categoryBar = new UITimelineCategoryBar(0);
     private final UIElement partHeader = new UIElement()
     {
         @Override
@@ -111,17 +119,11 @@ public class UIAnimationStateEditor extends UIElement
         this.timelineArea.relative(this).y(1F).anchorY(1F).wTo(this.sidebar.area)
             .h(BBSSettings.editorLayoutSettings.getStateEditorSizeV());
 
-        this.categoryBar.relative(this.timelineArea).w(CATEGORY_BAR_WIDTH).h(1F).column(0).stretch();
-        this.categoryBar.add(new UIRenderable(context -> this.categoryBar.area.render(context.batcher, BBSSettings.chromeSurface())));
+        this.categoryBar.relative(this.timelineArea);
         UIIcon all = new UIIcon(Icons.LIST, button -> this.setCategory(null));
         all.tooltip(UIKeys.FILM_REPLAY_ALL_TRACKS, Direction.RIGHT);
         all.highlight(() -> this.allMode, Direction.LEFT);
         this.categoryBar.add(all);
-        UIElement separator = new UIElement();
-        separator.h(7);
-        separator.add(new UIRenderable(context -> context.batcher.box(separator.area.x + 4, separator.area.my(),
-            separator.area.ex() - 4, separator.area.my() + 1, BBSSettings.dividerColor())));
-        this.categoryBar.add(separator);
 
         for (ReplayCategory category : List.of(ReplayCategory.FORM, ReplayCategory.POSE))
         {
@@ -437,6 +439,19 @@ public class UIAnimationStateEditor extends UIElement
 
                 return;
             }
+        }
+    }
+
+    private void layoutCategoryBar()
+    {
+        int width = this.categoryBar.getWidthForHeight(this.timelineArea.area.h);
+
+        this.categoryBar.w(width);
+        this.partHeader.x(width);
+
+        if (this.keyframeEditor != null)
+        {
+            this.keyframeEditor.x(width).w(1F, -width);
         }
     }
 

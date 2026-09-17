@@ -57,6 +57,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeDopeSheet;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIRenderable;
+import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCategoryBar;
 import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
 import mchorse.bbs_mod.ui.utils.BoneSelection;
 import mchorse.bbs_mod.ui.utils.IBoneSelectionHost;
@@ -115,7 +116,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
         }
     };
 
-    public UIElement iconBar;
+    public UITimelineCategoryBar iconBar;
     public Map<ReplayCategory, UIIcon> tabButtons = new HashMap<>();
     private ReplayCategory category = ReplayCategory.REPLAY;
 
@@ -366,15 +367,8 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
         this.replaysList = new UIReplaysListPanel(filmPanel, (l) -> this.setReplay(l.isEmpty() ? null : l.get(0), false, OrbitReaction.SWITCH), this.replayProperties.getFormConsumer(), this::selectBodyPart);
         this.replayProperties.attachReplayList(this.replaysList.replays);
 
-        this.iconBar = new UIElement();
-        this.iconBar.relative(this).x(0).y(0).w(CATEGORY_BAR_WIDTH).h(1F).column(0).stretch();
-
-        this.iconBar.add(new UIRenderable((context) ->
-        {
-            Area area = this.iconBar.area;
-
-            context.batcher.box(area.x, area.y, area.ex(), area.ey(), BBSSettings.chromeSurface());
-        }));
+        this.iconBar = new UITimelineCategoryBar(CATEGORY_BAR_WIDTH);
+        this.iconBar.relative(this);
 
         /* «All tracks» heads the bar: it is not one of the categories but what you see instead of
          * them, so it sits above the rule that separates the two. */
@@ -383,7 +377,6 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
         this.allToggle.highlight(() -> !this.actionsMode && this.allMode, Direction.LEFT);
 
         this.iconBar.add(this.allToggle);
-        this.iconBar.add(this.buildCategorySeparator());
 
         for (ReplayCategory category : ReplayCategory.values())
         {
@@ -430,23 +423,6 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
         this.partHeader.add(partName);
         this.add(this.partHeader);
         this.markContainer();
-    }
-
-    /** A rule between "all tracks" and the categories: they are different questions, not siblings. */
-    private UIElement buildCategorySeparator()
-    {
-        UIElement separator = new UIElement();
-
-        separator.h(7);
-        separator.add(new UIRenderable((context) ->
-        {
-            Area area = separator.area;
-            int y = area.my();
-
-            context.batcher.box(area.x + 4, y, area.ex() - 4, y + 1, BBSSettings.dividerColor());
-        }));
-
-        return separator;
     }
 
     private void setCategory(ReplayCategory c)
@@ -1001,7 +977,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
                 button.removeFromParent();
             }
 
-            this.iconBar.resize();
+            this.resize();
         }
 
         if (!has && this.category == category)
@@ -1152,10 +1128,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
         this.add(this.iconBar, this.actionsToggle, this.partHeader);
     }
 
-    /**
-     * Pin the actions toggle to the bottom of the category bar. The iconBar
-     * shrink-wraps to its category icons, so anchor to the editor instead.
-     */
+    /** Pin the actions toggle below the category buttons. */
     private void layoutActionsToggle()
     {
         this.actionsToggle.relative(this).x(0).y(1F, -20).wh(CATEGORY_BAR_WIDTH, 20);
@@ -1389,9 +1362,24 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
     }
 
     @Override
-    public void resize()
+    protected void afterResizeApplied()
     {
-        super.resize();
+        super.afterResizeApplied();
+
+        int width = this.iconBar.getWidthForHeight(this.area.h);
+
+        this.iconBar.w(width);
+        this.partHeader.x(width);
+
+        if (this.keyframeEditor != null)
+        {
+            this.keyframeEditor.x(width).w(1F, -width);
+        }
+
+        if (this.actionTimeline != null)
+        {
+            this.actionTimeline.x(width).w(1F, -width);
+        }
 
         this.layoutActionsToggle();
     }
