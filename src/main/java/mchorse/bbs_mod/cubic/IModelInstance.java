@@ -10,4 +10,9 @@ public interface IModelInstance
     public Pose getSneakingPose();
 
     public Animations getAnimations();
+
+    default java.util.Map<String, String> getProceduralBones()
+    {
+        return java.util.Map.of();
+    }
 }

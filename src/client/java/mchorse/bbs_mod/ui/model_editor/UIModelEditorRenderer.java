@@ -139,6 +139,21 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
     /** A bone a row asked to light up this frame; consumed by {@link #render}. */
     private String highlighted;
 
+    private int proceduralPreview = -1;
+
+    public void setProceduralPreview(int preview)
+    {
+        if (this.proceduralPreview == preview) return;
+        this.proceduralPreview = preview;
+        this.entity.setHeadYaw(0F);
+        this.entity.setPitch(0F);
+        this.entity.setSwimming(false);
+        this.entity.setLeaningPitch(0F);
+        /* Finish a preview swing and settle interpolated state before leaving the page. */
+        this.entity.getLimbAnimator().setSpeed(0F);
+        for (int i = 0; i < 7; i++) this.entity.update();
+    }
+
     private boolean firstPerson;
     private boolean firstPersonShown;
 
@@ -843,6 +858,20 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
         super.update();
 
         this.entity.setWorld(MinecraftClient.getInstance().world);
+        this.entity.getLimbAnimator().setSpeed(0F);
+        this.entity.update();
+        if (this.proceduralPreview >= 0)
+        {
+            float age = this.entity.getAge();
+            float speed = this.proceduralPreview == 1 || this.proceduralPreview == 4 ? 1F : 0F;
+            this.entity.getLimbAnimator().setSpeed(speed);
+            this.entity.getLimbAnimator().updateLimbs(speed, 1F);
+            this.entity.setHeadYaw(this.proceduralPreview == 2 ? (float) Math.sin(age * 0.05F) * 60F : 0F);
+            this.entity.setPitch(this.proceduralPreview == 2 ? (float) Math.sin(age * 0.08F) * 30F : 0F);
+            this.entity.setSwimming(this.proceduralPreview == 4);
+            this.entity.setLeaningPitch(this.proceduralPreview == 4 ? 1F : 0F);
+            if (this.proceduralPreview == 3 && (int) age % 24 == 0) this.entity.swingArm();
+        }
 
         if (this.form != null)
         {

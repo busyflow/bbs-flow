@@ -326,6 +326,7 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
             return;
         }
 
+        this.renderer.setProceduralPreview(-1);
         this.renderer.setFirstPerson(false);
         this.renderer.setEquipment(false, false);
         this.renderer.getEntity().setSneaking(false);

@@ -205,6 +205,12 @@ public class ModelInstance implements IModelInstance
     }
 
     @Override
+    public java.util.Map<String, String> getProceduralBones()
+    {
+        return this.config.proceduralBones.get();
+    }
+
+    @Override
     public Pose getSneakingPose()
     {
         return this.config.getSneakingPose();
