@@ -2,11 +2,12 @@
     "schemaVersion": 1,
     "id": "bbs",
     "version": "${version}",
-    "name": "BBS FS mod",
-    "description": "A new generation of video production mod",
+    "name": "BBS Flow",
+    "description": "A new generation of video production and animation studio mod with crowds, modeling, and flow tools",
     "authors": [
         "McHorse",
-        "Wemppy"
+        "Wemppy",
+        "busyflow"
     ],
     "contributors": [
         "Chryfi (tracker clip)",
