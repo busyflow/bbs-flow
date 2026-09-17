@@ -45,6 +45,9 @@ public abstract class UIIconStrip <T> extends UIClickable<T>
     /** Where the run sits in a slot wider than it needs: 0 left, 0.5 centre, 1 right. */
     protected float align = 1F;
 
+    /** Whether the cells share the whole width instead of keeping to {@link #CELL} — see {@link #stretch()}. */
+    protected boolean stretch;
+
     public UIIconStrip(Consumer<T> callback)
     {
         super(callback);
@@ -117,6 +120,19 @@ public abstract class UIIconStrip <T> extends UIClickable<T>
         return this.get();
     }
 
+    /**
+     * Let the cells share the strip's whole width rather than keep to {@link #CELL} — for a strip
+     * that is a row's one control and the main thing to pick in its panel (the sides of a cube in
+     * the model editor's unwrap pane), where a run of narrow cells pinned to one end reads as an
+     * afterthought. The strips that sit among other controls keep their fixed cells.
+     */
+    public T stretch()
+    {
+        this.stretch = true;
+
+        return this.get();
+    }
+
     /** X the run of cells starts at, once the spare width has been handed to {@link #align(float)}. */
     protected int getContentX()
     {
@@ -125,9 +141,34 @@ public abstract class UIIconStrip <T> extends UIClickable<T>
         return this.area.x + (int) (spare * this.align);
     }
 
+    /**
+     * Where cell {@code index} starts; {@code index == count} is where the run ends. A stretched
+     * strip spreads the width in whole pixels from the left edge, so the cells cover it exactly
+     * and none is short by what an even division drops.
+     */
+    protected int cellX(int index)
+    {
+        if (this.stretch)
+        {
+            return this.area.x + this.area.w * index / Math.max(1, this.items.size());
+        }
+
+        return this.getContentX() + index * this.getCellWidth();
+    }
+
     /** The cell under the cursor, or {@code -1} when the cursor is beside the run. */
     protected int indexAt(int mouseX)
     {
+        if (this.stretch)
+        {
+            if (this.items.isEmpty() || mouseX < this.area.x || mouseX >= this.area.ex())
+            {
+                return -1;
+            }
+
+            return Math.min(this.items.size() - 1, (mouseX - this.area.x) * this.items.size() / Math.max(1, this.area.w));
+        }
+
         int offset = mouseX - this.getContentX();
 
         /* Not a plain division: integer division rounds toward zero, so the cell-width of empty
@@ -186,28 +227,27 @@ public abstract class UIIconStrip <T> extends UIClickable<T>
             return;
         }
 
-        int cellW = this.getCellWidth();
-        int x = this.getContentX();
+        int x = this.cellX(0);
         int hovered = this.hover ? this.indexAt(context.mouseX) : -1;
 
-        Area.SHARED.set(x, this.area.y, cellW * count, this.area.h);
+        Area.SHARED.set(x, this.area.y, this.cellX(count) - x, this.area.h);
         Area.SHARED.render(context.batcher, BBSSettings.deepSurface());
 
         for (int i = 0; i < count; i++)
         {
-            int x1 = x + i * cellW;
-            int x2 = x1 + cellW;
+            int x1 = this.cellX(i);
+            int x2 = this.cellX(i + 1);
             boolean active = this.isActive(i);
             boolean cellHover = i == hovered;
 
             if (active)
             {
-                Area.SHARED.set(x1, this.area.y, cellW, this.area.h);
+                Area.SHARED.set(x1, this.area.y, x2 - x1, this.area.h);
                 context.batcher.highlight(Area.SHARED, Direction.BOTTOM);
             }
             else if (cellHover)
             {
-                RowStyle.hover(context.batcher, x1, this.area.y, cellW, this.area.h, 0);
+                RowStyle.hover(context.batcher, x1, this.area.y, x2 - x1, this.area.h, 0);
             }
 
             /* The mark under a cell says which one is active; the icon's own brightness says it

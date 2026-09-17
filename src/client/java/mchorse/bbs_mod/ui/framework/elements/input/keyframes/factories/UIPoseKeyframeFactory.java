@@ -321,7 +321,7 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
         @Override
         protected void reset()
         {
-            UIPoseFactoryEditor.apply(this.editor.editor, this.editor.keyframe, this.editor.groups.list.getCurrent(), (poseT) ->
+            this.applyToTarget((poseT) ->
             {
                 poseT.identity();
             });

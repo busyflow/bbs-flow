@@ -10,6 +10,7 @@ import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.events.UITrackpadDragEndEvent;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIChoiceButton;
+import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformGesture;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformGestureHud;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformOp;
@@ -59,6 +60,10 @@ public class UIPropTransform extends UITransform implements TransformGesture.Hos
 
     /** The frame every edit is expressed in, and the dropdown that picks it. */
     private UIChoiceButton<TransformSpace> spacePicker;
+    private UIElement spaceRow;
+
+    /** The editor whose space picker stands for this one's (see {@link #shareSpace}); null while this one shows its own. */
+    private UIPropTransform spaceSource;
 
     /* Quaternion rotation pads (w, x, y, z), shown in place of the euler x/y/z pads
      * while the edited bone is in QUATERNION mode. Editing any of them rebuilds a
@@ -79,6 +84,12 @@ public class UIPropTransform extends UITransform implements TransformGesture.Hos
 
     /** The edit session this editor's transform is worked through. */
     private final TransformGesture gesture = new TransformGesture(this);
+
+    /** Rows the editor stands on: the space picker, translate, scale, rotate — and any a host adds. */
+    private int rows = 4;
+
+    /** Whether an all-equal scale collapses the row to one pad; off for a host whose three numbers are sizes, not factors. */
+    private boolean uniformScaleSync = true;
 
     public UIPropTransform()
     {
@@ -117,11 +128,12 @@ public class UIPropTransform extends UITransform implements TransformGesture.Hos
             .callback(this::pickSpace)
             .setValue(TransformSpace.load());
         this.spacePicker.tooltip(UIKeys.TRANSFORMS_SPACE_TOOLTIP);
-        this.prepend(UI.labelRow(UIKeys.TRANSFORMS_SPACE_TITLE, this.spacePicker));
+        this.spaceRow = UI.labelRow(UIKeys.TRANSFORMS_SPACE_TITLE, this.spacePicker);
+        this.prepend(this.spaceRow);
         /* Four uniform rows: the space picker above translate / scale / rotate.
          * (Was 3×CONTROL_HEIGHT + 20 — the 20 being the rotate row, which its
          * oversized toggle icon pushed past the others.) */
-        this.h(4 * UIConstants.CONTROL_HEIGHT);
+        this.applyRows();
 
         /* Each finished value-field drag closes the current undo block, so dragging a
          * field several times in a row undoes one drag at a time (see endGesture). */
@@ -209,13 +221,50 @@ public class UIPropTransform extends UITransform implements TransformGesture.Hos
         this.model = true;
     }
 
+    /** The editor stands as tall as the rows it shows. */
+    private void applyRows()
+    {
+        this.h(this.rows * UIConstants.CONTROL_HEIGHT);
+    }
+
     /** Drop the scale row — for a target that has no scale to speak of, such as a group's rest in the model editor. */
     public UIPropTransform noScale()
     {
         this.scaleRow.setVisible(false);
-        this.h(3 * UIConstants.CONTROL_HEIGHT);
+        this.rows -= 1;
+        this.applyRows();
 
         return this;
+    }
+
+    /**
+     * Keep the scale row's three pads apart even when they agree — for a host whose scale is
+     * three sizes rather than three factors (a cube of the model editor), where an equal size on
+     * every side is the common case and not a reason to fold the row to one pad.
+     */
+    public UIPropTransform noUniformScale()
+    {
+        this.uniformScaleSync = false;
+
+        return this;
+    }
+
+    /**
+     * Add a row shaped like translate / scale / rotate — an icon, then three pads — under them, for
+     * a host with another vector on the same target to edit (the model editor's cube pivot). The
+     * pads belong to the host: it wires their callbacks and keeps them in step with its model.
+     */
+    public UIElement addRow(UIIcon icon, UITrackpad x, UITrackpad y, UITrackpad z)
+    {
+        icon.wh(UIConstants.CONTROL_HEIGHT, UIConstants.CONTROL_HEIGHT);
+
+        UIElement row = UI.row(2, 0, UIConstants.CONTROL_HEIGHT, icon, x, y, z);
+
+        this.add(row);
+        this.rows += 1;
+        this.applyRows();
+
+        return row;
     }
 
     @Override
@@ -282,7 +331,41 @@ public class UIPropTransform extends UITransform implements TransformGesture.Hos
     @Override
     public TransformSpace pickedSpace()
     {
-        return this.spacePicker.getValue();
+        return this.spaceSource != null ? this.spaceSource.pickedSpace() : this.spacePicker.getValue();
+    }
+
+    /**
+     * Pick the frame with another editor's space picker and hide this one's — for a host that
+     * stands two editors one under the other as a single panel, where a second picker would be one
+     * too many and could disagree with the first. Null gives this editor its own picker back.
+     */
+    public void shareSpace(UIPropTransform source)
+    {
+        this.spaceSource = source == this ? null : source;
+        this.setRowVisible(this.spaceRow, this.spaceSource == null);
+    }
+
+    /**
+     * Show or hide one of the editor's rows — the rotate row, or one a host added — keeping the
+     * editor as tall as the rows it shows. For a host whose target decides whether a row means
+     * anything at the moment.
+     */
+    public void setRowVisible(UIElement row, boolean visible)
+    {
+        if (row.isVisible() == visible)
+        {
+            return;
+        }
+
+        row.setVisible(visible);
+        this.rows += visible ? 1 : -1;
+        this.applyRows();
+    }
+
+    /** The same for the rotate row, which a host has no hold of. */
+    public void setRotationVisible(boolean visible)
+    {
+        this.setRowVisible(this.rotateRow, visible);
     }
 
     /** The frame the gizmo and constrained edits operate in — the session's one accessor,
@@ -381,8 +464,8 @@ public class UIPropTransform extends UITransform implements TransformGesture.Hos
     }
     /**
      * As above, but only for the operations {@code ops} answers for — the hotkey twin of the gizmo's
-     * handle mask, for a host whose target can't take all three (a rest has no scale; a rest shared
-     * by several picked bones has no rotation either).
+     * handle mask, for a host whose target can't take all three (a rest shared by several picked
+     * bones can only move).
      */
     public UIPropTransform enableHotkeys(Supplier<Boolean> enabled, Predicate<TransformOp> ops)
     {
@@ -395,10 +478,22 @@ public class UIPropTransform extends UITransform implements TransformGesture.Hos
         this.keys().register(Keys.TRANSFORMATIONS_TRANSLATE, () -> this.gesture.enableMode(TransformOp.TRANSLATE)).active(translate).category(category);
         this.keys().register(Keys.TRANSFORMATIONS_SCALE, () -> this.gesture.enableMode(TransformOp.SCALE)).active(scale).category(category);
         this.keys().register(Keys.TRANSFORMATIONS_ROTATE, () -> this.gesture.enableMode(TransformOp.ROTATE)).active(rotate).category(category);
+        this.keys().register(Keys.TRANSFORMATIONS_RESET, () ->
+        {
+            if (this.gesture.isEditing())
+            {
+                this.gesture.accept();
+            }
+
+            this.endGesture();
+            this.reset();
+            this.refillTransform();
+            this.endGesture();
+        }).active(() -> enabled.get() && this.transform != null).strict().category(category);
         this.keys().register(Keys.TRANSFORMATIONS_X, () -> this.gesture.setAxis(Axis.X)).active(active).category(category);
         this.keys().register(Keys.TRANSFORMATIONS_Y, () -> this.gesture.setAxis(Axis.Y)).active(active).category(category);
         this.keys().register(Keys.TRANSFORMATIONS_Z, () -> this.gesture.setAxis(Axis.Z)).active(active).category(category);
-        this.keys().register(Keys.TRANSFORMATIONS_SPACE_MENU, this.spacePicker::open).active(enabled).category(category);
+        this.keys().register(Keys.TRANSFORMATIONS_SPACE_MENU, () -> (this.spaceSource != null ? this.spaceSource.spacePicker : this.spacePicker).open()).active(enabled).category(category);
         this.keys().register(Keys.TRANSFORMATIONS_ROTATION_MODE, this::toggleRotationMode).active(enabled).category(category);
 
         return this;
@@ -459,7 +554,7 @@ public class UIPropTransform extends UITransform implements TransformGesture.Hos
      */
     private void syncUniformScaleRow()
     {
-        if (this.transform == null || !BBSSettings.uniformScale.get())
+        if (this.transform == null || !this.uniformScaleSync || !BBSSettings.uniformScale.get())
         {
             return;
         }

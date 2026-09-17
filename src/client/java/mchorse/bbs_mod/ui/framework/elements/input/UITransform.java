@@ -14,6 +14,7 @@ import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.WorldTransformClipboard;
+import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.Axis;
 import mchorse.bbs_mod.utils.MathUtils;
@@ -197,6 +198,31 @@ public abstract class UITransform extends UIElement
         UIUtils.setEnabledDeep(this.rotateRow, enabled);
     }
 
+    /** The same for the scale row: off where several things are edited at once and each one's size is its own. */
+    public void setScaleEnabled(boolean enabled)
+    {
+        UIUtils.setEnabledDeep(this.scaleRow, enabled);
+    }
+
+    /**
+     * What the three rows are called, in the pads' tooltips — for a host whose target isn't a
+     * transform in the usual sense: a cube's rows are its position, its size and its rotation.
+     */
+    public void labels(IKey translate, IKey scale, IKey rotate)
+    {
+        IKey raw = IKey.constant("%s (%s)");
+
+        this.tx.tooltip(raw.format(translate, UIKeys.GENERAL_X));
+        this.ty.tooltip(raw.format(translate, UIKeys.GENERAL_Y));
+        this.tz.tooltip(raw.format(translate, UIKeys.GENERAL_Z));
+        this.sx.tooltip(raw.format(scale, UIKeys.GENERAL_X));
+        this.sy.tooltip(raw.format(scale, UIKeys.GENERAL_Y));
+        this.sz.tooltip(raw.format(scale, UIKeys.GENERAL_Z));
+        this.rx.tooltip(raw.format(rotate, UIKeys.GENERAL_X));
+        this.ry.tooltip(raw.format(rotate, UIKeys.GENERAL_Y));
+        this.rz.tooltip(raw.format(rotate, UIKeys.GENERAL_Z));
+    }
+
     /**
      * Give the translate row's icon something to do. It is decorative by default — the space
      * picker took its old click over — and only a host with one obvious thing to offer there
@@ -208,6 +234,13 @@ public abstract class UITransform extends UIElement
         this.iconT.callback = (b) -> action.run();
         this.iconT.tooltip(tooltip);
         this.iconT.setEnabled(true);
+    }
+
+    /** The same with an icon of its own, for a translate row that stands for something else — a pivot. */
+    public void translateAction(IKey tooltip, Icon icon, Runnable action)
+    {
+        this.iconT.both(icon);
+        this.translateAction(tooltip, action);
     }
 
     protected void toggleUniformScale()

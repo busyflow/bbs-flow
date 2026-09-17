@@ -29,13 +29,6 @@ public class UIKeyframeSheet
     public IKey title;
     public int color;
 
-    /**
-     * A row that names something rather than animating it — a body part, whose form's tracks fold
-     * under it. It carries a channel because a row is drawn from one, but nothing may ever be
-     * written into it: that channel belongs to no replay and would be dropped on save.
-     */
-    public boolean header;
-
     /* Meta data */
     public final String id;
     private Icon icon;
@@ -89,7 +82,6 @@ public class UIKeyframeSheet
         this(track.key(), track.title(), track.color(), track.channel(), track.property(), track.kind() == TrackKind.BONE, track);
 
         this.icon(track.icon());
-        this.header = track.kind() == TrackKind.BODY_PART;
         this.form(track.owner());
 
         if (track.seed() != null)
@@ -204,16 +196,6 @@ public class UIKeyframeSheet
         }
 
         return depth;
-    }
-
-    /**
-     * The colour this row is drawn in. A header takes the interface's primary colour and takes it
-     * <em>now</em>, not when the timeline was built: the colour is a live setting, and a value
-     * copied into the row at build time would sit there stale until something rebuilt the tracks.
-     */
-    public int getRowColor()
-    {
-        return this.header ? BBSSettings.primaryColor.get() : this.color;
     }
 
     public UIKeyframeSheet icon(Icon icon)

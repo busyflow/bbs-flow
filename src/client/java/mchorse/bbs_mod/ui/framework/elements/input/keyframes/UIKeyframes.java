@@ -136,11 +136,7 @@ public class UIKeyframes extends UITimelineCanvas
 
             menu.icon(MenuVerb.REMOVE, () -> this.currentGraph.removeSelected()).label(UIKeys.KEYFRAMES_CONTEXT_REMOVE).enabled(hasSelected);
 
-            /* Both entries below act on a track. A body part's section is a heading: there is no
-             * curve to edit, and its colour is the interface's own while its name comes from the
-             * part — so restyling it would half do nothing and half write a per-part entry into a
-             * table keyed by kind of track. */
-            UIKeyframeSheet hovered = this.currentGraph.getTrackSheet(mouseY);
+            UIKeyframeSheet hovered = this.currentGraph.getSheet(mouseY);
 
             if (!this.single)
             {
@@ -839,7 +835,7 @@ public class UIKeyframes extends UITimelineCanvas
 
         if (keyframes.size() == 1)
         {
-            UIKeyframeSheet current = this.currentGraph.getTrackSheet(mouseY);
+            UIKeyframeSheet current = this.currentGraph.getSheet(mouseY);
 
             if (current == null)
             {

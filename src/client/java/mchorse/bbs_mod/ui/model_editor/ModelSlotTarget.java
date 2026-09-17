@@ -8,19 +8,25 @@ import mchorse.bbs_mod.ui.utils.Gizmo;
  * edited there (an attachment slot on the bone, the pose of the bone itself, a group's rest), the
  * transform editor the gizmo drives, and — for an editor that works on a stand-in transform
  * rather than the model's own numbers — what pushes the stand-in into the model before the bone
- * is evaluated afresh ({@code apply}; null when the transform is the model's), and which handles the
- * gizmo offers ({@code mask}; null for all of them) — a rest has no scale, and a rest shared by
- * several picked bones has no rotation either.
+ * is evaluated afresh ({@code apply}; null when the transform is the model's), which handles the
+ * gizmo offers ({@code mask}; null for all of them) — a rest shared by several picked bones can
+ * only be moved — and, for a {@link ModelSlotKind#CUBE}, which cube of the bone it is
+ * ({@code cube}; -1 for a target that isn't one).
  */
-public record ModelSlotTarget(String bone, ModelSlotKind kind, UIPropTransform editor, Runnable apply, Gizmo.HandleMask mask)
+public record ModelSlotTarget(String bone, ModelSlotKind kind, UIPropTransform editor, Runnable apply, Gizmo.HandleMask mask, int cube)
 {
     public ModelSlotTarget(String bone, ModelSlotKind kind, UIPropTransform editor)
     {
-        this(bone, kind, editor, null, null);
+        this(bone, kind, editor, null, null, -1);
     }
 
     public ModelSlotTarget(String bone, ModelSlotKind kind, UIPropTransform editor, Runnable apply)
     {
-        this(bone, kind, editor, apply, null);
+        this(bone, kind, editor, apply, null, -1);
+    }
+
+    public ModelSlotTarget(String bone, ModelSlotKind kind, UIPropTransform editor, Runnable apply, Gizmo.HandleMask mask)
+    {
+        this(bone, kind, editor, apply, mask, -1);
     }
 }

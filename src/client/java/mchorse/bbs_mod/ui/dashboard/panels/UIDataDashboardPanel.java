@@ -175,13 +175,12 @@ public abstract class UIDataDashboardPanel <T extends ValueGroup> extends UICRUD
 
     /**
      * Label of the landing screen's entry that creates a new document, or null when there is
-     * nothing to create: asset-backed panels (the model editor) keep the data manager as a pure
-     * picker, and the landing screen offers exactly what the manager does.
+     * nothing to create: the landing screen offers exactly what the data manager does.
      */
     @Override
     public IKey getCreateLabel()
     {
-        return this.overlay.showActionButtons() ? UIKeys.GENERAL_ADD : null;
+        return this.overlay.canCreate() ? UIKeys.GENERAL_ADD : null;
     }
 
     @Override

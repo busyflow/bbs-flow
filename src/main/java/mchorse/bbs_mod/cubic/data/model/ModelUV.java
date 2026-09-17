@@ -32,6 +32,30 @@ public class ModelUV implements IDataSerializable<ListType>
         this.size.y = y2 - y1;
     }
 
+    /**
+     * Mirror the side across itself: the two X corners swap places, which the format says with a
+     * NEGATIVE width — that is how a cubic model has always stored a mirrored face, and why the
+     * editor shows a face as its two corners rather than as a corner and a size.
+     */
+    public void flipX()
+    {
+        this.origin.x += this.size.x;
+        this.size.x = -this.size.x;
+    }
+
+    /** The same the other way about. */
+    public void flipY()
+    {
+        this.origin.y += this.size.y;
+        this.size.y = -this.size.y;
+    }
+
+    /** Turn the side a quarter turn on the sheet, the way its fifth number says it. */
+    public void rotate90()
+    {
+        this.rotation = (this.rotation + 90F) % 360F;
+    }
+
     public float sx()
     {
         return this.origin.x;

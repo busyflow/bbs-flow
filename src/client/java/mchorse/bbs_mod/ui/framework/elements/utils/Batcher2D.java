@@ -91,6 +91,11 @@ public class Batcher2D
         this.font = getDefaultTextRenderer();
     }
 
+    public boolean isBatching()
+    {
+        return this.batching;
+    }
+
     /** Open a quad batch. Nested calls are folded into the outermost scope. */
     public void beginBatch()
     {

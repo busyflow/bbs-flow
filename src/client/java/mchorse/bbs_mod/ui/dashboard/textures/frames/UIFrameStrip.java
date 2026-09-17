@@ -204,8 +204,8 @@ public class UIFrameStrip extends UIItemGrid<TextureAnimation.Frame>
         }
 
         menu.action(Icons.ERASER, UIKeys.TEXTURES_FRAMES_CLEAR, () -> this.panel.macro(PixelMacro.CLEAR, group));
-        menu.action(Icons.HORIZONTAL, UIKeys.TEXTURES_MACROS_FLIP_H, () -> this.panel.macro(PixelMacro.FLIP_HORIZONTAL, group));
-        menu.action(Icons.VERTICAL, UIKeys.TEXTURES_MACROS_FLIP_V, () -> this.panel.macro(PixelMacro.FLIP_VERTICAL, group));
+        menu.action(Icons.FLIP_HORIZONTAL, UIKeys.TEXTURES_MACROS_FLIP_H, () -> this.panel.macro(PixelMacro.FLIP_HORIZONTAL, group));
+        menu.action(Icons.FLIP_VERTICAL, UIKeys.TEXTURES_MACROS_FLIP_V, () -> this.panel.macro(PixelMacro.FLIP_VERTICAL, group));
         menu.action(Icons.TIME, UIKeys.TEXTURES_FRAMES_TIME, () -> this.panel.askTime(group));
         menu.icon(MenuVerb.REMOVE, () -> this.panel.remove(group)).label(UIKeys.GENERAL_REMOVE).enabled(visible.size() > group.size());
     }

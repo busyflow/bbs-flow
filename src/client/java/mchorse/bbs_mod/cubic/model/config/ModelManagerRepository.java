@@ -13,8 +13,9 @@ import java.util.function.Consumer;
 /**
  * Repository backing the Model Editor onto {@link mchorse.bbs_mod.cubic.model.ModelManager}. Models are
  * assets (a {@code config.json} next to geometry and textures), so only listing, loading and saving the
- * config are supported. Creating, renaming and deleting models is not yet a thing (that arrives with
- * in-editor geometry), so those stay no-ops and their buttons are disabled in the editor.
+ * config are supported. Renaming and deleting models is not a thing, so those stay no-ops and their
+ * buttons are not in the editor; a new model is files on disk rather than a document, so the editor
+ * makes it through {@link mchorse.bbs_mod.cubic.model.ModelManager#createModel} instead of here.
  */
 public class ModelManagerRepository implements IRepository<ModelConfig>
 {

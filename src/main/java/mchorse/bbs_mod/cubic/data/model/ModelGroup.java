@@ -122,6 +122,15 @@ public class ModelGroup implements IMapSerializable, RigBone
         this.offset = null;
     }
 
+    /** Rebuild what the group's own cubes draw as, after their numbers changed. */
+    public void generateQuads(int textureWidth, int textureHeight)
+    {
+        for (ModelCube cube : this.cubes)
+        {
+            cube.generateQuads(textureWidth, textureHeight);
+        }
+    }
+
     public boolean isVisible()
     {
         return this.visible && this.poseVisible;
@@ -405,9 +414,14 @@ public class ModelGroup implements IMapSerializable, RigBone
         {
             ListType list = new ListType();
 
+            /* In the order the cube writes its keys, so a saved file keeps reading the same way
+             * and a save that changed one number changes one line. */
             for (ModelCube cube : this.cubes)
             {
-                list.add(cube.toData());
+                MapType cubeData = new MapType(false);
+
+                cube.toData(cubeData);
+                list.add(cubeData);
             }
 
             data.put("cubes", list);

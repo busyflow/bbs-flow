@@ -333,7 +333,7 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         this.statesEditor.full(this);
         this.statesEditor.setVisible(false);
         this.statesKeyframes = new UIAnimationStateEditor(this);
-        this.statesKeyframes.relative(this.statesEditor).y(1F).w(1F, -20).h(BBSSettings.editorLayoutSettings.getStateEditorSizeV()).anchorY(1F);
+        this.statesKeyframes.relative(this.statesEditor).w(1F, -20).h(1F);
 
         this.openStates = new UIIcon(Icons.MORE, (b) ->
         {

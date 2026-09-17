@@ -54,6 +54,10 @@ public class RowStyle
     private static final float PICK_HOVER_NEAR = 0.62F;
     private static final float PICK_FAR = 0.08F;
 
+    /** A row the pick takes along through another row: between a hover and the pick itself. */
+    private static final float CARRIED_NEAR = 0.3F;
+    private static final float CARRIED_FAR = 0.05F;
+
     /** Where a drop would land: louder than a hover, since it answers a question the user asked. */
     private static final float DROP_NEAR = 0.35F;
     private static final float DROP_FAR = 0.05F;
@@ -131,6 +135,17 @@ public class RowStyle
         {
             bar(batcher, x, y, h, bar);
         }
+    }
+
+    /**
+     * A row that isn't picked itself but comes along with one that is — the cubes of a picked group
+     * in the model tree. The pick's accent, softer, and no bar: the bar says "this one was picked"
+     * and it wasn't, while the wash says it is in the pick all the same — the way one cell of a
+     * multi-selection wears the wash without the edge. Goes under {@link #row}'s marks.
+     */
+    public static void carried(Batcher2D batcher, int x, int y, int w, int h)
+    {
+        wash(batcher, x, y, w, h, accent(), CARRIED_NEAR, CARRIED_FAR);
     }
 
     /**

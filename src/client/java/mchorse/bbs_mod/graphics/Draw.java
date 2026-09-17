@@ -30,12 +30,20 @@ public class Draw
 
     public static void renderBox(MatrixStack stack, double x, double y, double z, double w, double h, double d, float r, float g, float b, float a)
     {
+        renderBox(stack, x, y, z, w, h, d, r, g, b, a, 1 / 96F + (float) (Math.sqrt(w * w + h + h + d + d) / 2000));
+    }
+
+    /**
+     * The same box of bars with their half-thickness given, in the units of the box — for an
+     * outline that has to sit finer than the default bars on a small box.
+     */
+    public static void renderBox(MatrixStack stack, double x, double y, double z, double w, double h, double d, float r, float g, float b, float a, float t)
+    {
         stack.push();
         stack.translate(x, y, z);
         float fw = (float) w;
         float fh = (float) h;
         float fd = (float) d;
-        float t = 1 / 96F + (float) (Math.sqrt(w * w + h + h + d + d) / 2000);
 
         BufferBuilder builder = Tessellator.getInstance().getBuffer();
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);

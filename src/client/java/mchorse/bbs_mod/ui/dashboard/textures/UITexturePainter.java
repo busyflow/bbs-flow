@@ -247,8 +247,8 @@ public class UITexturePainter extends UIElement
         this.getContext().replaceContextMenu((menu) ->
         {
             menu.action(Icons.ERASER, UIKeys.TEXTURES_MACROS_CLEAR, () -> this.withEditor((editor) -> editor.applyMacroToWindow(PixelMacro.CLEAR)));
-            menu.action(Icons.HORIZONTAL, UIKeys.TEXTURES_MACROS_FLIP_H, () -> this.withEditor((editor) -> editor.applyMacroToWindow(PixelMacro.FLIP_HORIZONTAL)));
-            menu.action(Icons.VERTICAL, UIKeys.TEXTURES_MACROS_FLIP_V, () -> this.withEditor((editor) -> editor.applyMacroToWindow(PixelMacro.FLIP_VERTICAL)));
+            menu.action(Icons.FLIP_HORIZONTAL, UIKeys.TEXTURES_MACROS_FLIP_H, () -> this.withEditor((editor) -> editor.applyMacroToWindow(PixelMacro.FLIP_HORIZONTAL)));
+            menu.action(Icons.FLIP_VERTICAL, UIKeys.TEXTURES_MACROS_FLIP_V, () -> this.withEditor((editor) -> editor.applyMacroToWindow(PixelMacro.FLIP_VERTICAL)));
         });
     }
 

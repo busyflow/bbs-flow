@@ -9,7 +9,10 @@ import org.joml.Vector2f;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 public class ModelCube implements IMapSerializable
 {
@@ -19,6 +22,13 @@ public class ModelCube implements IMapSerializable
     public Vector3f pivot = new Vector3f();
     public Vector3f rotate = new Vector3f();
     public float inflate;
+
+    /**
+     * What the cube is called in the model editor's tree; empty for most cubes, which are named
+     * by their place in their group there. Nothing in the model refers to a cube by name, so
+     * names may repeat. Written to the file only when given.
+     */
+    public String name = "";
 
     /**
      * The material this cube is drawn with, the same way {@link ModelMesh#material} names a mesh's:
@@ -36,8 +46,100 @@ public class ModelCube implements IMapSerializable
     public ModelUV top;
     public ModelUV bottom;
 
+    /**
+     * Where the sides that aren't drawn used to be on the sheet: a side taken away keeps its unwrap
+     * here, so giving it back puts it where it was. Written apart from {@code uvs}, so whatever reads
+     * only those still draws nothing on that side.
+     */
+    private final Map<CubeFace, ModelUV> hiddenUVs = new EnumMap<>(CubeFace.class);
+
+    /** The unwrap of one of the cube's six sides, or null when that side isn't drawn at all. */
+    public ModelUV getUV(CubeFace face)
+    {
+        return switch (face)
+        {
+            case FRONT -> this.front;
+            case BACK -> this.back;
+            case RIGHT -> this.right;
+            case LEFT -> this.left;
+            case TOP -> this.top;
+            case BOTTOM -> this.bottom;
+        };
+    }
+
+    /** The unwrap a side that isn't drawn will come back with; null for a drawn side, or one never drawn. */
+    public ModelUV getHiddenUV(CubeFace face)
+    {
+        return this.hiddenUVs.get(face);
+    }
+
+    /** Stop drawing a side, keeping its unwrap for when it's drawn again. */
+    public void hideUV(CubeFace face)
+    {
+        ModelUV uv = this.getUV(face);
+
+        if (uv != null)
+        {
+            this.setUV(face, null);
+            this.hiddenUVs.put(face, uv);
+        }
+    }
+
+    /**
+     * Draw a side again with the unwrap it had — or, for a side that was never drawn, over the
+     * sheet's corner at the side's own size.
+     */
+    public void showUV(CubeFace face)
+    {
+        if (this.getUV(face) != null)
+        {
+            return;
+        }
+
+        ModelUV uv = this.hiddenUVs.get(face);
+
+        if (uv == null)
+        {
+            Vector2f size = this.faceSize(face);
+
+            uv = ModelUV.fromXY(0F, 0F, size.x, size.y);
+        }
+
+        this.setUV(face, uv);
+    }
+
+    /** How big a side is on the sheet at a pixel of it per pixel of the model: across, then down, as it faces out. */
+    public Vector2f faceSize(CubeFace face)
+    {
+        return switch (face)
+        {
+            case FRONT, BACK -> new Vector2f(this.size.x, this.size.y);
+            case RIGHT, LEFT -> new Vector2f(this.size.z, this.size.y);
+            case TOP, BOTTOM -> new Vector2f(this.size.x, this.size.z);
+        };
+    }
+
+    /** Give a side its unwrap, or null to stop drawing it — either way, what it was hidden with is forgotten. */
+    public void setUV(CubeFace face, ModelUV uv)
+    {
+        this.hiddenUVs.remove(face);
+
+        switch (face)
+        {
+            case FRONT -> this.front = uv;
+            case BACK -> this.back = uv;
+            case RIGHT -> this.right = uv;
+            case LEFT -> this.left = uv;
+            case TOP -> this.top = uv;
+            case BOTTOM -> this.bottom = uv;
+        }
+    }
+
     public void setupBoxUV(Vector2f boxUV, boolean mirror)
     {
+        /* All six are laid out anew and drawn, so none has a place of its own left to come back to */
+        this.hiddenUVs.clear();
+
         /* North */
         float w = (float) Math.floor(this.size.x);
         float h = (float) Math.floor(this.size.y);
@@ -152,93 +254,153 @@ public class ModelCube implements IMapSerializable
     {
         float tw = 1F / textureWidth;
         float th = 1F / textureHeight;
-
-        float minX = (this.origin.x - this.inflate) / 16F;
-        float minY = (this.origin.y - this.inflate) / 16F;
-        float minZ = (this.origin.z - this.inflate) / 16F;
-
-        float maxX = (this.origin.x + this.size.x + this.inflate) / 16F;
-        float maxY = (this.origin.y + this.size.y + this.inflate) / 16F;
-        float maxZ = (this.origin.z + this.size.z + this.inflate) / 16F;
+        float[] box = this.box();
 
         this.quads.clear();
 
         if (this.front != null)
         {
             Quad quad = this.front.createQuad();
-            
+            Vector3f[] c = corners(CubeFace.FRONT, box);
+
             this.quads.add(new ModelQuad()
-                .vertex(maxX, minY, minZ, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(minX, minY, minZ, quad.p3.x * tw, quad.p3.y * th)
-                .vertex(minX, maxY, minZ, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(maxX, maxY, minZ, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(c[0].x, c[0].y, c[0].z, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(c[1].x, c[1].y, c[1].z, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(c[2].x, c[2].y, c[2].z, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(c[3].x, c[3].y, c[3].z, quad.p1.x * tw, quad.p1.y * th)
                 .normal(0, 0, -1));
         }
 
         if (this.right != null)
         {
             Quad quad = this.right.createQuad();
+            Vector3f[] c = corners(CubeFace.RIGHT, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(maxX, minY, maxZ, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(maxX, minY, minZ, quad.p3.x * tw, quad.p3.y * th)
-                .vertex(maxX, maxY, minZ, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(maxX, maxY, maxZ, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(c[0].x, c[0].y, c[0].z, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(c[1].x, c[1].y, c[1].z, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(c[2].x, c[2].y, c[2].z, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(c[3].x, c[3].y, c[3].z, quad.p1.x * tw, quad.p1.y * th)
                 .normal(1, 0, 0));
         }
 
         if (this.back != null)
         {
             Quad quad = this.back.createQuad();
+            Vector3f[] c = corners(CubeFace.BACK, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(minX, minY, maxZ, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(maxX, minY, maxZ, quad.p3.x * tw, quad.p3.y * th)
-                .vertex(maxX, maxY, maxZ, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(minX, maxY, maxZ, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(c[0].x, c[0].y, c[0].z, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(c[1].x, c[1].y, c[1].z, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(c[2].x, c[2].y, c[2].z, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(c[3].x, c[3].y, c[3].z, quad.p1.x * tw, quad.p1.y * th)
                 .normal(0, 0, 1));
         }
 
         if (this.left != null)
         {
             Quad quad = this.left.createQuad();
+            Vector3f[] c = corners(CubeFace.LEFT, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(minX, minY, minZ, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(minX, minY, maxZ, quad.p3.x * tw, quad.p3.y * th)
-                .vertex(minX, maxY, maxZ, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(minX, maxY, minZ, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(c[0].x, c[0].y, c[0].z, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(c[1].x, c[1].y, c[1].z, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(c[2].x, c[2].y, c[2].z, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(c[3].x, c[3].y, c[3].z, quad.p1.x * tw, quad.p1.y * th)
                 .normal(-1, 0, 0));
         }
 
+        /* The top alone takes its unwrap's corners in another order; its corners go around the same way. */
         if (this.top != null)
         {
             Quad quad = this.top.createQuad();
+            Vector3f[] c = corners(CubeFace.TOP, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(maxX, maxY, minZ, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(minX, maxY, minZ, quad.p1.x * tw, quad.p1.y * th)
-                .vertex(minX, maxY, maxZ, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(maxX, maxY, maxZ, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(c[0].x, c[0].y, c[0].z, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(c[1].x, c[1].y, c[1].z, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(c[2].x, c[2].y, c[2].z, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(c[3].x, c[3].y, c[3].z, quad.p3.x * tw, quad.p3.y * th)
                 .normal(0, 1, 0));
         }
 
         if (this.bottom != null)
         {
             Quad quad = this.bottom.createQuad();
+            Vector3f[] c = corners(CubeFace.BOTTOM, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(minX, minY, minZ, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(maxX, minY, minZ, quad.p3.x * tw, quad.p3.y * th)
-                .vertex(maxX, minY, maxZ, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(minX, minY, maxZ, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(c[0].x, c[0].y, c[0].z, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(c[1].x, c[1].y, c[1].z, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(c[2].x, c[2].y, c[2].z, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(c[3].x, c[3].y, c[3].z, quad.p1.x * tw, quad.p1.y * th)
                 .normal(0, -1, 0));
         }
+    }
+
+    /**
+     * The four corners of one of the box's sides, in blocks, in the order that side's quad lists its
+     * vertices: around the rectangle, so corner 0 neighbours 1 and 3. Whether the side is drawn or
+     * not — a weld glues sides by their corners, and the sides of a joint are often not drawn.
+     */
+    public Vector3f[] faceCorners(CubeFace face)
+    {
+        return corners(face, this.box());
+    }
+
+    /** The box in blocks, the inflate taken in: its near corner's x, y, z, then its far corner's. */
+    private float[] box()
+    {
+        return new float[] {
+            (this.origin.x - this.inflate) / 16F,
+            (this.origin.y - this.inflate) / 16F,
+            (this.origin.z - this.inflate) / 16F,
+            (this.origin.x + this.size.x + this.inflate) / 16F,
+            (this.origin.y + this.size.y + this.inflate) / 16F,
+            (this.origin.z + this.size.z + this.inflate) / 16F
+        };
+    }
+
+    /**
+     * A side's corners off the box, in the order its quad takes them. The quads and the welds both read
+     * them here, so a welded corner is bit for bit the vertex it stands on — the renderer finds the
+     * corners of a seam by that.
+     */
+    private static Vector3f[] corners(CubeFace face, float[] box)
+    {
+        float minX = box[0];
+        float minY = box[1];
+        float minZ = box[2];
+        float maxX = box[3];
+        float maxY = box[4];
+        float maxZ = box[5];
+
+        return switch (face)
+        {
+            case FRONT -> new Vector3f[] {new Vector3f(maxX, minY, minZ), new Vector3f(minX, minY, minZ), new Vector3f(minX, maxY, minZ), new Vector3f(maxX, maxY, minZ)};
+            case RIGHT -> new Vector3f[] {new Vector3f(maxX, minY, maxZ), new Vector3f(maxX, minY, minZ), new Vector3f(maxX, maxY, minZ), new Vector3f(maxX, maxY, maxZ)};
+            case BACK -> new Vector3f[] {new Vector3f(minX, minY, maxZ), new Vector3f(maxX, minY, maxZ), new Vector3f(maxX, maxY, maxZ), new Vector3f(minX, maxY, maxZ)};
+            case LEFT -> new Vector3f[] {new Vector3f(minX, minY, minZ), new Vector3f(minX, minY, maxZ), new Vector3f(minX, maxY, maxZ), new Vector3f(minX, maxY, minZ)};
+            case TOP -> new Vector3f[] {new Vector3f(maxX, maxY, minZ), new Vector3f(minX, maxY, minZ), new Vector3f(minX, maxY, maxZ), new Vector3f(maxX, maxY, maxZ)};
+            case BOTTOM -> new Vector3f[] {new Vector3f(minX, minY, minZ), new Vector3f(maxX, minY, minZ), new Vector3f(maxX, minY, maxZ), new Vector3f(minX, minY, maxZ)};
+        };
+    }
+
+    /** Move the cube as a whole: its corner and the pivot it turns about go by the same step. */
+    public void shift(Vector3f delta)
+    {
+        this.origin.add(delta);
+        this.pivot.add(delta);
     }
 
     @Override
     public void toData(MapType data)
     {
+        if (!this.name.isEmpty())
+        {
+            data.putString("name", this.name);
+        }
+
         data.put("from", DataStorageUtils.vector3fToData(this.origin));
         data.put("size", DataStorageUtils.vector3fToData(this.size));
         data.put("origin", DataStorageUtils.vector3fToData(this.pivot));
@@ -258,7 +420,8 @@ public class ModelCube implements IMapSerializable
             data.putString("material", this.material);
         }
 
-        MapType uvs = new MapType();
+        /* Ordered, as the cube's own keys are: a hash map would shuffle the faces on every save. */
+        MapType uvs = new MapType(false);
 
         this.saveUVSide(uvs, "front", this.front);
         this.saveUVSide(uvs, "back", this.back);
@@ -271,6 +434,27 @@ public class ModelCube implements IMapSerializable
         {
             data.put("uvs", uvs);
         }
+
+        MapType hidden = new MapType(false);
+
+        for (Map.Entry<CubeFace, ModelUV> entry : this.hiddenUVs.entrySet())
+        {
+            if (this.getUV(entry.getKey()) == null)
+            {
+                this.saveUVSide(hidden, faceKey(entry.getKey()), entry.getValue());
+            }
+        }
+
+        if (hidden.size() > 0)
+        {
+            data.put("hidden_uvs", hidden);
+        }
+    }
+
+    /** A side's key in the file, where {@code uvs} and {@code hidden_uvs} name it the same way. */
+    static String faceKey(CubeFace face)
+    {
+        return face.name().toLowerCase(Locale.ROOT);
     }
 
     private void saveUVSide(MapType data, String key, ModelUV side)
@@ -281,28 +465,46 @@ public class ModelCube implements IMapSerializable
         }
     }
 
+    /**
+     * The whole cube from its data: what the data leaves out takes its default, so a cube read
+     * twice (the model editor's copies and undo snapshots) never keeps a rotation, an inflate or
+     * a face the data no longer has.
+     */
     @Override
     public void fromData(MapType data)
     {
+        this.name = data.getString("name", "");
         this.origin.set(DataStorageUtils.vector3fFromData(data.getList("from")));
         this.size.set(DataStorageUtils.vector3fFromData(data.getList("size")));
         this.pivot.set(DataStorageUtils.vector3fFromData(data.getList("origin")));
-
-        if (data.has("offset"))
-        {
-            this.inflate = data.getFloat("offset");
-        }
+        this.inflate = data.getFloat("offset", 0F);
 
         if (data.has("rotate"))
         {
             this.rotate.set(DataStorageUtils.vector3fFromData(data.getList("rotate")));
         }
+        else
+        {
+            this.rotate.set(0F, 0F, 0F);
+        }
 
         this.material = data.getString("material", "");
+        this.front = this.back = this.right = this.left = this.top = this.bottom = null;
+        this.hiddenUVs.clear();
 
         if (data.has("uvs"))
         {
             this.parseUV(data.get("uvs"));
+        }
+
+        MapType hidden = data.getMap("hidden_uvs");
+
+        for (CubeFace face : CubeFace.values())
+        {
+            if (hidden.has(faceKey(face)) && this.getUV(face) == null)
+            {
+                this.hiddenUVs.put(face, this.parseUVSide(hidden, faceKey(face)));
+            }
         }
     }
 

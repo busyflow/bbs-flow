@@ -1,11 +1,13 @@
 package mchorse.bbs_mod.ui.forms.editors;
 
 import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.FormUtilsClient;
 import mchorse.bbs_mod.forms.forms.BodyPart;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UIList;
+import mchorse.bbs_mod.utils.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -61,7 +63,35 @@ public class UIForms extends UIList<UIForms.FormEntry>
         this.clear();
 
         this.add(new FormEntry(form, null, 0, 0, true));
-        this.setupRecursively(form, 1, 0);
+        if (form != null)
+        {
+            this.setupRecursively(form, 1, 0);
+        }
+    }
+
+    /** Restore a stable selection after a refresh; a removed part returns to the root. */
+    public String setCurrentPath(String path)
+    {
+        if (this.list.isEmpty())
+        {
+            return "";
+        }
+
+        FormEntry selected = this.list.get(0);
+
+        for (FormEntry entry : this.list)
+        {
+            if (entry.getPath().equals(path))
+            {
+                selected = entry;
+                break;
+            }
+        }
+
+        this.setCurrent(selected);
+        this.scroll.scrollIntoView(this.getIndex() * this.scroll.scrollItemSize);
+
+        return selected.getPath();
     }
 
     private void setupRecursively(Form parent, int depth, int lines)
@@ -130,7 +160,7 @@ public class UIForms extends UIList<UIForms.FormEntry>
     {
         /* One part at a time: a body part's slot is worked out from its own siblings, so a group
          * dragged at once would need a slot each, and parts of different parents have none in common. */
-        return item.part == null || super.dragPayload(item) == null ? null : Collections.singletonList(item);
+        return this.onReorder == null || item.part == null || super.dragPayload(item) == null ? null : Collections.singletonList(item);
     }
 
     /**
@@ -254,6 +284,11 @@ public class UIForms extends UIList<UIForms.FormEntry>
             return this.part == null ? this.form : this.part.getForm();
         }
 
+        public String getPath()
+        {
+            return this.part == null ? "" : StringUtils.combinePaths(FormUtils.getPath(this.form), this.part.getId());
+        }
+
         @Override
         public boolean equals(Object obj)
         {
@@ -279,7 +314,7 @@ public class UIForms extends UIList<UIForms.FormEntry>
         {
             if (this.part == null)
             {
-                return this.form.getDisplayName();
+                return this.form == null ? "-" : this.form.getDisplayName();
             }
             else if (this.part.getForm() == null)
             {

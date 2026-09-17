@@ -56,16 +56,6 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
     private static final int LABEL_ICON_SIZE = 16;
     private static final int LABEL_TEXT_ICON_GAP = 3;
 
-    /**
-     * What a section's summary is drawn with: a keyframe square, left solid. A real keyframe is this
-     * same square with the background punched back out of it, so a filled one reads as "there is a
-     * keyframe here, but not on this row".
-     */
-    private static final IKeyframeShapeRenderer SUMMARY_MARK = KeyframeShapeRenderers.SHAPES.get(KeyframeShape.SQUARE);
-
-    /** Half-size of a summary square, matching the footprint of the keyframes it stands for. */
-    private static final int SUMMARY_MARK_SIZE = 3;
-
     /** Horizontal cull slack: wider than any keyframe shape's radius, so edge keyframes draw whole. */
     private static final int CULL_MARGIN = 20;
 
@@ -92,15 +82,6 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
     private Scroll dopeSheet;
     private double trackHeight;
-
-    /**
-     * One slot per pixel column of the graph, stamped with the number of the summary currently being
-     * drawn. A section folds a whole skeleton under it, so its rows pile hundreds of keyframes onto
-     * the same handful of pixels; stamping columns draws each of them once and caps the work at the
-     * width of the view instead of the size of the film.
-     */
-    private int[] summaryColumns = new int[0];
-    private int summaryStamp;
 
     public static IKeyframeShapeRenderer renderShape(Keyframe frame, UIContext context, BufferBuilder builder, Matrix4f matrix, int x, int y, int offset, int c)
     {
@@ -186,7 +167,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         this.dopeSheet.scrollSize = y + TOP_MARGIN;
 
         /* The content just changed height, so where the view sits may no longer exist — folding the
-         * sections away while scrolled to the bottom used to leave the timeline parked below every
+         * rows away while scrolled to the bottom used to leave the timeline parked below every
          * row that was left. Every caller changes the height, so this belongs here and not in each
          * of them. */
         this.dopeSheet.clamp();
@@ -491,7 +472,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
     public boolean addKeyframe(int mouseX, int mouseY)
     {
         float tick = (float) this.keyframes.fromGraphX(mouseX);
-        UIKeyframeSheet sheet = this.getTrackSheet(mouseY);
+        UIKeyframeSheet sheet = this.getSheet(mouseY);
 
         if (!Window.isShiftPressed())
         {
@@ -608,19 +589,14 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
             if (context.mouseY >= y && context.mouseY < y + height)
             {
-                /* A click on a row's name means "key this here" — except on a section, which takes
-                 * no keyframes at all. There the whole row answers like its arrow does. */
-                if (this.hasChildren(sheet) && (sheet.header || this.isFoldToggleHit(context, sheet, y, labelWidth)))
+                if (this.hasChildren(sheet) && this.isFoldToggleHit(context, sheet, y, labelWidth))
                 {
                     this.toggleFold(sheet, Window.isShiftPressed());
 
                     return true;
                 }
 
-                if (!sheet.header)
-                {
-                    this.addKeyframeManually(sheet, this.keyframes.getTick(), null);
-                }
+                this.addKeyframeManually(sheet, this.keyframes.getTick(), null);
 
                 return true;
             }
@@ -629,24 +605,6 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         }
 
         return false;
-    }
-
-    /**
-     * Fold or unfold every body part section. Only the sections: a bone folds by hand, one branch at
-     * a time, which is how a skeleton is worked through — "unfold everything" there would bury the
-     * timeline in rows nobody asked for.
-     */
-    public void setAllFolded(boolean unfold)
-    {
-        for (UIKeyframeSheet sheet : this.sheets)
-        {
-            if (sheet.header && this.hasChildren(sheet))
-            {
-                this.setFolded(sheet, unfold, false);
-            }
-        }
-
-        this.updateScrollSize();
     }
 
     /**
@@ -902,7 +860,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         }
         else if (Window.isCtrlPressed())
         {
-            UIKeyframeSheet sheet = this.getTrackSheet(context.mouseY);
+            UIKeyframeSheet sheet = this.getSheet(context.mouseY);
 
             if (sheet != null)
             {
@@ -931,7 +889,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
             if (sheets.size() == 1)
             {
                 UIKeyframeSheet current = sheets.get(0);
-                UIKeyframeSheet hovered = this.getTrackSheet(context.mouseY);
+                UIKeyframeSheet hovered = this.getSheet(context.mouseY);
 
                 if (hovered == null || current.channel.getFactory() != hovered.channel.getFactory())
                 {
@@ -1083,10 +1041,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         int my = y + height / 2;
         int lx = area.x;
 
-        /* The row's own colour, and the standing light a header wears: it is a heading, and reading
-         * as "always about to be clicked" is exactly how it separates itself from the tracks it
-         * holds. The track has no pick of its own — keyframes are what gets picked here. */
-        RowStyle.row(context.batcher, lx, y, w, height, sheet.getRowColor(), sheet.header, hover, false);
+        RowStyle.row(context.batcher, lx, y, w, height, sheet.color, false, hover, false);
 
         /* A row that has children keeps its own icon and gets a fold arrow next to it. */
         Icon icon = sheet.getIcon();
@@ -1245,61 +1200,6 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         BufferRenderer.drawWithGlobalProgram(builder.end());
     }
 
-    /**
-     * A section names a body part and animates nothing of its own, so its row shows what folds under
-     * it: a filled square wherever anything inside has a keyframe. It is a picture and nothing more —
-     * the row still takes no keyframes ({@link IUIKeyframeGraph#getTrackSheet(int)}) and still hands its clicks
-     * to the fold arrow.
-     *
-     * <p>Drawn whether the section is folded or not. Making the summary appear only while folded
-     * would tie what the timeline shows to how the timeline happens to be arranged, and a section is
-     * the sum of its part either way.</p>
-     */
-    private void renderSummary(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area, UIKeyframeSheet sheet, int y)
-    {
-        if (!sheet.header || sheet.children.isEmpty())
-        {
-            return;
-        }
-
-        if (this.summaryColumns.length != area.w)
-        {
-            this.summaryColumns = new int[Math.max(area.w, 0)];
-            this.summaryStamp = 0;
-        }
-
-        this.summaryStamp += 1;
-
-        this.renderSummaryMarks(context, builder, matrix, area, sheet, y + this.getTrackHeight(sheet) / 2, sheet.getRowColor() | Colors.A100);
-    }
-
-    /** Walk everything folded under the section, at any depth, and mark each keyframe's column once. */
-    @SuppressWarnings("rawtypes")
-    private void renderSummaryMarks(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area, UIKeyframeSheet sheet, int my, int color)
-    {
-        for (UIKeyframeSheet child : sheet.children)
-        {
-            List keyframes = child.channel.getKeyframes();
-
-            for (int j = 0; j < keyframes.size(); j++)
-            {
-                int x = this.keyframes.toGraphX(((Keyframe) keyframes.get(j)).getTick());
-                int column = x - area.x;
-
-                if (column < 0 || column >= this.summaryColumns.length || this.summaryColumns[column] == this.summaryStamp)
-                {
-                    continue;
-                }
-
-                this.summaryColumns[column] = this.summaryStamp;
-
-                SUMMARY_MARK.renderKeyframe(context, builder, matrix, x, my, SUMMARY_MARK_SIZE, color);
-            }
-
-            this.renderSummaryMarks(context, builder, matrix, area, child, my, color);
-        }
-    }
-
     private void renderSheetKeyframeShapes(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area, UIKeyframeSheet sheet, int y)
     {
         if (!this.isVisible(sheet))
@@ -1383,10 +1283,6 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
             shapeResult.renderKeyframeBackground(context, builder, matrix, mx, my, 2, mc);
         }
-
-        /* Same as the keyframes above: the topmost pass exists so the out-of-range shading does not
-         * bury what the row is showing, and a summary mark is no different. */
-        this.renderSummary(context, builder, matrix, area, sheet, y);
     }
 
     private void renderSheetsTopmostKeyframes(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area, int y)

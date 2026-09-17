@@ -48,7 +48,7 @@ import java.util.function.Supplier;
 /**
  * Model Editor — a proper data panel (tabs, right icon bar, save) over models. Each tab is an open model;
  * the picker in the icon bar chooses one. The editor area is the preview, with a resizable pane of
- * settings beside it. Models are assets, so create/rename/delete are intentionally off.
+ * settings beside it. Models are assets, so rename/delete are intentionally off; a new one can be made.
  *
  * <p>The pane holds one of the panel's two editors ({@link Editor}), picked by the first buttons of
  * the action bar the way the film panel picks between its camera and replay editors: the config
@@ -115,6 +115,10 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
     /** Thumbnail in the preview's corner showing the model as it appears in UI slots (form pickers). */
     private UIElement miniPreview;
 
+    /** The model editor's unwrap pane, left of the preview: the texture and the picked cube on it. */
+    private UIElement uvPane;
+    public UISplitter uvSplitter;
+
     private UIIcon folderIcon;
     private UIIcon historyIcon;
     private UIIcon animationIcon;
@@ -133,6 +137,7 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
         super(dashboard);
 
         this.pane = new UIElement();
+        this.uvPane = new UIElement();
 
         /* What the tour of this panel points at; the pane's parts are built further down */
         TourAnchors.register("model_editor.preview", () -> this.renderer);
@@ -141,11 +146,21 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
 
         this.renderer = new UIModelEditorRenderer()
             .target(this::shownTarget)
-            .onBoneClick(this::selectBone);
+            .onPick(this::selectPick)
+            .outlines(() -> lastEditor == Editor.MODEL ? this.modelEditor.outlines() : List.of());
         this.renderer.form = this.form;
 
         /* Two panes: the preview and, to its right, the settings — each keeping at least 160px. */
-        this.splitter = new UISplitter("model_editor.split", false, 280).fromEnd();
+        /* The unwrap pane's grip measures from the left edge, and may not eat the preview: the two
+         * sidebars are kept apart by the room the middle needs. */
+        this.uvSplitter = new UISplitter("model_editor.uv_split", false, 200);
+        this.uvSplitter.measure(this.editor).range(160, () -> (float) (this.editor.area.w - this.splitter.getPixels() - 160)).onChange(() ->
+        {
+            this.layoutPanes();
+            this.resize();
+        });
+
+        this.splitter = new UISplitter("model_editor.split", false, 220).fromEnd();
         this.splitter.measure(this.editor).range(160, () -> (float) (this.editor.area.w - 160)).onChange(() ->
         {
             this.layoutPanes();
@@ -182,7 +197,9 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
         this.miniPreview.relative(this.renderer).x(1F, -6).y(6).wh(64, 64).anchor(1F, 0F);
         this.renderer.add(this.miniPreview);
 
-        this.editor.add(this.pane, this.renderer, this.splitter);
+        this.uvPane.add(this.modelEditor.uvPanel().full(this.uvPane));
+
+        this.editor.add(this.uvPane, this.pane, this.renderer, this.splitter, this.uvSplitter);
 
         this.showEditor(lastEditor);
         this.syncPreview();
@@ -285,8 +302,12 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
     public void syncPreview()
     {
         /* The model editor is about the model itself: the thumbnail of how it looks in a form
-         * picker has nothing to say there, so its corner of the preview stays clear. */
+         * picker has nothing to say there. */
         this.miniPreview.setVisible(lastEditor != Editor.MODEL);
+
+        /* The unwrap is about the model itself, so its pane comes and goes with the model editor. */
+        this.uvPane.setVisible(lastEditor == Editor.MODEL);
+        this.layoutPanes();
 
         ModelFormRenderer renderer = this.formRenderer();
 
@@ -294,6 +315,9 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
         {
             renderer.setRest(lastEditor == Editor.MODEL);
         }
+
+        /* The model editor picks cubes off the model; the config editor picks bones. */
+        this.renderer.setCubePicking(lastEditor == Editor.MODEL);
 
         if (lastEditor == Editor.CONFIG)
         {
@@ -328,12 +352,13 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
     }
 
     /**
-     * A bone clicked in the viewport goes to the open editor, which picks it where a bone is picked;
-     * where nothing picks it the click is left alone, so the orbit starts.
+     * A click on the model in the viewport goes to the open editor, which picks it where a bone is
+     * picked — the config editor the bone, the model editor the bone or the cube of it under the
+     * cursor; where nothing picks it the click is left alone, so the orbit starts.
      */
-    private boolean selectBone(String bone)
+    private boolean selectPick(String bone, int cube)
     {
-        return lastEditor == Editor.CONFIG ? this.configEditor.selectBone(bone) : this.modelEditor.selectBone(bone);
+        return lastEditor == Editor.CONFIG ? this.configEditor.selectBone(bone) : this.modelEditor.selectPick(bone, cube);
     }
 
     /** Whether the open model is one the model editor may edit — see {@link ModelInstance#isEditable()}. */
@@ -351,20 +376,25 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
     private void layoutPanes()
     {
         int splitWidth = this.splitter.getPixels();
+        int uvWidth = this.uvPane.isVisible() ? this.uvSplitter.getPixels() : 0;
 
         this.pane.relative(this.editor).x(1F, -splitWidth).y(0).w(splitWidth).h(1F);
         this.splitter.relative(this.editor).x(1F, -splitWidth).y(0.5F).w(6).h(40).anchor(0.5F, 0.5F);
 
+        this.uvPane.relative(this.editor).x(0).y(0).w(uvWidth).h(1F);
+        this.uvSplitter.relative(this.editor).x(uvWidth).y(0.5F).w(6).h(40).anchor(0.5F, 0.5F);
+        this.uvSplitter.setVisible(uvWidth > 0);
+
         if (!this.renderer.isFirstPerson())
         {
-            this.renderer.relative(this.editor).x(0).y(0).w(1F, -splitWidth).h(1F);
+            this.renderer.relative(this.editor).x(uvWidth).y(0).w(1F, -splitWidth - uvWidth).h(1F);
 
             return;
         }
 
         MinecraftClient mc = MinecraftClient.getInstance();
         float aspect = mc.getWindow().getFramebufferWidth() / (float) Math.max(1, mc.getWindow().getFramebufferHeight());
-        int roomW = Math.max(1, this.editor.area.w - splitWidth);
+        int roomW = Math.max(1, this.editor.area.w - splitWidth - uvWidth);
         int roomH = Math.max(1, this.editor.area.h);
         int w = roomW;
         int h = Math.round(w / aspect);
@@ -375,7 +405,7 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
             w = Math.round(h * aspect);
         }
 
-        this.renderer.relative(this.editor).x((roomW - w) / 2).y((roomH - h) / 2).w(w).h(h);
+        this.renderer.relative(this.editor).x(uvWidth + (roomW - w) / 2).y((roomH - h) / 2).w(w).h(h);
     }
 
     /**
@@ -458,6 +488,12 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
     }
 
     @Override
+    public IKey getCreateLabel()
+    {
+        return UIKeys.MODEL_EDITOR_LANDING_NEW;
+    }
+
+    @Override
     public void requestData(String id)
     {
         this.pendingId = id;
@@ -534,7 +570,7 @@ public class UIModelEditorPanel extends UIDataDashboardPanel<ModelConfig>
         }
     }
 
-    /** Models are assets, so the data manager is a pure picker — no create/duplicate/rename/remove. */
+    /** Models are assets, so the data manager only picks and makes new ones — no duplicate/rename/remove. */
     @Override
     protected UICRUDOverlayPanel createOverlayPanel()
     {

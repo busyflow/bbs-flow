@@ -3,7 +3,11 @@ package mchorse.bbs_mod.ui.model_editor;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.camera.CameraUtils;
 import mchorse.bbs_mod.cubic.ModelInstance;
+import mchorse.bbs_mod.cubic.data.model.Model;
+import mchorse.bbs_mod.cubic.data.model.ModelCube;
+import mchorse.bbs_mod.cubic.data.model.ModelGroup;
 import mchorse.bbs_mod.forms.FormTranslucentQueue;
 import mchorse.bbs_mod.forms.FormUtilsClient;
 import mchorse.bbs_mod.forms.forms.Form;
@@ -13,6 +17,8 @@ import mchorse.bbs_mod.forms.renderers.FormRenderingContext;
 import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
 import mchorse.bbs_mod.forms.renderers.utils.MatrixCache;
 import mchorse.bbs_mod.forms.renderers.utils.MatrixCacheEntry;
+import mchorse.bbs_mod.graphics.Draw;
+import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.forms.editors.utils.UIFormRenderer;
@@ -46,11 +52,13 @@ import net.minecraft.item.Items;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.RotationAxis;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
 import org.joml.Vector3f;
+import org.lwjgl.opengl.GL11;
 
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -60,7 +68,11 @@ import java.util.function.Supplier;
  * <ul>
  * <li>A pick stencil over the model — so a bone lights up under the cursor and under the
  * cursor of a row that names it ({@link #highlight}), the bone pickers' eyedropper works
- * ({@link UIBonePicker.Viewport}), and a click on a bone reports it to the panel.</li>
+ * ({@link UIBonePicker.Viewport}), and a click on a bone reports it to the panel. With cube
+ * picking on ({@link #setCubePicking}), the click also says which cube of the bone it landed
+ * on — the stencil names the bone, a ray through its cubes names the cube; with shift held it
+ * names the bone alone — and the cubes the panel has picked are outlined ({@link #outlines}),
+ * what a click would pick faintly.</li>
  * <li>The transform gizmo on the picked attachment slot or pose bone ({@link #target}): drawn
  * in the frame the renderer applies the transform in, so dragging a handle moves the item
  * (or the bone) exactly as the numbers would.</li>
@@ -76,6 +88,26 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
     /** Vanilla's near plane for the hand ({@code GameRenderer#getBasicProjectionMatrix}). */
     private static final float FIRST_PERSON_NEAR = 0.05F;
 
+    /** The cube under the cursor — in the viewport, or its row in the tree: white, and faint next to the pick's own outlines. */
+    static final int HOVER_COLOR = Colors.setA(Colors.WHITE, 0.6F);
+
+    /**
+     * Half the thickness of a cube's outline bars, in blocks: well under what {@link Draw#renderBox}
+     * draws by default, whose bars outweigh a cube of a few pixels.
+     */
+    private static final float OUTLINE_THICKNESS = 1 / 256F;
+
+    /** A click on the model: the bone, and the cube of it under the cursor (-1 without cube picking); whether the click was taken. */
+    @FunctionalInterface
+    public interface Pick
+    {
+        boolean pick(String bone, int cube);
+    }
+
+    /** A cube to outline in the viewport, and in what colour. */
+    public record Outline(ModelNode node, int color)
+    {}
+
     private final StencilFormFramebuffer stencil = new StencilFormFramebuffer();
     private final StencilMap stencilMap = new StencilMap();
     private final GizmoInteraction gizmo = new GizmoInteraction(this);
@@ -87,7 +119,19 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
     private float transition;
 
     private Supplier<ModelSlotTarget> target = () -> null;
-    private Predicate<String> onBoneClick;
+    private Pick onPick;
+
+    /** What the panel wants outlined, asked every frame so its pick stays the truth. */
+    private Supplier<List<Outline>> outlines = List::of;
+
+    /** Whether a click names the cube it landed on, and the cube under the cursor is outlined. */
+    private boolean cubePicking;
+
+    /** What a click would pick this frame, when cube picking is on — a cube, or its group with shift held; null off the model. */
+    private ModelNode hovered;
+
+    /** The stencil id the model's first bone was drawn with; a bone's id is that plus its index. */
+    private int stencilBase;
 
     /** The armed eyedropper; null when idle. */
     private Consumer<String> bonePicking;
@@ -134,12 +178,27 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
         return this;
     }
 
-    /** A bone clicked in the viewport (outside of an eyedropper pick); answers whether it took the click. */
-    public UIModelEditorRenderer onBoneClick(Predicate<String> callback)
+    /** A bone clicked in the viewport (outside of an eyedropper pick), and the cube of it when those are picked; answers whether it took the click. */
+    public UIModelEditorRenderer onPick(Pick callback)
     {
-        this.onBoneClick = callback;
+        this.onPick = callback;
 
         return this;
+    }
+
+    /** The cubes to outline, asked every frame. */
+    public UIModelEditorRenderer outlines(Supplier<List<Outline>> outlines)
+    {
+        this.outlines = outlines;
+
+        return this;
+    }
+
+    /** Whether a click names the cube it landed on — the model editor's way; the config editor picks bones. */
+    public void setCubePicking(boolean cubePicking)
+    {
+        this.cubePicking = cubePicking;
+        this.hovered = null;
     }
 
     /** Light {@code bone} up this frame, the way it lights up under the cursor. */
@@ -235,13 +294,210 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
         return Gizmo.INSTANCE.start(stencilIndex, context.mouseX, context.mouseY, target.editor(), this.buildGizmoDrag(target));
     }
 
+    /**
+     * A click on the model inside the gizmo's sphere, which takes the press first and hands it over
+     * on release if it didn't turn into a drag. It picks what a click anywhere else on the model
+     * picks ({@link #pickAt}) — with the bone alone, a ctrl-click on a cube near the gizmo would
+     * add its whole group to the pick instead.
+     */
     @Override
     public void pickGizmoForm(UIContext context, Form form, String bone)
     {
-        if (this.onBoneClick != null && form == this.form && bone != null && !bone.isEmpty())
+        if (this.onPick != null && form == this.form && bone != null && !bone.isEmpty())
         {
-            this.onBoneClick.test(bone);
+            this.pickAt(context, bone);
         }
+    }
+
+    /**
+     * Hand a click on {@code bone} to the panel's tree — with cube picking on, the cube of the bone
+     * under the cursor, on the geometry itself, and with shift held the group whose geometry it is.
+     * Whether the panel took it.
+     */
+    private boolean pickAt(UIContext context, String bone)
+    {
+        int cube = -1;
+        Model model = this.cubePicking ? this.cubicModel() : null;
+        ModelGroup group = model == null ? null : this.hoveredGroup(model);
+
+        /* Shift picks the group itself rather than the cube of it under the cursor. */
+        if (group != null)
+        {
+            bone = group.id;
+            cube = Window.isShiftPressed() ? -1 : this.pickCube(context, group);
+        }
+
+        return this.onPick.pick(bone, cube);
+    }
+
+    /* Cubes: which one the cursor is on, and outlining the picked ones */
+
+    /** The cubic model being drawn, or null for none (or one that isn't cubic). */
+    private Model cubicModel()
+    {
+        FormRenderer renderer = FormUtilsClient.getRenderer(this.form);
+
+        if (renderer instanceof ModelFormRenderer model && model.getModel() != null && model.getModel().model instanceof Model cubic)
+        {
+            return cubic;
+        }
+
+        return null;
+    }
+
+    /**
+     * The group whose geometry the stencil finds under the cursor. By its stencil id rather than by
+     * the name the pick carries: the config can hand a bone's picks to another bone, and that is
+     * right for picking bones, but a cube is looked for on the geometry the cursor is actually on.
+     */
+    private ModelGroup hoveredGroup(Model model)
+    {
+        Pair<Form, String> pair = this.stencil.hasPicked() ? this.stencil.getPicked() : null;
+
+        if (pair == null || pair.a != this.form)
+        {
+            return null;
+        }
+
+        int index = this.stencil.getIndex() - this.stencilBase;
+        List<ModelGroup> groups = model.getOrderedGroups();
+
+        return index >= 0 && index < groups.size() ? groups.get(index) : null;
+    }
+
+    /**
+     * The cube of {@code group} the cursor is on, or -1 for none: the ray through the cursor, cast
+     * in the frame the bones were captured in, against the group's cubes as they stand there.
+     */
+    private int pickCube(UIContext context, ModelGroup group)
+    {
+        MatrixCacheEntry entry = this.boneEntry(group.id);
+
+        if (entry == null)
+        {
+            return -1;
+        }
+
+        /* The ray, from the camera through the pixel, then lifted out of the scene into the form's
+         * own frame — the one the bones were captured in (see UIModelRenderer#toSceneMatrix). */
+        Vector3f offset = new Vector3f();
+        Vector3f direction = CameraUtils.getMouseRay(this.camera.projection, this.camera.view, context.mouseX, context.mouseY, this.area.x, this.area.y, this.area.w, this.area.h, offset);
+        Vector3d position = new Vector3d(this.camera.position).add(offset);
+        Matrix4f toForm = this.toSceneMatrix(new Matrix4f()).invert();
+        Vector3f origin = toForm.transformPosition(new Vector3f((float) position.x, (float) position.y, (float) position.z));
+
+        toForm.transformDirection(direction);
+
+        return ModelCubeFrames.pick(entry, group, origin, direction);
+    }
+
+    /**
+     * What a click would pick right now, as an address: the cube under the cursor — or, with shift
+     * held, the group whose geometry it is, the way a click with shift picks it. Null off the model,
+     * or with cube picking off.
+     */
+    private ModelNode hoveredNode(UIContext context)
+    {
+        Model model = this.cubePicking && this.area.isInside(context) ? this.cubicModel() : null;
+        ModelGroup group = model == null ? null : this.hoveredGroup(model);
+
+        if (group == null)
+        {
+            return null;
+        }
+
+        if (Window.isShiftPressed())
+        {
+            return ModelNode.group(group.id);
+        }
+
+        int cube = this.pickCube(context, group);
+
+        return cube < 0 ? null : ModelNode.cube(group.id, cube);
+    }
+
+    /**
+     * Selection and hover outlines use the model's depth so only visible edges are drawn.
+     * Keep depth writes off so the outlines do not occlude each other or later overlays.
+     */
+    private void renderOutlines(UIContext context)
+    {
+        List<Outline> outlines = this.outlines.get();
+
+        if (outlines.isEmpty() && this.hovered == null)
+        {
+            return;
+        }
+
+        Model model = this.cubicModel();
+
+        if (model == null || this.bones == null)
+        {
+            return;
+        }
+
+        MatrixStack stack = context.render.batcher.getContext().getMatrices();
+
+        RenderSystem.enableDepthTest();
+        RenderSystem.depthFunc(GL11.GL_LEQUAL);
+        RenderSystem.depthMask(false);
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+
+        for (Outline outline : outlines)
+        {
+            this.renderOutline(stack, model, outline.node(), outline.color());
+        }
+
+        if (this.hovered != null && this.hovered.isGroup())
+        {
+            this.renderSubtreeOutline(stack, model, model.getGroup(this.hovered.group()), HOVER_COLOR);
+        }
+        else if (this.hovered != null)
+        {
+            this.renderOutline(stack, model, this.hovered, HOVER_COLOR);
+        }
+
+        RenderSystem.depthMask(true);
+    }
+
+    /** A group read as the shape it carries: every cube of it and of every group under it. */
+    private void renderSubtreeOutline(MatrixStack stack, Model model, ModelGroup group, int color)
+    {
+        if (group == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < group.cubes.size(); i++)
+        {
+            this.renderOutline(stack, model, ModelNode.cube(group.id, i), color);
+        }
+
+        for (ModelGroup child : group.children)
+        {
+            this.renderSubtreeOutline(stack, model, child, color);
+        }
+    }
+
+    private void renderOutline(MatrixStack stack, Model model, ModelNode node, int color)
+    {
+        ModelGroup group = model.getGroup(node.group());
+        MatrixCacheEntry entry = group == null ? null : this.boneEntry(group.id);
+
+        if (entry == null || node.cube() < 0 || node.cube() >= group.cubes.size())
+        {
+            return;
+        }
+
+        ModelCube cube = group.cubes.get(node.cube());
+        Vector3f min = ModelCubeFrames.boxMin(cube, new Vector3f());
+        Vector3f max = ModelCubeFrames.boxMax(cube, new Vector3f());
+
+        stack.push();
+        MatrixStackUtils.multiply(stack, ModelCubeFrames.cubeFrame(ModelCubeFrames.groupFrame(entry, group), cube));
+        Draw.renderBox(stack, min.x, min.y, min.z, max.x - min.x, max.y - min.y, max.z - min.z, Colors.getR(color), Colors.getG(color), Colors.getB(color), Colors.getA(color), OUTLINE_THICKNESS);
+        stack.pop();
     }
 
     /**
@@ -390,7 +646,8 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
      * Where the gizmo sits for {@code space}: on the slot's own frame for LOCAL, at the slot's
      * position on the parent frame otherwise — the form editor's placement convention. A pose
      * bone is placed the way the form editor places a bone: its full matrix for LOCAL, the frame
-     * before its own rotation for every other space.
+     * before its own rotation for every other space; a cube of a group stands on its own pivot, in
+     * its own turn for LOCAL and in its group's for the rest ({@link ModelCubeFrames}).
      *
      * @param fresh re-evaluate the bones instead of reading the drawn frame's — for a drag's
      *              samplers, which need to see the pose they just nudged
@@ -414,6 +671,27 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
             }
 
             return new Matrix4f(space.placesOnOwnFrame() ? entry.matrix() : entry.origin());
+        }
+
+        if (target.kind() == ModelSlotKind.CUBE)
+        {
+            /* The same stand-in dance as a group's rest, one level down: the cube's numbers are
+             * pushed into the model first, then the bone is read back and the cube placed in it. */
+            if (fresh && target.apply() != null)
+            {
+                target.apply().run();
+            }
+
+            Model model = this.cubicModel();
+            ModelGroup group = model == null ? null : model.getGroup(target.bone());
+            MatrixCacheEntry entry = fresh ? this.sampleBone(target.bone()) : this.boneEntry(target.bone());
+
+            if (entry == null || group == null || target.cube() < 0 || target.cube() >= group.cubes.size())
+            {
+                return new Matrix4f();
+            }
+
+            return ModelCubeFrames.cubeGizmoFrame(ModelCubeFrames.groupFrame(entry, group), group.cubes.get(target.cube()), space.placesOnOwnFrame());
         }
 
         Transform transform = target.editor().getTransform();
@@ -599,6 +877,11 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
             this.captureBones(context);
         }
 
+        /* The cube under the cursor is found on the bones just captured and the bone the last
+         * frame's stencil found — a frame behind at most, which the eye doesn't see. */
+        this.hovered = this.hoveredNode(context);
+        this.renderOutlines(context);
+
         /* Keep the gizmo the same on-screen size as in the film preview; set before both the
          * visual and the stencil pass so the drawn handles and their pick hitbox match. */
         Gizmo.INSTANCE.setViewportScale(context.menu.height / (float) this.area.h);
@@ -619,6 +902,7 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
             GlStateManager._disableScissorTest();
 
             this.stencilMap.setup();
+            this.stencilBase = this.stencilMap.objectIndex;
             this.stencil.apply();
 
             /* The first-person hand has no stencil pass; only the gizmo's handles pick there. */
@@ -804,13 +1088,14 @@ public class UIModelEditorRenderer extends UIFormRenderer implements GizmoViewpo
             return true;
         }
 
-        /* A left click on a bone picks it in the panel's tree, the way the form editor picks a bone;
-         * when the panel takes it, the click is spent, so it doesn't start an orbit as well. */
-        if (context.mouseButton == 0 && this.stencil.hasPicked() && this.onBoneClick != null)
+        /* A left click on a bone picks it in the panel's tree, the way the form editor picks a bone —
+         * with cube picking on, the cube of the bone under the cursor, on the geometry itself; when
+         * the panel takes it, the click is spent, so it doesn't start an orbit as well. */
+        if (context.mouseButton == 0 && this.stencil.hasPicked() && this.onPick != null)
         {
             Pair<Form, String> pair = this.stencil.getPicked();
 
-            if (pair != null && pair.a == this.form && !pair.b.isEmpty() && this.onBoneClick.test(pair.b))
+            if (pair != null && pair.a == this.form && !pair.b.isEmpty() && this.pickAt(context, pair.b))
             {
                 return true;
             }

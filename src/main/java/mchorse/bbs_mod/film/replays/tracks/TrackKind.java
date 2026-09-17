@@ -17,12 +17,6 @@ public enum TrackKind
      */
     PROPERTY("property"),
 
-    /**
-     * A body part: not a value at all, but the row its form's tracks fold under, so a part's
-     * name is written once instead of prefixing every track it owns.
-     */
-    BODY_PART("body_part"),
-
     /** One bone of a model form's pose, the per-limb track that folds under the form's pose track. */
     BONE("bone"),
 
@@ -86,7 +80,7 @@ public enum TrackKind
      */
     public boolean isSolver()
     {
-        return this != PROPERTY && this != BODY_PART && this != BONE && this != BONE_CONSTRAINT
+        return this != PROPERTY && this != BONE && this != BONE_CONSTRAINT
             && this != MATERIAL_TEXTURE && this != MATERIAL_PROP;
     }
 

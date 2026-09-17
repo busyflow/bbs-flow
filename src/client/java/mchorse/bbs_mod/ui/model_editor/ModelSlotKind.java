@@ -18,7 +18,10 @@ public enum ModelSlotKind
     POSE(false, false),
 
     /** A group's own rest in the model editor — the pivot it turns about and the rotation it rests at. */
-    ANCHOR(false, false);
+    ANCHOR(false, false),
+
+    /** One cube of a group in the model editor — it stands on the cube's own pivot, in the cube's own turn. */
+    CUBE(false, false);
 
     public final boolean firstPerson;
     public final boolean offHand;

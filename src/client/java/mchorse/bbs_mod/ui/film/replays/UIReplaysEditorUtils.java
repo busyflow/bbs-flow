@@ -177,36 +177,15 @@ public class UIReplaysEditorUtils
         }
     }
 
-    /**
-     * Make the tree of rows agree with the list of them after a tab or filter took rows out:
-     * a departed row is still among its parent's children and still points back at it, so the
-     * timeline would fold rows that are not there and count keyframes it is not showing.
-     *
-     * <p>Three consequences settle together (each can cause the next, hence the loop): the parent
-     * forgets it; a header left empty leaves too, one level at a time; and a row whose parent left
-     * is CUT LOOSE, not dropped — pointing at an absent parent would fold it away with no arrow
-     * left to unfold it.
-     */
+    /** Remove links to filtered rows while keeping their surviving children accessible. */
     public static void pruneTree(List<UIKeyframeSheet> sheets)
     {
-        boolean removed = true;
-
-        while (removed)
-        {
-            Set<UIKeyframeSheet> present = new HashSet<>(sheets);
-
-            for (UIKeyframeSheet sheet : sheets)
-            {
-                sheet.children.removeIf((child) -> !present.contains(child));
-            }
-
-            removed = sheets.removeIf((sheet) -> sheet.header && sheet.children.isEmpty());
-        }
-
         Set<UIKeyframeSheet> present = new HashSet<>(sheets);
 
         for (UIKeyframeSheet sheet : sheets)
         {
+            sheet.children.removeIf(child -> !present.contains(child));
+
             if (sheet.parent != null && !present.contains(sheet.parent))
             {
                 sheet.parent = null;
@@ -232,7 +211,7 @@ public class UIReplaysEditorUtils
 
         for (UIKeyframeSheet sheet : editor.getGraph().getSheets())
         {
-            if (sheet.channel.getFactory() != keyframe.getFactory() || sheet.header)
+            if (sheet.channel.getFactory() != keyframe.getFactory())
             {
                 continue;
             }

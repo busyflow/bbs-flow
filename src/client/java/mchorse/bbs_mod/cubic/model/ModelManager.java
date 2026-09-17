@@ -5,6 +5,8 @@ import mchorse.bbs_mod.cubic.CubicLoader;
 import mchorse.bbs_mod.cubic.ModelInstance;
 import mchorse.bbs_mod.cubic.MolangHelper;
 import mchorse.bbs_mod.cubic.data.model.Model;
+import mchorse.bbs_mod.cubic.data.model.ModelCube;
+import mchorse.bbs_mod.cubic.data.model.ModelGroup;
 import mchorse.bbs_mod.cubic.model.config.ModelConfig;
 import mchorse.bbs_mod.cubic.physics.ModelPhysicsRuntime;
 import mchorse.bbs_mod.cubic.model.loaders.BOBJModelLoader;
@@ -20,11 +22,15 @@ import mchorse.bbs_mod.math.molang.MolangParser;
 import mchorse.bbs_mod.resources.AssetProvider;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.utils.IOUtils;
+import mchorse.bbs_mod.utils.PNGEncoder;
 import mchorse.bbs_mod.utils.StringUtils;
+import mchorse.bbs_mod.utils.colors.Colors;
+import mchorse.bbs_mod.utils.resources.Pixels;
 import mchorse.bbs_mod.utils.pose.PoseManager;
 import mchorse.bbs_mod.utils.pose.ShapeKeysManager;
 import mchorse.bbs_mod.utils.watchdog.IWatchDogListener;
 import mchorse.bbs_mod.utils.watchdog.WatchDogEvent;
+import org.joml.Vector2f;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -43,6 +49,12 @@ import java.util.function.Supplier;
 public class ModelManager implements IWatchDogListener
 {
     public static final String MODELS_PREFIX = "models/";
+
+    /** A new model's texture sheet, a side: the box unwrap of its cube fills the top half exactly. */
+    private static final int NEW_MODEL_TEXTURE = 64;
+
+    /** A new model's cube, a side in pixels: one block. */
+    private static final int NEW_MODEL_CUBE = 16;
 
     /**
      * Model loaders an addon added.
@@ -223,6 +235,69 @@ public class ModelManager implements IWatchDogListener
         file.getParentFile().mkdirs();
 
         return DataToString.writeSilently(file, data, true);
+    }
+
+    /**
+     * Make a new model from scratch in the user assets folder ({@code config/bbs/assets/models/<id>/}):
+     * a {@code model.bbs.json} with one group holding one block-sized cube on the floor, and a white
+     * {@code model.png} it is unwrapped onto. The cube is not decoration — a model with no groups
+     * doesn't load at all, and one with an empty group opens as an empty viewport.
+     *
+     * <p>Refuses a folder that is already there, model or not: writing into it would turn somebody's
+     * textures into a model. Returns whether the model was written.</p>
+     */
+    public boolean createModel(String id)
+    {
+        Link link = Link.assets(MODELS_PREFIX + id);
+        File folder = this.provider.getFile(link);
+
+        if (folder == null || folder.exists() || !folder.mkdirs())
+        {
+            return false;
+        }
+
+        Model model = new Model(this.parser);
+        ModelGroup group = new ModelGroup("group");
+        ModelCube cube = new ModelCube();
+        MapType data = new MapType(false);
+
+        model.textureWidth = NEW_MODEL_TEXTURE;
+        model.textureHeight = NEW_MODEL_TEXTURE;
+
+        cube.size.set(NEW_MODEL_CUBE, NEW_MODEL_CUBE, NEW_MODEL_CUBE);
+        cube.origin.set(-NEW_MODEL_CUBE / 2F, 0F, -NEW_MODEL_CUBE / 2F);
+        cube.setupBoxUV(new Vector2f(0F, 0F), false);
+        group.cubes.add(cube);
+        model.topGroups.add(group);
+        data.put("model", model.toData());
+
+        Pixels pixels = Pixels.fromSize(NEW_MODEL_TEXTURE, NEW_MODEL_TEXTURE);
+
+        try
+        {
+            pixels.drawRect(0, 0, NEW_MODEL_TEXTURE, NEW_MODEL_TEXTURE, Colors.WHITE);
+            PNGEncoder.writeToFile(pixels, new File(folder, "model.png"));
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+
+            return false;
+        }
+        finally
+        {
+            pixels.delete();
+        }
+
+        if (!DataToString.writeSilently(new File(folder, "model.bbs.json"), data, true))
+        {
+            return false;
+        }
+
+        /* A model once asked for under this name and not found is never looked for again. */
+        this.forget(id);
+
+        return true;
     }
 
     /**

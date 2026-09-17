@@ -116,7 +116,7 @@ public class UICurveClip extends UIClip<CurveClip>
                 });
             }).label(UIKeys.CAMERA_PANELS_CURVE_ADD);
 
-            UIKeyframeSheet sheet = this.keyframes.view.getDopeSheet().getTrackSheet(this.getContext().mouseY);
+            UIKeyframeSheet sheet = this.keyframes.view.getDopeSheet().getSheet(this.getContext().mouseY);
 
             menu.icon(MenuVerb.REMOVE, () ->
             {

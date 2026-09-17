@@ -35,7 +35,12 @@ public abstract class UICRUDOverlayPanel extends UIOverlayPanel
         this.callback = callback;
 
         this.add = new UIIcon(Icons.ADD, (b) -> this.addNewData(this.getContext()));
-        this.add.context((menu) -> menu.action(Icons.FOLDER, UIKeys.PANELS_MODALS_ADD_FOLDER_TITLE, this::addNewFolder));
+
+        if (this.showActionButtons())
+        {
+            this.add.context((menu) -> menu.action(Icons.FOLDER, UIKeys.PANELS_MODALS_ADD_FOLDER_TITLE, this::addNewFolder));
+        }
+
         this.dupe = new UIIcon(Icons.DUPE, this::dupeData);
         this.rename = new UIIcon(Icons.EDIT, this::renameData);
         this.remove = new UIIcon(Icons.REMOVE, this::removeData);
@@ -52,20 +57,34 @@ public abstract class UICRUDOverlayPanel extends UIOverlayPanel
         this.names.label(UIKeys.GENERAL_SEARCH);
         this.content.add(this.names);
 
+        if (this.canCreate())
+        {
+            this.icons.add(this.add);
+        }
+
         if (this.showActionButtons())
         {
-            this.icons.add(this.add, this.dupe, this.rename, this.remove);
+            this.icons.add(this.dupe, this.rename, this.remove);
         }
     }
 
     /**
-     * Whether create/duplicate/rename/remove are offered. Asset-backed panels (e.g. the model editor)
-     * turn this off, leaving the overlay as a pure picker; the landing screen asks the same question
-     * before offering "new". The buttons still exist as fields, they're just never mounted. Default true.
+     * Whether duplicate/rename/remove and folders are offered. Asset-backed panels (e.g. the model
+     * editor) turn this off; the buttons still exist as fields, they're just never mounted. Default true.
      */
     public boolean showActionButtons()
     {
         return true;
+    }
+
+    /**
+     * Whether a new document can be made: the add button, and the landing screen's "new" entry.
+     * Apart from {@link #showActionButtons()} because a panel may make new documents of a kind it
+     * can't otherwise manage — the model editor makes models, but doesn't rename or delete them.
+     */
+    public boolean canCreate()
+    {
+        return this.showActionButtons();
     }
 
     /**

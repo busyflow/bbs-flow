@@ -1,6 +1,7 @@
 package mchorse.bbs_mod.ui.framework.elements.buttons;
 
 import mchorse.bbs_mod.ui.framework.UIContext;
+import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.utils.Direction;
 import mchorse.bbs_mod.utils.colors.Colors;
@@ -30,7 +31,7 @@ public class UIIcon extends UIClickable<UIIcon>
         super(callback);
 
         this.icon = icon;
-        this.wh(20, 20);
+        this.wh(UIConstants.ICON_SIZE, UIConstants.ICON_SIZE);
     }
 
     public UIIcon(Supplier<Icon> iconSupplier, Consumer<UIIcon> callback)
@@ -38,7 +39,7 @@ public class UIIcon extends UIClickable<UIIcon>
         super(callback);
 
         this.iconSupplier = iconSupplier;
-        this.wh(20, 20);
+        this.wh(UIConstants.ICON_SIZE, UIConstants.ICON_SIZE);
     }
 
     public Icon getIcon()

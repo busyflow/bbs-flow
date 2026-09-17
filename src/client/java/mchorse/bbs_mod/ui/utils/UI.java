@@ -147,13 +147,18 @@ public class UI
     /** The verbs of a list — add, duplicate, remove — as a row of compact icons over it (the replay list's idiom). */
     public static UIElement strip(UIIcon... icons)
     {
+        return strip(UIConstants.CONTROL_HEIGHT, icons);
+    }
+
+    public static UIElement strip(int size, UIIcon... icons)
+    {
         UIElement strip = new UIElement();
 
-        strip.row(0).height(UIConstants.CONTROL_HEIGHT);
+        strip.row(0).height(size);
 
         for (UIIcon icon : icons)
         {
-            icon.wh(UIConstants.CONTROL_HEIGHT, UIConstants.CONTROL_HEIGHT);
+            icon.wh(size, size);
             strip.add(icon);
         }
 
