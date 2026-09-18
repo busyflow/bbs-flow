@@ -38,6 +38,7 @@ import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.context.MenuVerb;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.presets.UICopyPasteController;
+import mchorse.bbs_mod.ui.utils.renderers.TimelineRulerRenderer;
 import mchorse.bbs_mod.utils.CollectionUtils;
 import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.Pair;
@@ -54,6 +55,8 @@ public class UIKeyframes extends UITimelineCanvas
     /* Editing states */
 
     private int dragging = -1;
+    private boolean scrubbing;
+    private boolean controlFirst;
     private Pair<Keyframe, KeyframeType> draggingData;
     private boolean scaling;
     private float scalingAnchor;
@@ -67,6 +70,7 @@ public class UIKeyframes extends UITimelineCanvas
     private Object originalV;
 
     private Runnable changeCallback;
+    private final UIKeyframeLoops loops = new UIKeyframeLoops(this);
 
     /* Fields */
 
@@ -117,7 +121,7 @@ public class UIKeyframes extends UITimelineCanvas
             .supplier(this::serializeKeyframes)
             .consumer((data, mouseX, mouseY) ->
             {
-                double offset = Math.round(this.fromGraphX(mouseX));
+                double offset = BBSSettings.editorSnapToTicks.get() ? Math.round(this.fromGraphX(mouseX)) : this.fromGraphX(mouseX);
 
                 this.pasteKeyframes(parseKeyframes(data), (float) offset, mouseY);
             })
@@ -133,6 +137,7 @@ public class UIKeyframes extends UITimelineCanvas
             boolean hasSelected = this.currentGraph.getSelected() != null;
 
             this.copyPasteController.install(menu, context, mouseX, mouseY);
+            this.loops.menu(menu, context);
 
             menu.icon(MenuVerb.REMOVE, () -> this.currentGraph.removeSelected()).label(UIKeys.KEYFRAMES_CONTEXT_REMOVE).enabled(hasSelected);
 
@@ -190,7 +195,7 @@ public class UIKeyframes extends UITimelineCanvas
 
                         for (Keyframe kf : selected)
                         {
-                            kf.setTick(Math.round(kf.getTick()), false);
+                            kf.setTick(sheet.channel.constrainKeyframeTick(kf, Math.round(kf.getTick())), false);
                         }
 
                         sheet.channel.postNotify();
@@ -558,7 +563,7 @@ public class UIKeyframes extends UITimelineCanvas
                             Keyframe kf = current.channel.get(index);
                             
                             kf.copy(keyframe);
-                            kf.setTick(tick);
+                            kf.setTick(current.channel.getSourceTick(tick));
                             current.selection.add(index);
                         }
 
@@ -623,7 +628,7 @@ public class UIKeyframes extends UITimelineCanvas
 
             for (Keyframe keyframe : sheet.selection.getSelected())
             {
-                keyframe.setTick(pivot - keyframe.getTick(), false);
+                keyframe.setTick(sheet.channel.constrainKeyframeTick(keyframe, pivot - keyframe.getTick()), false);
             }
 
             sheet.channel.postNotify();
@@ -669,7 +674,7 @@ public class UIKeyframes extends UITimelineCanvas
                 int index = i + min;
                 Keyframe kf = sheet.channel.get(index);
 
-                kf.setTick(minKf.getTick() + i * distance);
+                kf.setTick(sheet.channel.constrainKeyframeTick(kf, minKf.getTick() + i * distance));
             }
 
             sheet.channel.postNotify();
@@ -829,11 +834,16 @@ public class UIKeyframes extends UITimelineCanvas
      */
     protected void pasteKeyframes(Map<String, PastedKeyframes> keyframes, float offset, int mouseY)
     {
+        this.pasteKeyframes(keyframes, offset, mouseY, false);
+    }
+
+    private void pasteKeyframes(Map<String, PastedKeyframes> keyframes, float offset, int mouseY, boolean keepTracks)
+    {
         List<UIKeyframeSheet> sheets = this.currentGraph.getSheets();
 
         this.currentGraph.clearSelection();
 
-        if (keyframes.size() == 1)
+        if (keyframes.size() == 1 && !keepTracks)
         {
             UIKeyframeSheet current = this.currentGraph.getSheet(mouseY);
 
@@ -898,7 +908,7 @@ public class UIKeyframes extends UITimelineCanvas
 
         for (Keyframe keyframe : pastedKeyframes.keyframes)
         {
-            keyframe.setTick(keyframe.getTick() - firstX + offset);
+            keyframe.setTick(sheet.channel.getSourceTick(keyframe.getTick() - firstX + offset));
 
             int index = sheet.channel.insert(keyframe.getTick(), keyframe.getValue());
             Keyframe inserted = sheet.channel.get(index);
@@ -944,6 +954,12 @@ public class UIKeyframes extends UITimelineCanvas
         return (float) this.fromGraphX(this.getContext().mouseX);
     }
 
+    /** Exact visible playhead time, including fractions entered with Shift while snapping. */
+    public float getPlayheadTick(UIContext context)
+    {
+        return this.getTick();
+    }
+
     /**
      * The tick auto-keyframing writes at, or {@code null} when an edit should land on the
      * keyframes it was made on.
@@ -951,9 +967,9 @@ public class UIKeyframes extends UITimelineCanvas
      * <p>Auto-keyframing turns every value edit into a key at the playhead instead of a rewrite of
      * whatever keyframe happens to be selected, so posing at a tick where the track has no keyframe
      * yet makes one rather than dragging the past along with it. A timeline without a playhead has
-     * no tick to key at, so it never auto-keyframes &mdash; only the film editor's timelines do.
+     * no tick to key at, so it never auto-keyframes. Film and animation-state timelines supply it.
      */
-    public Integer getAutoKeyframeTick()
+    public Float getAutoKeyframeTick()
     {
         return null;
     }
@@ -966,13 +982,14 @@ public class UIKeyframes extends UITimelineCanvas
     /** Whether the user is in the middle of any mouse interaction (dragging, selecting, navigating, scaling or stacking). */
     public boolean isInteracting()
     {
-        return this.dragging >= 0 || this.marquee.isPressed() || this.navigating || this.scaling || this.stacking;
+        return this.scrubbing || this.loops.isDragging() || this.dragging >= 0 || this.marquee.isPressed() || this.navigating || this.scaling || this.stacking;
     }
 
     /* Sheet management */
 
     public void removeAllSheets()
     {
+        this.loops.reset();
         this.dopeSheet.removeAllSheets();
     }
 
@@ -1032,6 +1049,11 @@ public class UIKeyframes extends UITimelineCanvas
             }
 
             c = Math.max(c, keyframes.size());
+            if (!property.channel.getLoops().isEmpty())
+            {
+                max = Math.max(max, (int) Math.ceil(property.channel.getLength()));
+                c = Math.max(c, 2);
+            }
         }
 
         if (c <= 1)
@@ -1102,6 +1124,38 @@ public class UIKeyframes extends UITimelineCanvas
     @Override
     protected boolean subMouseClicked(UIContext context)
     {
+        this.updateModifierOrder();
+
+        if (this.area.isInside(context))
+        {
+            this.xAxis.stopZoom();
+            this.currentGraph.stopZoom();
+        }
+        if (this.hasCursor() && !this.scaling && !this.stacking && context.mouseButton == 0
+            && !Window.isAltPressed() && !Window.isCtrlPressed()
+            && this.graphArea.isInside(context)
+            && context.mouseY < TimelineRulerRenderer.getRulerBottom(this.area))
+        {
+            this.scrubbing = true;
+            this.moveNoKeyframes(context);
+
+            return true;
+        }
+        if (!this.scaling && !this.stacking && context.mouseButton == 0
+            && this.graphArea.isInside(context) && (this.isDuplicatingAtPlayhead() || this.isCreatingAtPlayhead()))
+        {
+            if (this.isCreatingAtPlayhead())
+            {
+                this.removeOrCreateKeyframe(context);
+            }
+            else
+            {
+                this.duplicateOrSelectColumn(context);
+            }
+
+            return true;
+        }
+        if (!this.scaling && !this.stacking && this.loops.mouseClicked(context)) return true;
         if (this.currentGraph.mouseClicked(context))
         {
             return true;
@@ -1151,6 +1205,12 @@ public class UIKeyframes extends UITimelineCanvas
 
     private void removeOrCreateKeyframe(UIContext context)
     {
+        if (this.isCreatingAtPlayhead())
+        {
+            this.currentGraph.addKeyframeAt(this.getCreationTick(context), context.mouseY);
+            return;
+        }
+
         Pair<Keyframe, KeyframeType> keyframe = this.currentGraph.findKeyframe(context.mouseX, context.mouseY);
 
         if (keyframe != null)
@@ -1168,15 +1228,52 @@ public class UIKeyframes extends UITimelineCanvas
         if (this.currentGraph.getSelected() != null && !Window.isShiftPressed())
         {
             /* Duplicate */
-            int tick = (int) Math.round(this.fromGraphX(context.mouseX));
-
-            this.pasteKeyframes(this.parseKeyframes(this.serializeKeyframes()), tick, context.mouseY);
+            this.pasteKeyframes(this.parseKeyframes(this.serializeKeyframes()), this.getDuplicationTick(context),
+                context.mouseY, this.isDuplicatingAtPlayhead());
 
             return;
         }
 
         /* Select a column */
         this.currentGraph.selectByX(context.mouseX);
+    }
+
+    public boolean isDuplicatingAtPlayhead()
+    {
+        this.updateModifierOrder();
+
+        return !this.controlFirst && Window.isAltPressed() && Window.isCtrlPressed() && !Window.isShiftPressed()
+            && this.currentGraph.getSelected() != null;
+    }
+
+    private void updateModifierOrder()
+    {
+        /* Keep the first modifier's mode while both are held, even after creating a
+         * key selects it. Releasing one modifier lets the remaining one choose again. */
+        if (!Window.isAltPressed() || !Window.isCtrlPressed())
+        {
+            this.controlFirst = Window.isCtrlPressed();
+        }
+    }
+
+    public boolean isCreatingAtPlayhead()
+    {
+        return this.hasCursor() && Window.isCtrlPressed() && Window.isAltPressed() && !this.isDuplicatingAtPlayhead();
+    }
+
+    public boolean isRemovingKeyframe()
+    {
+        return Window.isCtrlPressed() && !this.isDuplicatingAtPlayhead() && !this.isCreatingAtPlayhead();
+    }
+
+    public float getCreationTick(UIContext context)
+    {
+        return this.isCreatingAtPlayhead() ? this.getPlayheadTick(context) : this.fromGraphCursor(context.mouseX);
+    }
+
+    public float getDuplicationTick(UIContext context)
+    {
+        return this.isDuplicatingAtPlayhead() ? this.getPlayheadTick(context) : this.fromGraphCursor(context.mouseX);
     }
 
     private void pickOrStartSelectingKeyframes(UIContext context)
@@ -1235,6 +1332,15 @@ public class UIKeyframes extends UITimelineCanvas
     @Override
     protected boolean subMouseReleased(UIContext context)
     {
+        if (this.scrubbing && context.mouseButton == 0)
+        {
+            this.moveNoKeyframes(context);
+            this.scrubbing = false;
+
+            return true;
+        }
+
+        if (this.loops.release(false)) return true;
         this.currentGraph.mouseReleased(context);
 
         if (this.marquee.isPressed())
@@ -1279,6 +1385,20 @@ public class UIKeyframes extends UITimelineCanvas
     @Override
     protected boolean subKeyPressed(UIContext context)
     {
+        this.updateModifierOrder();
+
+        if (Window.isCtrlPressed() && (context.isPressed(GLFW.GLFW_KEY_LEFT_ALT) || context.isPressed(GLFW.GLFW_KEY_RIGHT_ALT)))
+        {
+            this.controlFirst = true;
+        }
+        else if (Window.isAltPressed() && (context.isPressed(GLFW.GLFW_KEY_LEFT_CONTROL) || context.isPressed(GLFW.GLFW_KEY_RIGHT_CONTROL)))
+        {
+            this.controlFirst = false;
+        }
+
+        this.xAxis.stopZoom();
+        this.currentGraph.stopZoom();
+        if (this.loops.keyPressed(context)) return true;
         if (this.currentGraph != this.dopeSheet && context.isPressed(GLFW.GLFW_KEY_ESCAPE) && !this.single)
         {
             this.editSheet(null);
@@ -1312,6 +1432,19 @@ public class UIKeyframes extends UITimelineCanvas
     @Override
     public void render(UIContext context)
     {
+        this.updateModifierOrder();
+
+        if (this.isInteracting())
+        {
+            this.xAxis.stopZoom();
+            this.currentGraph.stopZoom();
+        }
+        else
+        {
+            this.xAxis.updateZoom();
+            this.currentGraph.updateZoom();
+        }
+
         super.render(context);
 
         BBSProfiler.begin(BBSProfiler.Timer.UI_TIMELINE);
@@ -1342,7 +1475,9 @@ public class UIKeyframes extends UITimelineCanvas
 
     protected void renderOverlay(UIContext context)
     {
+        this.loops.render(context);
         this.currentGraph.renderTopmostKeyframes(context);
+        this.loops.renderStatus(context);
     }
 
     public void renderRuler(UIContext context)
@@ -1358,6 +1493,17 @@ public class UIKeyframes extends UITimelineCanvas
      */
     protected void handleMouse(UIContext context)
     {
+        if (this.scrubbing)
+        {
+            this.moveNoKeyframes(context);
+            return;
+        }
+
+        if (this.loops.isDragging())
+        {
+            this.loops.handleMouse(context);
+            return;
+        }
         this.currentGraph.handleMouse(context, this.lastX, this.lastY);
 
         int mouseX = context.mouseX;
@@ -1381,7 +1527,7 @@ public class UIKeyframes extends UITimelineCanvas
                     newTick = Math.round(newTick);
                 }
 
-                keyframe.setTick(newTick, true);
+                keyframe.setTick(((KeyframeChannel) keyframe.getParent()).constrainKeyframeTick(keyframe, newTick), true);
             }
         }
         else if (this.dragging == 0 && mouseHasMoved)
@@ -1406,6 +1552,11 @@ public class UIKeyframes extends UITimelineCanvas
 
     protected void moveNoKeyframes(UIContext context)
     {}
+
+    protected boolean hasCursor()
+    {
+        return false;
+    }
 
     /**
      * Render background, specifically backdrop and borders if the duration is present

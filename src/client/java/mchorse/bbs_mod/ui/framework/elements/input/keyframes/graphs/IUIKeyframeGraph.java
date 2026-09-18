@@ -25,6 +25,12 @@ public interface IUIKeyframeGraph
 
     public void resetView();
 
+    public default void updateZoom()
+    {}
+
+    public default void stopZoom()
+    {}
+
     /** The timeline this graph draws, so a graph can ask the editor about the playhead. */
     public UIKeyframes getKeyframes();
 
@@ -32,7 +38,7 @@ public interface IUIKeyframeGraph
      * The tick auto-keyframing writes at, or {@code null} when edits land on the keyframes they
      * were made on. See {@link UIKeyframes#getAutoKeyframeTick()}.
      */
-    public default Integer getAutoKeyframeTick()
+    public default Float getAutoKeyframeTick()
     {
         UIKeyframes keyframes = this.getKeyframes();
 
@@ -46,7 +52,7 @@ public interface IUIKeyframeGraph
      */
     public default <T> Keyframe<T> getEditTarget(Keyframe<T> keyframe)
     {
-        Integer tick = this.getAutoKeyframeTick();
+        Float tick = this.getAutoKeyframeTick();
         UIKeyframeSheet sheet = tick == null ? null : this.getSheet(keyframe);
 
         if (sheet == null)
@@ -160,6 +166,9 @@ public interface IUIKeyframeGraph
     }
 
     public boolean addKeyframe(int mouseX, int mouseY);
+
+    /** Create at exact time without converting the playhead through a screen pixel. */
+    public boolean addKeyframeAt(float tick, int mouseY);
 
     public default Keyframe addKeyframe(UIKeyframeSheet sheet, float tick, Object value)
     {
@@ -353,7 +362,7 @@ public interface IUIKeyframeGraph
      */
     public default void applyValue(IKeyframeFactory factory, Object value, Keyframe primary, boolean unmergeable, boolean fromEditor)
     {
-        Integer tick = fromEditor ? this.getAutoKeyframeTick() : null;
+        Float tick = fromEditor ? this.getAutoKeyframeTick() : null;
 
         /* The value the edit is measured against is the one on the keyframe it actually lands on,
          * which auto-keyframing moves to the playhead. Reading it off the selected keyframe would

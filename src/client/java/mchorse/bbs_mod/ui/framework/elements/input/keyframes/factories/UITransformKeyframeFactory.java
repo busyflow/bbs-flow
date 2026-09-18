@@ -46,7 +46,7 @@ public class UITransformKeyframeFactory extends UIKeyframeFactory<Transform>
         }
 
         @Override
-        protected Transform getAutoKeyTransform(int tick)
+        protected Transform getAutoKeyTransform(float tick)
         {
             UIKeyframeSheet sheet = this.editor.editor.getGraph().getSheet(this.editor.keyframe);
             Keyframe<Transform> target = sheet == null ? null : sheet.ensureKeyframe(tick);

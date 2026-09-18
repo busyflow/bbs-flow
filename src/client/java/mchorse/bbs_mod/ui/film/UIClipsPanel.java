@@ -252,6 +252,18 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate
     }
 
     @Override
+    public float getCursor(float transition)
+    {
+        return this.filmPanel.getCursor(transition);
+    }
+
+    @Override
+    public void setCursor(float tick)
+    {
+        this.filmPanel.setCursor(tick);
+    }
+
+    @Override
     public boolean isRunning()
     {
         return this.filmPanel.isRunning();

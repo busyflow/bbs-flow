@@ -17,7 +17,8 @@ public class MaterialVisibilityTest
 {
     public static void main(String[] args)
     {
-        BBSSettings.recordingPoseTransformOverlays = new ValueInt("pose_transform_overlays", 0);
+        BBSSettings.recordingPoseOverlays = new ValueInt("pose_overlays", 0);
+        BBSSettings.recordingTransformOverlays = new ValueInt("transform_overlays", 0);
         ModelForm form = new ModelForm();
         String material = "Material.001";
 

@@ -104,11 +104,11 @@ public class TrackCatalog
     public static List<TrackDescriptor> ordered(List<TrackDescriptor> tracks)
     {
         Map<TrackId, List<TrackDescriptor>> children = new HashMap<>();
-        Set<TrackId> present = new HashSet<>();
+        Map<TrackId, TrackDescriptor> present = new HashMap<>();
 
         for (TrackDescriptor track : tracks)
         {
-            present.add(track.id());
+            present.put(track.id(), track);
 
             if (track.parent() != null)
             {
@@ -117,15 +117,27 @@ public class TrackCatalog
         }
 
         List<TrackDescriptor> out = new ArrayList<>();
+        Set<TrackId> appended = new HashSet<>();
 
         for (TrackDescriptor track : tracks)
         {
             /* Roots only — everything else is reached from its parent, however deep it sits. A bone
              * hangs off a bone that hangs off a bone, so anything that only took direct children
              * would drop the whole skeleton below the first joint. */
-            if (track.parent() == null || !present.contains(track.parent()))
+            if (track.parent() == null || !present.containsKey(track.parent()))
             {
-                append(track, children, out);
+                /* Pose and its overlays/bones precede the form's transform group. */
+                if (track.kind() == TrackKind.PROPERTY && track.id().subject().equals("transform"))
+                {
+                    TrackDescriptor pose = present.get(TrackId.property(track.id().formPath(), FormProperties.POSE_PROPERTY));
+
+                    if (pose != null && pose.parent() == null && appended.add(pose.id()))
+                    {
+                        append(pose, children, out);
+                    }
+                }
+
+                if (appended.add(track.id())) append(track, children, out);
             }
         }
 
@@ -234,6 +246,15 @@ public class TrackCatalog
             BaseValueBasic property = FormUtils.getProperty(root, id.toKey());
             TrackDescriptor track = new TrackDescriptor(id, channel, form, IKey.constant(id.label()),
                 TrackStyle.icon(name), TrackStyle.color(name), property);
+
+            if (name.startsWith("pose_overlay"))
+            {
+                track = track.under(TrackId.property(path, FormProperties.POSE_PROPERTY));
+            }
+            else if (name.startsWith("transform_overlay"))
+            {
+                track = track.under(TrackId.property(path, "transform"));
+            }
 
             if (TrackId.MATERIAL_PROP_OVERLAY.equals(name))
             {

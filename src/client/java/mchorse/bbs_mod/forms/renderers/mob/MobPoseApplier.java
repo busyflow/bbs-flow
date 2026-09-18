@@ -1,12 +1,14 @@
 package mchorse.bbs_mod.forms.renderers.mob;
 
 import mchorse.bbs_mod.utils.pose.Pose;
+import mchorse.bbs_mod.settings.values.core.ValuePose;
 import mchorse.bbs_mod.utils.pose.PoseTransform;
 import mchorse.bbs_mod.utils.pose.Transform;
 import net.minecraft.client.model.ModelPart;
 import org.joml.Vector3f;
 
 import java.util.Map;
+import java.util.List;
 
 /**
  * Writes a pose onto a vanilla model's parts, and takes it back off again.
@@ -30,11 +32,22 @@ public class MobPoseApplier
      */
     public static Pose merge(Pose pose, Pose overlay)
     {
-        Pose merged = pose.copy();
+        return merge(pose, overlay, List.of());
+    }
 
+    public static Pose merge(Pose pose, Pose overlay, List<ValuePose> additional)
+    {
+        Pose merged = pose.copy();
+        applyOverlay(merged, overlay);
+        for (ValuePose value : additional) applyOverlay(merged, value.get());
+        return merged;
+    }
+
+    private static void applyOverlay(Pose merged, Pose overlay)
+    {
         if (overlay == null)
         {
-            return merged;
+            return;
         }
 
         for (Map.Entry<String, PoseTransform> entry : overlay.transforms.entrySet())
@@ -56,8 +69,6 @@ public class MobPoseApplier
                 poseTransform.addRotation(value);
             }
         }
-
-        return merged;
     }
 
     public static void apply(MobRig rig, Pose pose, Map<ModelPart, Transform> saved)

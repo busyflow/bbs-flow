@@ -61,14 +61,16 @@ public class UIFilmKeyframes extends UIKeyframes
         return this.editor.getClip().tick.get();
     }
 
-    public int getOffset()
+    public float getOffset()
     {
         if (this.editor == null)
         {
             return 0;
         }
 
-        return (int) (this.editor.getCursor() - this.getClipOffset());
+        UIContext context = this.getContext();
+
+        return this.editor.getKeyframeCursor(context == null ? 0F : context.getTransition()) - this.getClipOffset();
     }
 
     @Override
@@ -77,12 +79,18 @@ public class UIFilmKeyframes extends UIKeyframes
         return this.getOffset();
     }
 
+    @Override
+    public float getPlayheadTick(UIContext context)
+    {
+        return this.editor == null ? 0F : this.editor.getTimelineCursor(context.getTransition()) - this.getClipOffset();
+    }
+
     /**
      * The playhead in this timeline's own tick space &mdash; {@link #getOffset()} rather than the
      * raw cursor, so a keyframe clip keys where its cursor is drawn instead of at the film's tick.
      */
     @Override
-    public Integer getAutoKeyframeTick()
+    public Float getAutoKeyframeTick()
     {
         if (!BBSSettings.autoKeyframe.get() || this.editor == null)
         {
@@ -101,8 +109,14 @@ public class UIFilmKeyframes extends UIKeyframes
 
         if (keyframe != null)
         {
-            this.editor.setCursor((int) keyframe.getTick());
+            this.editor.setCursor(keyframe.getTick() + this.getClipOffset());
         }
+    }
+
+    @Override
+    protected boolean hasCursor()
+    {
+        return this.editor != null;
     }
 
     @Override
@@ -113,7 +127,7 @@ public class UIFilmKeyframes extends UIKeyframes
             long offset = this.getClipOffset();
 
             this.editor.stopPlaybackOnScrub();
-            this.editor.setCursor(Math.max(0, (int) (Math.round(this.fromGraphX(context.mouseX)) + offset)));
+            this.editor.setCursor(Math.max(0F, this.fromGraphCursor(context.mouseX) + offset));
         }
     }
 
@@ -122,8 +136,9 @@ public class UIFilmKeyframes extends UIKeyframes
     {
         if (this.editor != null)
         {
-            int cx = this.toGraphX(this.getOffset());
-            String label = TimeUtils.formatTime(this.getOffset()) + "/" + TimeUtils.formatTime(this.getDuration());
+            float cursor = this.getPlayheadTick(context);
+            int cx = this.toGraphX(cursor);
+            String label = TimeUtils.formatCursorTime(cursor) + "/" + TimeUtils.formatTime(this.getDuration());
 
             this.markers.render(context, this.graphArea, this.getXAxis(), (int) this.getClipOffset());
 

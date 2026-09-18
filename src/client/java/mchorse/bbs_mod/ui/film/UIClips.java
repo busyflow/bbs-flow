@@ -1201,6 +1201,7 @@ public class UIClips extends UITimelineCanvas
     @Override
     protected boolean subMouseClicked(UIContext context)
     {
+        if (this.area.isInside(context)) this.xAxis.stopZoom();
         if (this.vertical.mouseClicked(context))
         {
             return true;
@@ -1324,7 +1325,7 @@ public class UIClips extends UITimelineCanvas
             }
         }
 
-        if (shift && !this.hasEmbeddedView())
+        if (shift && !this.hasEmbeddedView() && !this.isInRuler(mouseY))
         {
             this.marquee.press(mouseX, mouseY);
 
@@ -1356,7 +1357,7 @@ public class UIClips extends UITimelineCanvas
 
             this.scrubbing = true;
             this.delegate.stopPlaybackOnScrub();
-            this.delegate.setCursor(this.fromGraphTick(mouseX));
+            this.delegate.setCursor(Math.max(0F, this.fromGraphCursor(mouseX)));
 
             return true;
         }
@@ -1426,7 +1427,7 @@ public class UIClips extends UITimelineCanvas
                     this.layerHeight = MathUtils.clamp(this.layerHeight + step, LAYER_HEIGHT_MIN, LAYER_HEIGHT_MAX);
                 }
             }
-            else if (Window.isShiftPressed())
+            else if (Window.isShiftPressed() && !Window.isCtrlPressed())
             {
                 this.vertical.mouseScroll(context);
             }
@@ -1491,6 +1492,11 @@ public class UIClips extends UITimelineCanvas
 
         this.commitMarkerDrag();
 
+        if (this.scrubbing)
+        {
+            this.delegate.setCursor(Math.max(0F, this.fromGraphCursor(context.mouseX)));
+        }
+
         if (this.marquee.isPressed())
         {
             this.pickLastSelectedClip();
@@ -1514,6 +1520,7 @@ public class UIClips extends UITimelineCanvas
     @Override
     protected boolean subKeyPressed(UIContext context)
     {
+        this.xAxis.stopZoom();
         if (this.embedded != null && context.isPressed(GLFW.GLFW_KEY_ESCAPE))
         {
             this.embedView(null);
@@ -1528,6 +1535,16 @@ public class UIClips extends UITimelineCanvas
     @Override
     public void render(UIContext context)
     {
+        if (this.grabbing || this.scrubbing || this.navigating || this.marquee.isPressed()
+            || this.selectingLoop >= 0 || this.markers.isDragging() || this.hasEmbeddedView())
+        {
+            this.xAxis.stopZoom();
+        }
+        else
+        {
+            this.xAxis.updateZoom();
+        }
+
         this.updateScrollSize();
 
         if (this.centerScrollOnRender)
@@ -1557,7 +1574,7 @@ public class UIClips extends UITimelineCanvas
         }
         else if (this.scrubbing)
         {
-            this.delegate.setCursor(this.fromGraphTick(mouseX));
+            this.delegate.setCursor(Math.max(0F, this.fromGraphCursor(mouseX)));
         }
         else if (this.selectingLoop == 0)
         {
@@ -1979,9 +1996,10 @@ public class UIClips extends UITimelineCanvas
         batcher.unclip(context);
         batcher.clip(this.area, context);
 
-        String label = TimeUtils.formatTime(this.delegate.getCursor()) + "/" + TimeUtils.formatTime(this.clips.calculateDuration());
+        float cursor = this.delegate.getTimelineCursor(context.getTransition());
+        String label = TimeUtils.formatCursorTime(cursor) + "/" + TimeUtils.formatTime(this.clips.calculateDuration());
 
-        renderCursor(context, label, area, this.toGraphX(this.delegate.getCursor()));
+        renderCursor(context, label, area, this.toGraphX(cursor));
         this.renderSelection(context);
 
         batcher.unclip(context);

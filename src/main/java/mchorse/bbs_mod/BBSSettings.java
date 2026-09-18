@@ -122,6 +122,7 @@ public class BBSSettings {
 	public static ValueFloat scrollingSensitivity;
 	public static ValueFloat scrollingSensitivityHorizontal;
 	public static ValueBoolean scrollingSmoothness;
+	public static ValueFloat scrollingSmoothnessIntensity;
 	public static ValueBoolean scrollingDisableSmoothnessInEditors;
 
 	public static ValueBoolean multiskinMultiThreaded;
@@ -188,6 +189,7 @@ public class BBSSettings {
 	public static ValueBoolean editorClipPreview;
 	public static ValueBoolean editorRewind;
 	public static ValueBoolean editorStopPlaybackOnScrub;
+	public static ValueBoolean editorSnapToTicks;
 	public static ValueBoolean editorRestartOnSeek;
 	public static ValueBoolean editorHorizontalClipEditor;
 	public static ValueBoolean editorMinutesBackup;
@@ -208,7 +210,8 @@ public class BBSSettings {
 	public static ValueFloat recordingCountdown;
 	public static ValueBoolean recordingSwipeDamage;
 	public static ValueBoolean recordingOverlays;
-	public static ValueInt recordingPoseTransformOverlays;
+	public static ValueInt recordingPoseOverlays;
+	public static ValueInt recordingTransformOverlays;
 	public static ValueBoolean recordingCameraPreview;
 	public static ValueBoolean recordingTeleport;
 
@@ -447,6 +450,12 @@ public class BBSSettings {
 		return duration == null ? 100 : duration.get();
 	}
 
+	/** Shared strength for smooth scrolling and timeline zoom; zero selects immediate movement. */
+	public static float getScrollSmoothingIntensity()
+	{
+		return scrollingSmoothness.get() ? scrollingSmoothnessIntensity.get() : 0F;
+	}
+
 	public static float getFov()
 	{
 		return BBSSettings.fov == null ? MathUtils.toRad(70) : MathUtils.toRad(BBSSettings.fov.get());
@@ -581,6 +590,8 @@ public class BBSSettings {
 		migrated |= migrateLegacyValue(root, "shader_curves", "enabled", "misc", "shader_curves");
 		migrated |= migrateLegacyValue(root, "multiskin", "multithreaded", "misc", "multiskin_multithreaded");
 		migrated |= migrateLegacyValue(root, "entity_selectors", "whitelist", "misc", "entity_selectors_whitelist");
+		migrated |= migrateLegacyValue(root, "recording", "pose_transform_overlays", "recording", "pose_overlays");
+		migrated |= migrateLegacyValue(root, "recording", "pose_transform_overlays", "recording", "transform_overlays");
 
 		return migrated;
 	}
@@ -708,6 +719,7 @@ public class BBSSettings {
 		scrollingSensitivity = builder.getFloat("sensitivity", 3F, 0F, 10F).slider();
 		scrollingSensitivityHorizontal = builder.getFloat("sensitivity_horizontal", 3F, 0F, 10F).slider();
 		scrollingSmoothness = builder.getBoolean("smoothness", true);
+		scrollingSmoothnessIntensity = builder.getFloat("smoothness_intensity", 0.75F, 0F, 2F).slider();
 		scrollingDisableSmoothnessInEditors = builder.getBoolean("disable_smoothness_in_editors", true);
 
 		builder.category("tutorials", Icons.HELP);
@@ -835,6 +847,7 @@ public class BBSSettings {
 		editorSnapToFilmMarkers = builder.getBoolean("snap_to_film_markers", true);
 		editorRewind = builder.getBoolean("rewind", true);
 		editorStopPlaybackOnScrub = builder.getBoolean("stop_playback_on_scrub", false);
+		editorSnapToTicks = builder.getBoolean("snap_to_ticks", true);
 		editorRestartOnSeek = builder.getBoolean("restart_on_seek", false);
 		editorHorizontalClipEditor = builder.getBoolean("horizontal_clip_editor", false);
 
@@ -850,7 +863,8 @@ public class BBSSettings {
 		recordingCountdown = builder.getFloat("countdown", 1.5F, 0F, 30F);
 		recordingSwipeDamage = builder.getBoolean("swipe_damage", false);
 		recordingOverlays = builder.getBoolean("overlays", true);
-		recordingPoseTransformOverlays = builder.getInt("pose_transform_overlays", 0, 0, 42);
+		recordingPoseOverlays = builder.getInt("pose_overlays", 0, 0, 42);
+		recordingTransformOverlays = builder.getInt("transform_overlays", 0, 0, 42);
 		recordingCameraPreview = builder.getBoolean("camera_preview", true);
 		recordingTeleport = builder.getBoolean("teleport", true);
 

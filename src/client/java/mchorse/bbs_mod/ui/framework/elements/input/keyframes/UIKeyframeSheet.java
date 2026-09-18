@@ -235,6 +235,7 @@ public class UIKeyframeSheet
      */
     public <T> Keyframe<T> ensureKeyframe(float tick)
     {
+        tick = this.channel.getSourceTick(tick);
         /* Bringing a keyframe into being changes the track itself, not a value inside it: seal the
          * channel's before-state so undo takes the keyframe away again instead of only putting back
          * whatever the edit wrote into it.
@@ -312,7 +313,7 @@ public class UIKeyframeSheet
     {
         for (Keyframe keyframe : this.selection.getSelected())
         {
-            keyframe.setTick(keyframe.getTick() + diff, dirty);
+            keyframe.setTick(this.channel.constrainKeyframeTick(keyframe, keyframe.getTick() + diff), dirty);
         }
     }
 

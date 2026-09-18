@@ -225,7 +225,7 @@ public class UIAnchorKeyframeFactory extends UIKeyframeFactory<Anchor>
         }
 
         @Override
-        protected Transform getAutoKeyTransform(int tick)
+        protected Transform getAutoKeyTransform(float tick)
         {
             UIKeyframeSheet sheet = this.editor.editor.getGraph().getSheet(this.editor.keyframe);
             Keyframe<?> target = sheet == null ? null : sheet.ensureKeyframe(tick);

@@ -631,7 +631,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
             return Gizmo.INSTANCE.start(stencilIndex, context.mouseX, context.mouseY, this.replayShiftTransform, drag);
         }
 
-        float gizmoTransition = this.isPlaying() ? context.getTransition() : 0F;
+        float gizmoTransition = this.panel.getRunner().getTransition(context.getTransition());
 
         return UIReplaysEditorUtils.startFilmGizmo(this.panel, context, stencilIndex, gizmoTransition);
     }

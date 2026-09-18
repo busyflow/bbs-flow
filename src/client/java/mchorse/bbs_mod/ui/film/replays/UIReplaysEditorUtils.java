@@ -1,6 +1,10 @@
 package mchorse.bbs_mod.ui.film.replays;
 
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
+import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.l10n.L10n;
+import mchorse.bbs_mod.settings.values.numeric.ValueInt;
+import mchorse.bbs_mod.ui.utils.context.ContextMenuManager;
 import mchorse.bbs_mod.camera.Camera;
 import mchorse.bbs_mod.film.BaseFilmController;
 import mchorse.bbs_mod.film.FilmMatrices;
@@ -72,6 +76,30 @@ import java.util.function.Supplier;
 public class UIReplaysEditorUtils
 {
     private static final int BONE_TRACK_HUE_COUNT = 12;
+
+    /** Overlay counts are global; both timeline editors use the same creation action. */
+    public static void addOverlayTrackAction(ContextMenuManager menu, UIKeyframeSheet sheet, Consumer<TrackId> refresh)
+    {
+        if (sheet == null) return;
+        TrackId track = TrackId.parse(sheet.id);
+        Form owner = UIReplaysEditor.getSheetForm(sheet);
+        if (track == null || track.kind() != TrackKind.PROPERTY || owner == null) return;
+
+        String name = track.subject();
+        boolean pose = name.equals("pose") || name.startsWith("pose_overlay");
+        boolean transform = name.equals("transform") || name.startsWith("transform_overlay");
+        if ((!pose && !transform) || (pose && !(owner instanceof IPosedForm))) return;
+
+        ValueInt count = pose ? BBSSettings.recordingPoseOverlays : BBSSettings.recordingTransformOverlays;
+        if (count.get() >= count.getMax()) return;
+        menu.action(Icons.ADD, L10n.lang(pose ? "bbs.ui.keyframes.context.add_pose_track" : "bbs.ui.keyframes.context.add_transform_track"), () ->
+        {
+            if (count.get() >= count.getMax()) return;
+            count.set(count.get() + 1);
+            owner.syncOverlayTracks();
+            refresh.accept(TrackId.property(track.formPath(), pose ? "pose" : "transform"));
+        });
+    }
 
     /**
      * Key the pose at the tick, following what the timeline is showing: a pose track with its limbs
@@ -207,7 +235,7 @@ public class UIReplaysEditorUtils
             return;
         }
 
-        Integer tick = editor.getAutoKeyframeTick();
+        Float tick = editor.getAutoKeyframeTick();
 
         for (UIKeyframeSheet sheet : editor.getGraph().getSheets())
         {
@@ -296,7 +324,7 @@ public class UIReplaysEditorUtils
             replayTransform.syncFromReplay(
                 panel.replayEditor.getReplay(),
                 panel.getController().getCurrentEntity(),
-                panel.getCursor()
+                panel.getKeyframeCursor(transition)
             );
 
             return replayTransform;
@@ -353,7 +381,7 @@ public class UIReplaysEditorUtils
         replayTransform.syncFromReplay(
             panel.replayEditor.getReplay(),
             panel.getController().getCurrentEntity(),
-            panel.getCursor()
+            panel.getKeyframeCursor(transition)
         );
         replayTransform.hotkeyDrag(() -> buildFilmGizmoDrag(
             panel,
@@ -655,7 +683,7 @@ public class UIReplaysEditorUtils
 
         if (form != null)
         {
-            replay.properties.applyProperties(form, panel.getCursor() + (panel.getRunner().isRunning() ? transition : 0F));
+            replay.properties.applyProperties(form, replay.getTick(panel.getCursor()) + panel.getRunner().getTransition(transition));
         }
     }
 
@@ -702,7 +730,7 @@ public class UIReplaysEditorUtils
             }
             if (isPoseSheet(currentSheet, path))
             {
-                int tick = cursor.getCursor();
+                float tick = keyframeEditor.view.getTick();
                 Keyframe closest = getClosestKeyframe(currentSheet, tick);
                 if (closest != null)
                 {
@@ -710,7 +738,7 @@ public class UIReplaysEditorUtils
                     {
                         forceSelectInSheet(graph, currentSheet, closest);
                     }
-                    cursor.setCursor((int) closest.getTick());
+                    cursor.setCursor(closest.getTick());
                 }
                 updatePoseEditorBoneSelection(keyframeEditor, bone);
                 return;
@@ -847,7 +875,7 @@ public class UIReplaysEditorUtils
     private static void pickProperty(UIKeyframeEditor keyframeEditor, ICursor filmPanel, String bone, UIKeyframeSheet sheet, boolean insert)
     {
         IUIKeyframeGraph graph = keyframeEditor.view.getGraph();
-        int tick = filmPanel.getCursor();
+        float tick = keyframeEditor.view.getTick();
 
         if (insert)
         {
@@ -868,7 +896,7 @@ public class UIReplaysEditorUtils
                 forceSelectInSheet(graph, sheet, closest);
             }
             updatePoseEditorBoneSelection(keyframeEditor, boneForEditor);
-            filmPanel.setCursor((int) closest.getTick());
+            filmPanel.setCursor(closest.getTick());
         }
         else
         {
@@ -876,20 +904,20 @@ public class UIReplaysEditorUtils
         }
     }
 
-    private static Keyframe getClosestKeyframe(UIKeyframeSheet sheet, int tick)
+    private static Keyframe getClosestKeyframe(UIKeyframeSheet sheet, float tick)
     {
         KeyframeSegment segment = sheet.channel.find(tick);
 
         return segment != null ? segment.getClosest() : null;
     }
 
-    private static Keyframe getKeyframeAt(UIKeyframeSheet sheet, int tick)
+    private static Keyframe getKeyframeAt(UIKeyframeSheet sheet, float tick)
     {
         for (Object o : sheet.channel.getKeyframes())
         {
             Keyframe keyframe = (Keyframe) o;
 
-            if ((int) keyframe.getTick() == tick)
+            if (keyframe.getTick() == tick)
             {
                 return keyframe;
             }
@@ -907,7 +935,7 @@ public class UIReplaysEditorUtils
     private static void insertIntoPoseSheet(UIKeyframeEditor keyframeEditor, ICursor cursor, String bone, UIKeyframeSheet poseSheet)
     {
         IUIKeyframeGraph graph = keyframeEditor.view.getGraph();
-        int tick = cursor.getCursor();
+        float tick = keyframeEditor.view.getTick();
         Keyframe existing = getKeyframeAt(poseSheet, tick);
 
         if (existing != null)
@@ -962,7 +990,7 @@ public class UIReplaysEditorUtils
     public static void animationToPoseKeyframes(
         UIKeyframeEditor keyframeEditor, UIKeyframeSheet sheet,
         ModelForm modelForm, IEntity entity,
-        int tick, String animationKey, boolean onlyKeyframes, int length, int step
+        float tick, String animationKey, boolean onlyKeyframes, int length, int step
     ) {
         ModelInstance model = ModelFormRenderer.getModel(modelForm);
         Animation animation = model.animations.get(animationKey);
@@ -1014,7 +1042,7 @@ public class UIReplaysEditorUtils
         return ticks;
     }
 
-    private static void fillAnimationPose(UIKeyframeSheet sheet, float i, ModelInstance model, IEntity entity, Animation animation, int current)
+    private static void fillAnimationPose(UIKeyframeSheet sheet, float i, ModelInstance model, IEntity entity, Animation animation, float current)
     {
         model.model.resetPose();
         model.model.apply(entity, animation, i, 1F, 0F, false);
@@ -1025,20 +1053,22 @@ public class UIReplaysEditorUtils
     }
 
     @SuppressWarnings("unchecked")
-    public static void posesToLimbTracks(Replay replay, UIKeyframeSheet poseSheet, IPosedForm posedForm)
+    public static boolean posesToLimbTracks(FormProperties properties, UIKeyframeSheet poseSheet)
     {
-        if (replay == null || poseSheet == null || posedForm == null)
+        if (properties == null || poseSheet == null || poseSheet.getPosedForm() == null)
         {
-            return;
+            return false;
         }
 
-        String formPath = poseSheet.id.equals("pose") ? "" : poseSheet.id.substring(0, poseSheet.id.length() - (FormUtils.PATH_SEPARATOR + "pose").length());
-        Form form = formPath.isEmpty() ? replay.form.get() : FormUtils.getForm(replay.form.get(), formPath);
+        TrackId track = TrackId.parse(poseSheet.id);
+        if (track == null) return false;
+        String formPath = track.formPath();
+        Form form = UIReplaysEditor.getSheetForm(poseSheet);
         IBoneHierarchy hierarchy = FormUtilsClient.getBoneHierarchy(form);
 
         if (!(form instanceof IPosedForm) || hierarchy == null)
         {
-            return;
+            return false;
         }
 
         ModelInstance model = form instanceof ModelForm targetModelForm ? ModelFormRenderer.getModel(targetModelForm) : null;
@@ -1048,42 +1078,42 @@ public class UIReplaysEditorUtils
 
         List<Keyframe<Pose>> selectedKeyframes = (List<Keyframe<Pose>>) (List<?>) poseSheet.selection.getSelected();
 
-        if (selectedKeyframes.isEmpty())
+        if (selectedKeyframes.isEmpty() || bones.isEmpty() || selectedKeyframes.stream().anyMatch(keyframe -> keyframe.getValue() == null))
         {
-            return;
+            return false;
         }
 
-        for (Keyframe<Pose> keyframe : selectedKeyframes)
+        /* Capture the whole track collection before creating channels, so undo also removes them. */
+        BaseValue.edit(properties, target ->
         {
-            Pose pose = keyframe.getValue();
-
-            if (pose == null)
+            for (Keyframe<Pose> keyframe : selectedKeyframes)
             {
-                continue;
-            }
+                Pose pose = keyframe.getValue();
+                float tick = keyframe.getTick();
 
-            float tick = keyframe.getTick();
-
-            for (String bone : bones)
-            {
-                KeyframeChannel<PoseTransform> limbChannel = (KeyframeChannel<PoseTransform>) replay.properties.getOrCreate(TrackId.bone(formPath, bone));
-
-                if (limbChannel == null)
+                for (String bone : bones)
                 {
-                    continue;
+                    KeyframeChannel<PoseTransform> limbChannel = (KeyframeChannel<PoseTransform>) target.getOrCreate(TrackId.bone(formPath, bone));
+
+                    if (limbChannel == null)
+                    {
+                        continue;
+                    }
+
+                    /* Every bone, including those left at rest in the source pose. */
+                    PoseTransform transform = pose.get(bone);
+                    PoseTransform copy = transform == null ? new PoseTransform() : (PoseTransform) transform.copy();
+                    int index = limbChannel.insert(tick, copy);
+                    Keyframe<PoseTransform> limbKf = limbChannel.get(index);
+
+                    limbKf.copyOverExtra(keyframe);
                 }
-
-                /* Every bone of the model, not just the posed ones: a bone the pose is silent
-                 * about still gets a rest keyframe on its track, but reading must not grow the
-                 * pose being laid out. */
-                PoseTransform transform = pose.get(bone);
-                PoseTransform copy = transform == null ? new PoseTransform() : (PoseTransform) transform.copy();
-                int index = limbChannel.insert(tick, copy);
-                Keyframe<PoseTransform> limbKf = limbChannel.get(index);
-
-                limbKf.copyOverExtra(keyframe);
             }
-        }
+
+            poseSheet.selection.removeSelected();
+        });
+
+        return true;
     }
 
     public static void clearIKTracks(Replay replay, ModelForm modelForm)

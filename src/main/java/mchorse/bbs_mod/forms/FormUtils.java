@@ -85,10 +85,8 @@ public class FormUtils
             tracks.add(posedForm.getPose());
             tracks.add(posedForm.getPoseOverlay());
 
-            if (form instanceof ModelForm modelForm)
-            {
-                tracks.addAll(modelForm.additionalOverlays);
-            }
+            form.syncOverlayTracks();
+            tracks.addAll(form.additionalOverlays);
         }
         else
         {

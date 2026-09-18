@@ -55,6 +55,18 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
         return this.keyframes;
     }
 
+    @Override
+    public void updateZoom()
+    {
+        this.yAxis.updateZoom();
+    }
+
+    @Override
+    public void stopZoom()
+    {
+        this.yAxis.stopZoom();
+    }
+
     /* Graphing */
 
     public int toGraphY(double value)
@@ -188,13 +200,13 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
     @Override
     public boolean addKeyframe(int mouseX, int mouseY)
     {
-        float tick = (float) this.keyframes.fromGraphX(mouseX);
-        UIKeyframeSheet sheet = this.sheet;
+        return this.addKeyframeAt(this.keyframes.fromGraphCursor(mouseX), mouseY);
+    }
 
-        if (!Window.isShiftPressed())
-        {
-            tick = Math.round(tick);
-        }
+    @Override
+    public boolean addKeyframeAt(float tick, int mouseY)
+    {
+        UIKeyframeSheet sheet = this.sheet;
 
         if (sheet != null)
         {
@@ -286,28 +298,20 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
             float delta = (float) (context.mouseWheel * 1F);
             this.moveSelectedBy(delta, true);
         }
-        else
+        else if (context.mouseWheel != 0D)
         {
-            boolean x = Window.isShiftPressed();
-            boolean y = Window.isCtrlPressed();
-            boolean none = !x && !y;
+            boolean shift = Window.isShiftPressed();
+            boolean ctrl = Window.isCtrlPressed();
 
-            /* Scaling X */
-            if (x && !y || none)
+            /* Shift isolates time, Ctrl isolates values, both accelerate the two axes. */
+            if (!ctrl || shift)
             {
-                if (context.mouseWheel != 0D)
-                {
-                    this.keyframes.zoomTimeAt(context, context.mouseWheel);
-                }
+                this.keyframes.zoomTimeAt(context, context.mouseWheel);
             }
 
-            /* Scaling Y */
-            if (y && !x || none)
+            if (!shift || ctrl)
             {
-                if (context.mouseWheel != 0D)
-                {
-                    this.yAxis.zoomAnchor(Scale.getAnchorY(context, this.keyframes.area), Math.copySign(this.yAxis.getZoomFactor(), context.mouseWheel));
-                }
+                this.yAxis.animateZoom(Scale.getAnchorY(context, this.keyframes.area), context.mouseWheel, this.keyframes.getZoomSpeed());
             }
         }
     }
@@ -341,7 +345,7 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
             float fx = (float) this.keyframes.fromGraphX(context.mouseX) - offsetX;
             Object fy = factory.yToValue(this.fromGraphY(context.mouseY) - offsetY);
 
-            if (!Window.isShiftPressed())
+            if (this.keyframes.isSnappingToTicks())
             {
                 fx = Math.round(this.keyframes.fromGraphX(context.mouseX) - offsetX);
             }
@@ -473,35 +477,36 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
                 x += length;
             }
         }
-        else if (Window.isCtrlPressed())
+        else if (Window.isCtrlPressed() && !this.keyframes.isDuplicatingAtPlayhead())
         {
             UIKeyframeSheet sheet = this.getSheet(context.mouseY);
 
             if (sheet != null)
             {
-                float tick = currentTick;
-
-                if (!Window.isShiftPressed())
-                {
-                    tick = Math.round(tick);
-                }
+                float tick = this.keyframes.getCreationTick(context);
 
                 this.renderPreviewKeyframe(context, sheet, tick, context.mouseY, Colors.WHITE);
             }
         }
         else if (Window.isAltPressed())
         {
+            currentTick = this.keyframes.getDuplicationTick(context);
             UIKeyframeSheet current = this.sheet;
             List<Keyframe> selected = current.selection.getSelected();
             IKeyframeFactory factory = current.channel.getFactory();
 
+            float firstTick = selected.isEmpty() ? 0 : selected.get(0).getTick();
+            if (this.keyframes.isDuplicatingAtPlayhead())
+            {
+                for (Keyframe keyframe : selected) firstTick = Math.min(firstTick, keyframe.getTick());
+            }
+
             for (int i = 0; i < selected.size(); i++)
             {
-                Keyframe first = selected.get(0);
                 Keyframe keyframe = selected.get(i);
                 int y = (int) this.yAxis.to(factory.getY(keyframe.getValue()));
 
-                this.renderPreviewKeyframe(context, current, currentTick + (keyframe.getTick() - first.getTick()), y, Colors.YELLOW);
+                this.renderPreviewKeyframe(context, current, currentTick + (keyframe.getTick() - firstTick), y, Colors.YELLOW);
             }
         }
     }
@@ -522,6 +527,12 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
     {
         BufferBuilder builder = Tessellator.getInstance().getBuffer();
         Matrix4f matrix = context.batcher.getContext().getMatrices().peek().getPositionMatrix();
+
+        if (!this.sheet.channel.getLoops().isEmpty())
+        {
+            this.renderLoopGraph(context, builder, matrix);
+            return;
+        }
 
         UIKeyframeSheet sheet = this.sheet;
         List keyframes = sheet.channel.getKeyframes();
@@ -632,6 +643,49 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
         BufferRenderer.drawWithGlobalProgram(builder.end());
     }
 
+    /** Sample the actual finite-loop playback instead of drawing a fictitious line from the
+     * source's last key straight to the next ordinary key. Work is bounded by visible pixels. */
+    private void renderLoopGraph(UIContext context, BufferBuilder builder, Matrix4f matrix)
+    {
+        LineBuilder line = new LineBuilder(0.7F);
+        float previousSource = -Float.MAX_VALUE;
+        for (int x = this.keyframes.graphArea.x; x <= this.keyframes.graphArea.ex(); x += 2)
+        {
+            float tick = (float) this.keyframes.fromGraphX(x);
+            float source = this.sheet.channel.getSourceTick(tick);
+            if (source < previousSource) line.push();
+            Object value = this.sheet.channel.interpolate(tick);
+            if (value != null) line.add(x, this.toGraphY(this.sheet.channel.getFactory().getY(value)));
+            previousSource = source;
+        }
+
+        /* Original Bezier handles remain editable in the same place. */
+        List<Keyframe> originals = this.sheet.channel.getKeyframes();
+        for (int index = 0; index < originals.size(); index++)
+        {
+            Keyframe key = originals.get(index);
+            int x = this.keyframes.toGraphX(key.getTick()), y = this.toGraphY(key.getY());
+            if (x < this.keyframes.graphArea.x - 20 || x > this.keyframes.graphArea.ex() + 20) continue;
+            Keyframe previous = this.sheet.channel.get(index - 1);
+            if (key.getInterpolation().getInterp() == Interpolations.BEZIER)
+            {
+                line.push(); line.add(x, y);
+                line.add(this.keyframes.toGraphX(key.getTick() + key.rx), this.toGraphY(key.getY() + key.ry));
+            }
+            if (previous != null && previous.getInterpolation().getInterp() == Interpolations.BEZIER)
+            {
+                line.push(); line.add(x, y);
+                line.add(this.keyframes.toGraphX(key.getTick() - key.lx), this.toGraphY(key.getY() + key.ly));
+            }
+        }
+        line.render(context.batcher, SolidColorLineRenderer.get(Colors.COLOR.set(Colors.setA(this.sheet.color, 1F))));
+        builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
+        this.renderGraphPointShapes(context, builder, matrix, this.sheet.channel.getKeyframes());
+        RenderSystem.enableBlend();
+        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        BufferRenderer.drawWithGlobalProgram(builder.end());
+    }
+
     protected void renderGraphPointShapes(UIContext context, BufferBuilder builder, Matrix4f matrix, List keyframes)
     {
         /* Draw keyframe handles (outer) */
@@ -660,7 +714,7 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
             }
 
             boolean isPointHover = this.isNear(this.keyframes.toGraphX(frame.getTick()), y, context.mouseX, context.mouseY);
-            boolean toRemove = Window.isCtrlPressed() && isPointHover;
+            boolean toRemove = this.keyframes.isRemovingKeyframe() && isPointHover;
 
             if (this.keyframes.isSelecting())
             {

@@ -20,6 +20,8 @@ public class KeyframeSegment <T>
     public float duration;
     public float offset;
     public float x;
+    /** Difference between film time and the source pass of a finite loop. */
+    public float timeOffset;
 
     public KeyframeSegment()
     {}
@@ -54,6 +56,7 @@ public class KeyframeSegment <T>
      */
     public void fill(Keyframe<T> a, Keyframe<T> b, int index)
     {
+        this.timeOffset = 0;
         this.a = a;
         this.b = b;
 
@@ -76,6 +79,7 @@ public class KeyframeSegment <T>
 
     public void setup(float ticks)
     {
+        ticks -= this.timeOffset;
         float forcedDuration = this.a.getDuration();
 
         this.duration = forcedDuration > 0 ? forcedDuration : this.b.getTick() - this.a.getTick();

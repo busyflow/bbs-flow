@@ -58,7 +58,7 @@ public class UIReplayPropTransform extends UIPropTransform
 
     private Replay replay;
     private IEntity entity;
-    private int tick;
+    private float tick;
 
     /** Angles the head and body were offset from {@code yaw} when the record was loaded,
      *  kept across a turn so the actor rotates as one piece. */
@@ -100,7 +100,7 @@ public class UIReplayPropTransform extends UIPropTransform
      * for a channel that has no keyframes at all, and it is the only reading that cannot
      * drift from the picture.
      */
-    public void syncFromReplay(Replay replay, IEntity entity, int tick)
+    public void syncFromReplay(Replay replay, IEntity entity, float tick)
     {
         /* A running gesture owns these values: it rebuilds them every frame from the pose it
          * grabbed at. Re-reading the entity here would fight it — the film re-resolves the
@@ -154,9 +154,11 @@ public class UIReplayPropTransform extends UIPropTransform
     /** The tick a write lands on. Looping replays read their channels through
      *  {@link Replay#getTick(int)}, so a write has to go to the same place playback
      *  will look, not to the raw playhead. */
-    private int writeTick()
+    private float writeTick()
     {
-        return this.replay.getTick(this.tick);
+        int whole = (int) this.tick;
+
+        return this.replay.getTick(whole) + (this.tick - whole);
     }
 
     @Override
@@ -189,7 +191,7 @@ public class UIReplayPropTransform extends UIPropTransform
 
         this.scratch.translate.set((float) x, (float) y, (float) z);
 
-        int tick = this.writeTick();
+        float tick = this.writeTick();
         ReplayKeyframes keyframes = this.replay.keyframes;
 
         /* All three, even for a single-axis drag: a position half-keyed at this tick would
@@ -231,7 +233,7 @@ public class UIReplayPropTransform extends UIPropTransform
          * off, but the hotkey walk and typed input still hand over a full euler triple. */
         this.scratch.rotate.set(MathUtils.toRad((float) x), MathUtils.toRad((float) y), 0F);
 
-        int tick = this.writeTick();
+        float tick = this.writeTick();
         ReplayKeyframes keyframes = this.replay.keyframes;
         double yaw = -y;
 

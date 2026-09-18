@@ -6,11 +6,11 @@ import mchorse.bbs_mod.forms.ITickable;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.VanillaParticleForm;
 import mchorse.bbs_mod.forms.forms.utils.ParticleSettings;
-import mchorse.bbs_mod.graphics.texture.Texture;
+import mchorse.bbs_mod.particles.vanilla.VanillaParticlePreview;
 import mchorse.bbs_mod.particles.vanilla.VanillaParticleScene;
-import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.utils.MathUtils;
+import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.joml.Matrices;
 import mchorse.bbs_mod.utils.joml.Vectors;
 import net.minecraft.client.MinecraftClient;
@@ -27,8 +27,6 @@ import org.joml.Vector3f;
 
 public class VanillaParticleFormRenderer extends FormRenderer<VanillaParticleForm> implements ITickable
 {
-    public static final Link PARTICLE_PREVIEW = new Link("minecraft", "textures/particle/flame.png");
-
     /**
      * How many ticks a frame keeps counting as "drawn just now". Rendering runs
      * per frame and ticking at 20 per second, so a single tick must never fall
@@ -69,19 +67,11 @@ public class VanillaParticleFormRenderer extends FormRenderer<VanillaParticleFor
     @Override
     protected void renderInUI(UIContext context, int x1, int y1, int x2, int y2)
     {
-        Texture texture = context.render.getTextures().getTexture(PARTICLE_PREVIEW);
+        int size = Math.min(x2 - x1, y2 - y1) - 4;
+        float x = (x1 + x2 - size) / 2F;
+        float y = (y1 + y2 - size) / 2F;
 
-        float min = Math.min(texture.width, texture.height);
-        int ow = (x2 - x1) - 4;
-        int oh = (y2 - y1) - 4;
-
-        int w = (int) ((texture.width / min) * ow);
-        int h = (int) ((texture.height / min) * ow);
-
-        int x = x1 + (ow - w) / 2 + 2;
-        int y = y1 + (oh - h) / 2 + 2;
-
-        context.batcher.fullTexturedBox(texture, x, y, w, h);
+        VanillaParticlePreview.render(context, this.form.settings.get().particle, x, y, size, Colors.WHITE);
     }
 
     @Override

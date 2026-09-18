@@ -24,7 +24,7 @@ public abstract class UIKeyframePropTransform extends UIDeltaPropTransform
      * there. Null when the editor cannot produce one, which leaves the fields on the edited
      * keyframe.
      */
-    protected Transform getAutoKeyTransform(int tick)
+    protected Transform getAutoKeyTransform(float tick)
     {
         return null;
     }
@@ -33,7 +33,7 @@ public abstract class UIKeyframePropTransform extends UIDeltaPropTransform
     protected Transform getTargetTransform()
     {
         UIKeyframes keyframes = this.getKeyframes();
-        Integer tick = keyframes == null ? null : keyframes.getAutoKeyframeTick();
+        Float tick = keyframes == null ? null : keyframes.getAutoKeyframeTick();
 
         if (tick != null)
         {

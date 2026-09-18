@@ -141,6 +141,7 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
 
     private int lastTick;
     private int cursor;
+    private float cursorFraction;
     private boolean playing;
 
     /** Armed viewport eyedropper (see {@link #startBonePicking}); null when idle. */
@@ -681,7 +682,20 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
 
     private void plause()
     {
+        if (this.playing)
+        {
+            this.cursorFraction = BBSSettings.editorSnapToTicks.get() ? 0F : this.getSamplingTick() - this.cursor;
+        }
+
         this.playing = !this.playing;
+    }
+
+    public void stopPlaybackOnScrub()
+    {
+        if (this.playing && BBSSettings.editorStopPlaybackOnScrub.get())
+        {
+            this.plause();
+        }
     }
 
     private void toggleStateEditor()
@@ -1188,16 +1202,17 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
                     if (tick != this.lastTick)
                     {
                         this.cursor += 1;
+                        this.cursorFraction = 0F;
                     }
 
                     if (this.cursor >= state.duration.get())
                     {
                         this.playing = false;
-                        this.cursor = 0;
+                        this.setCursor(0);
                     }
                 }
 
-                state.properties.applyProperties(form, this.cursor + (this.playing ? context.getTransition() : 0));
+                state.properties.applyProperties(form, this.getCursor(context.getTransition()));
             }
         }
 
@@ -1292,7 +1307,7 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
     {
         UIContext context = this.getContext();
 
-        return this.cursor + (this.playing && context != null ? context.getTransition() : 0F);
+        return this.getCursor(context == null ? 0F : context.getTransition());
     }
 
     /**
@@ -1317,6 +1332,12 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
     }
 
     @Override
+    public boolean isRunning()
+    {
+        return this.playing;
+    }
+
+    @Override
     public int getCursor()
     {
         return this.cursor;
@@ -1325,6 +1346,20 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
     @Override
     public void setCursor(int tick)
     {
-        this.cursor = tick;
+        this.setCursor((float) tick);
+    }
+
+    @Override
+    public float getCursor(float transition)
+    {
+        return this.cursor + (this.playing ? Math.max(this.cursorFraction, transition) : this.cursorFraction);
+    }
+
+    @Override
+    public void setCursor(float tick)
+    {
+        tick = Math.max(0F, tick);
+        this.cursor = (int) tick;
+        this.cursorFraction = tick - this.cursor;
     }
 }

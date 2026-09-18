@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.camera.controller;
 
+import mchorse.bbs_mod.BBSSettings;
+
 import mchorse.bbs_mod.camera.Camera;
 import mchorse.bbs_mod.camera.clips.CameraClip;
 import mchorse.bbs_mod.camera.data.Position;
@@ -12,6 +14,9 @@ import java.util.function.Consumer;
 public class RunnerCameraController extends CameraWorkCameraController
 {
     public int ticks;
+
+    private float cursorFraction;
+    private float lastTransition;
 
     private Position manual;
     private UIFilmPanel panel;
@@ -39,6 +44,11 @@ public class RunnerCameraController extends CameraWorkCameraController
 
     public void setPlaying(boolean playing)
     {
+        if (this.context.playing && !playing)
+        {
+            this.cursorFraction = BBSSettings.editorSnapToTicks.get() ? 0F : this.getTransition(this.lastTransition);
+        }
+
         this.context.playing = playing;
 
         if (this.callback != null)
@@ -49,9 +59,31 @@ public class RunnerCameraController extends CameraWorkCameraController
 
     public void toggle(int ticks)
     {
-        this.setPlaying(!this.context.playing);
+        if (ticks != this.ticks)
+        {
+            this.setCursor(ticks);
+        }
 
-        this.ticks = ticks;
+        this.setPlaying(!this.context.playing);
+    }
+
+    public void setCursor(float tick)
+    {
+        tick = Math.max(0F, tick);
+        this.ticks = (int) tick;
+        this.cursorFraction = tick - this.ticks;
+        this.lastTransition = this.cursorFraction;
+    }
+
+    public float getTransition(float transition)
+    {
+        /* Resuming from a sub-tick must not move backwards before the next game tick. */
+        return this.context.playing ? Math.max(this.cursorFraction, transition) : this.cursorFraction;
+    }
+
+    public float getCursor(float transition)
+    {
+        return this.ticks + this.getTransition(transition);
     }
 
     public void setManual(Position manual)
@@ -71,6 +103,8 @@ public class RunnerCameraController extends CameraWorkCameraController
             }
 
             this.ticks += 1;
+            this.cursorFraction = 0F;
+            this.lastTransition = 0F;
 
             if (this.ticks >= this.context.clips.calculateDuration())
             {
@@ -82,7 +116,7 @@ public class RunnerCameraController extends CameraWorkCameraController
     @Override
     protected void applyEditedClipEnd(int ticks)
     {
-        if (this.context.playing)
+        if (this.context.playing || this.cursorFraction != 0F)
         {
             return;
         }
@@ -106,6 +140,8 @@ public class RunnerCameraController extends CameraWorkCameraController
             this.context.film = this.panel.getData();
         }
 
+        this.lastTransition = transition;
+
         if (this.manual != null)
         {
             this.manual.apply(camera);
@@ -115,7 +151,7 @@ public class RunnerCameraController extends CameraWorkCameraController
             /* kms */
             boolean free = this.panel.getController().getPovMode() == UIFilmController.CAMERA_MODE_FREE;
 
-            this.apply(free ? null : camera, this.ticks, this.context.playing ? transition : 0F);
+            this.apply(free ? null : camera, this.ticks, this.getTransition(transition));
         }
 
         this.panel.getController().handleCamera(camera, transition);

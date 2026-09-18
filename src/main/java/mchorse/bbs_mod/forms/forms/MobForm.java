@@ -33,6 +33,7 @@ public class MobForm extends Form implements IPosedForm
         this.add(this.mobNBT);
         this.add(this.pose);
         this.add(this.poseOverlay);
+        this.syncOverlayTracks();
         this.add(this.texture);
         this.add(this.slim);
         this.add(this.boneTracks);

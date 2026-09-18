@@ -193,6 +193,7 @@ public abstract class FormRenderer <T extends Form>
      */
     public Transform createTransform()
     {
+        this.form.syncOverlayTracks();
         Transform transform = new Transform();
 
         transform.copy(this.form.transform.get());

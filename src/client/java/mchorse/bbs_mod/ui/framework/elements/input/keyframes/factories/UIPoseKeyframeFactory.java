@@ -304,7 +304,7 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
         }
 
         @Override
-        protected Transform getAutoKeyTransform(int tick)
+        protected Transform getAutoKeyTransform(float tick)
         {
             UIKeyframeSheet sheet = this.editor.editor.getGraph().getSheet(this.editor.keyframe);
             Keyframe<Pose> target = sheet == null ? null : sheet.ensureKeyframe(tick);

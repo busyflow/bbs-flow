@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories;
 
+import mchorse.bbs_mod.BBSSettings;
+
 import mchorse.bbs_mod.camera.utils.TimeUtils;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
@@ -209,7 +211,7 @@ public abstract class UIKeyframeFactory <T> extends UIElement
     protected T getDisplayValue()
     {
         IUIKeyframeGraph graph = this.editor.getGraph();
-        Integer tick = graph.getAutoKeyframeTick();
+        Float tick = graph.getAutoKeyframeTick();
         UIKeyframeSheet sheet = tick == null ? null : graph.getSheet(this.keyframe);
 
         if (sheet == null || sheet.channel.isEmpty())
@@ -224,7 +226,8 @@ public abstract class UIKeyframeFactory <T> extends UIElement
 
     public void setTick(double tick)
     {
-        double time = TimeUtils.fromTime(tick);
+        double time = BBSSettings.editorSnapToTicks.get() ? TimeUtils.fromTime(tick)
+            : (BBSSettings.editorSeconds.get() ? tick * 20D : tick);
 
         this.editor.getGraph().setTick((float) time, false);
     }

@@ -1,6 +1,7 @@
 package mchorse.bbs_mod.ui.framework.elements.utils;
 
 import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.utils.Area;
@@ -81,6 +82,19 @@ public abstract class UITimelineCanvas extends UIElement
         return this.xAxis.from(mouseX);
     }
 
+    public boolean isSnappingToTicks()
+    {
+        return BBSSettings.editorSnapToTicks.get() && !Window.isShiftPressed();
+    }
+
+    /** Mouse authoring uses the shared tick grid, with Shift temporarily bypassing it. */
+    public float fromGraphCursor(int mouseX)
+    {
+        double tick = this.fromGraphX(mouseX);
+
+        return (float) (this.isSnappingToTicks() ? Math.round(tick) : tick);
+    }
+
     public boolean isNavigating()
     {
         return this.navigating;
@@ -102,7 +116,12 @@ public abstract class UITimelineCanvas extends UIElement
     /** Zoom the time axis one step in the wheel's direction, anchored under the cursor. */
     public void zoomTimeAt(UIContext context, double wheel)
     {
-        this.xAxis.zoomAnchor(Scale.getAnchorX(context, this.xAxis.area), Math.copySign(this.xAxis.getZoomFactor(), wheel));
+        this.xAxis.animateZoom(Scale.getAnchorX(context, this.xAxis.area), wheel, this.getZoomSpeed());
+    }
+
+    public double getZoomSpeed()
+    {
+        return Window.isShiftPressed() && Window.isCtrlPressed() ? 3D : 1D;
     }
 
     /** Pan the time axis by a cursor movement of {@code dx} pixels (middle-drag navigation). */

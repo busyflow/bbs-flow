@@ -709,7 +709,7 @@ public class MotionPath
 
     private static float lastTick(KeyframeChannel<?> channel)
     {
-        return channel.isEmpty() ? -Float.MAX_VALUE : channel.get(channel.getKeyframes().size() - 1).getTick();
+        return channel.isEmpty() ? -Float.MAX_VALUE : (float) channel.getLength();
     }
 
     private static String signature(Replay replay, FilmTarget target)
@@ -746,6 +746,7 @@ public class MotionPath
             hash = 31 * hash + keyframe.contentHash();
         }
 
+        hash = 31 * hash + channel.getLoops().hashCode();
         builder.append(':').append(hash);
     }
 

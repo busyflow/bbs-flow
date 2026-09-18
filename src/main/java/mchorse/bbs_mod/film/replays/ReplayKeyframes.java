@@ -503,10 +503,20 @@ public class ReplayKeyframes extends ValueGroup
         this.apply(tick, entity, null);
     }
 
+    public void apply(float tick, IEntity entity)
+    {
+        this.apply(tick, entity, null);
+    }
+
     /**
      * Apply a frame at given tick on the given entity.
      */
     public void apply(int tick, IEntity entity, List<String> groups)
+    {
+        this.apply((float) tick, entity, groups);
+    }
+
+    public void apply(float tick, IEntity entity, List<String> groups)
     {
         boolean empty = groups == null || groups.isEmpty();
         boolean position = empty || !groups.contains(GROUP_POSITION);
@@ -605,7 +615,7 @@ public class ReplayKeyframes extends ValueGroup
     /**
      * Force teleportation for the previous keyframe being constant
      */
-    private Vector2d getPrev(KeyframeSegment<Double> frame, double prev, int tick)
+    private Vector2d getPrev(KeyframeSegment<Double> frame, double prev, float tick)
     {
         if (frame == null)
         {
@@ -626,7 +636,7 @@ public class ReplayKeyframes extends ValueGroup
             return new Vector2d(prev, prev);
         }
 
-        if (frame.preA != frame.a && frame.a.getTick() == tick && (frame.preA.getInterpolation().getInterp() == Interpolations.CONST || frame.preA.getInterpolation().getInterp() == Interpolations.STEP))
+        if (frame.preA != frame.a && frame.a.getTick() == tick - frame.timeOffset && (frame.preA.getInterpolation().getInterp() == Interpolations.CONST || frame.preA.getInterpolation().getInterp() == Interpolations.STEP))
         {
             if (interpolated != null)
             {

@@ -107,8 +107,17 @@ tasks.register('migrationTest', JavaExec) {
 	mainClass = 'mchorse.bbs_mod.data.migration.StableIdsMigrationTest'
 }
 
+tasks.register('anchorInterpolationTest', JavaExec) {
+	group = 'verification'
+	description = 'Checks anchor keyframes and resolved transitions without starting Minecraft.'
+	dependsOn tasks.named('testClasses'), tasks.named('clientClasses')
+	classpath = sourceSets.test.runtimeClasspath + sourceSets.client.runtimeClasspath
+	mainClass = 'mchorse.bbs_mod.utils.keyframes.AnchorInterpolationTest'
+	args 'client'
+}
+
 tasks.named('check') {
-	dependsOn tasks.named('migrationTest')
+	dependsOn tasks.named('migrationTest'), tasks.named('anchorInterpolationTest')
 }
 
 java {

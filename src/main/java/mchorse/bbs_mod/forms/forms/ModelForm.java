@@ -2,7 +2,6 @@ package mchorse.bbs_mod.forms.forms;
 
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
-import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.cubic.animation.ActionsConfig;
 import mchorse.bbs_mod.cubic.constraints.BoneConstraintsIO;
 import mchorse.bbs_mod.cubic.ik.BoneIKIO;
@@ -28,9 +27,7 @@ import mchorse.bbs_mod.utils.colors.Color;
 import mchorse.bbs_mod.utils.pose.Pose;
 import org.joml.Vector3f;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 public class ModelForm extends Form implements IPosedForm
@@ -68,8 +65,6 @@ public class ModelForm extends Form implements IPosedForm
     public final ValueBoolean cemClimbing = new ValueBoolean("cem_climbing", false);
     public final ValueBoolean cemCrawling = new ValueBoolean("cem_crawling", false);
     public final ValueFloat cemHealth = new ValueFloat("cem_health", 1F);
-
-    public final List<ValuePose> additionalOverlays = new ArrayList<>();
 
     /**
      * Runtime per-material texture overrides driven by the per-material animation tracks
@@ -112,13 +107,7 @@ public class ModelForm extends Form implements IPosedForm
         this.add(this.pose);
         this.add(this.poseOverlay);
 
-        for (int i = 0; i < BBSSettings.recordingPoseTransformOverlays.get(); i++)
-        {
-            ValuePose valuePose = new ValuePose("pose_overlay" + i, new Pose());
-
-            this.additionalOverlays.add(valuePose);
-            this.add(valuePose);
-        }
+        this.syncOverlayTracks();
 
         this.add(this.actions);
         this.add(this.color);

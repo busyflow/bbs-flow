@@ -44,6 +44,7 @@ import mchorse.bbs_mod.api.client.events.RegisterFormRenderersEvent;
 import mchorse.bbs_mod.api.client.events.RegisterKeyframeEditorsEvent;
 import mchorse.bbs_mod.api.client.events.RegisterValueWidgetsEvent;
 import mchorse.bbs_mod.forms.FormUtilsClient;
+import mchorse.bbs_mod.particles.vanilla.VanillaParticlePreview;
 import mchorse.bbs_mod.settings.ui.UIValueMap;
 import mchorse.bbs_mod.ui.film.clips.UIClip;
 import mchorse.bbs_mod.ui.forms.editors.UIFormEditor;
@@ -200,6 +201,8 @@ public class BBSModClient implements ClientModInitializer
      */
     private static void reloadFromResourcePacks()
     {
+        VanillaParticlePreview.clearCache();
+
         /* The first reload runs before the client has started; both packs index themselves when made. */
         if (cemSourcePack == null)
         {

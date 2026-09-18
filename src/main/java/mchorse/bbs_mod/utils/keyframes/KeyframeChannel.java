@@ -2,6 +2,7 @@ package mchorse.bbs_mod.utils.keyframes;
 
 import com.mojang.logging.LogUtils;
 import mchorse.bbs_mod.data.types.BaseType;
+import mchorse.bbs_mod.data.types.ListType;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.core.ValueList;
@@ -13,6 +14,7 @@ import mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories;
 import org.slf4j.Logger;
 
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -26,6 +28,71 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private IKeyframeFactory<T> factory;
+    private final List<KeyframeLoop> loops = new ArrayList<>();
+    private final List<KeyframeLoop> loopsView = Collections.unmodifiableList(this.loops);
+
+    public List<KeyframeLoop> getLoops()
+    {
+        return this.loopsView;
+    }
+
+    public KeyframeLoop getLoop(String id)
+    {
+        for (KeyframeLoop loop : this.loops)
+        {
+            if (loop.id().equals(id)) return loop;
+        }
+        return null;
+    }
+
+    /** Mutations are enclosed in the caller's channel notification transaction. */
+    public void putLoop(KeyframeLoop loop)
+    {
+        if (!loop.isValid()) return;
+        this.loops.removeIf(existing -> existing.id().equals(loop.id()));
+        this.loops.add(loop);
+        this.loops.sort((a, b) -> Float.compare(a.start(), b.start()));
+    }
+
+    public void removeLoop(String id)
+    {
+        this.loops.removeIf(loop -> loop.id().equals(id));
+    }
+
+    /** Existing keys always win over a repetition, including an edit made after creation. */
+    public float getLoopEnd(KeyframeLoop loop)
+    {
+        float end = loop.end();
+        Keyframe<T> next = this.get(this.upperBound(loop.sourceEnd()));
+        if (next != null) end = Math.min(end, next.getTick());
+        for (KeyframeLoop other : this.loops)
+        {
+            if (other.start() > loop.start()) end = Math.min(end, other.start());
+        }
+        return end;
+    }
+
+    /** Editing a ghost edits its source instead of inserting an invisible key under the loop. */
+    public float getSourceTick(float tick)
+    {
+        for (KeyframeLoop loop : this.loops)
+        {
+            if (tick > loop.sourceEnd() && tick < this.getLoopEnd(loop)) return loop.sourceTick(tick);
+        }
+        return tick;
+    }
+
+    /** Timeline edits keep originals inside their source pass and other keys outside blocks. */
+    public float constrainKeyframeTick(Keyframe<?> key, float tick)
+    {
+        for (KeyframeLoop loop : this.loops)
+        {
+            if (loop.containsSource(key.getTick())) tick = Math.max(loop.start(), Math.min(loop.sourceEnd(), tick));
+            else if (key.getTick() < loop.start()) tick = Math.min(tick, Math.nextDown(loop.start()));
+            else tick = Math.max(tick, this.getLoopEnd(loop));
+        }
+        return tick;
+    }
 
     public KeyframeChannel(String id, IKeyframeFactory<T> factory)
     {
@@ -43,7 +110,9 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
 
     public double getLength()
     {
-        return this.list.isEmpty() ? 0 : (int) this.list.get(this.list.size() - 1).getTick();
+        double length = this.list.isEmpty() ? 0 : this.list.get(this.list.size() - 1).getTick();
+        for (KeyframeLoop loop : this.loops) length = Math.max(length, this.getLoopEnd(loop));
+        return length;
     }
 
     public boolean isEmpty()
@@ -126,6 +195,158 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
     {
         BBSProfiler.count(BBSProfiler.Section.KEYFRAME_FIND_SEGMENT);
 
+        for (KeyframeLoop loop : this.loops)
+        {
+            if (ticks < loop.start()) break;
+
+            float end = this.getLoopEnd(loop);
+            int first = this.lowerBound(loop.start());
+            int after = this.upperBound(loop.sourceEnd());
+
+            if (first >= after) continue;
+
+            Keyframe<T> next = this.get(after);
+
+            if (ticks > end && (next == null || ticks < next.getTick()))
+            {
+                float local = loop.sourceTick(end);
+                float passOffset = end - local;
+                KeyframeSegment<T> source = this.findSourceSegment(local, first, after, loop, passOffset, end);
+                if (next == null)
+                {
+                    source.timeOffset = ticks - local;
+                    source.setup(ticks);
+                    return source;
+                }
+                Keyframe<T> endpoint = this.loopEndpoint(source, end);
+                KeyframeSegment<T> result = new KeyframeSegment<>(endpoint, next, -1);
+                result.preA = this.shiftLoopNeighbour(source.a.getTick() < local ? source.a : source.preA, passOffset);
+                Keyframe<T> post = this.get(after + 1);
+                result.postB = post == null ? next : post;
+                result.setup(ticks);
+                return result;
+            }
+
+            if (ticks <= end && (next == null || ticks < next.getTick()))
+            {
+                float local = loop.sourceTick(ticks);
+                KeyframeSegment<T> result = this.findSourceSegment(local, first, after, loop, ticks - local, end);
+                result.timeOffset = ticks - local;
+                result.setup(ticks);
+                return result;
+            }
+        }
+
+        KeyframeSegment<T> result = this.findRawSegment(ticks);
+        if (result != null) this.fillLoopPredecessor(result);
+        return result;
+    }
+
+    /** The first real key after a loop follows its virtual endpoint, not the source pass. */
+    private void fillLoopPredecessor(KeyframeSegment<T> segment)
+    {
+        for (KeyframeLoop loop : this.loops)
+        {
+            if (loop.sourceEnd() >= segment.a.getTick()) break;
+
+            int after = this.upperBound(loop.sourceEnd());
+            if (this.get(after) != segment.a) continue;
+            int first = this.lowerBound(loop.start());
+            if (first >= after) continue;
+
+            float end = this.getLoopEnd(loop);
+            float local = loop.sourceTick(end);
+            float passOffset = end - local;
+            KeyframeSegment<T> source = this.findSourceSegment(local, first, after, loop, passOffset, end);
+            segment.preA = end < segment.a.getTick() ? this.loopEndpoint(source, end)
+                : this.shiftLoopNeighbour(source.a.getTick() < local ? source.a : source.preA, passOffset);
+            return;
+        }
+    }
+
+    private Keyframe<T> loopEndpoint(KeyframeSegment<T> source, float end)
+    {
+        Keyframe<T> endpoint = new Keyframe<>("", this.factory, end, source.createInterpolated());
+        endpoint.copyOverExtra(source.a);
+        endpoint.setParent(this);
+        return endpoint;
+    }
+
+    private int lowerBound(float tick)
+    {
+        int low = 0, high = this.list.size();
+        while (low < high)
+        {
+            int mid = (low + high) >>> 1;
+            if (this.list.get(mid).getTick() < tick) low = mid + 1;
+            else high = mid;
+        }
+        return low;
+    }
+
+    private int upperBound(float tick)
+    {
+        int low = this.lowerBound(tick);
+        while (low < this.list.size() && this.list.get(low).getTick() == tick) low++;
+        return low;
+    }
+
+    private KeyframeSegment<T> findSourceSegment(float tick, int first, int after, KeyframeLoop loop, float passOffset, float end)
+    {
+        int right = Math.min(after - 1, Math.max(first, this.upperBound(tick)));
+        int left = tick >= this.list.get(after - 1).getTick() ? after - 1 : Math.max(first, right - 1);
+        KeyframeSegment<T> segment = new KeyframeSegment<>(this.list.get(left), this.list.get(right), left);
+        /* Neighbours live on the repeated timeline, in the same local time as a/b.
+         * Skip a coincident seam key: Auto needs a neighbour at a distinct tick. */
+        if (left == first && passOffset > 0)
+        {
+            int previous = this.lowerBound(segment.a.getTick() + loop.period()) - 1;
+            previous = Math.min(after - 1, previous);
+            segment.preA = previous < first ? segment.a : this.shiftLoopNeighbour(this.get(previous), -loop.period());
+        }
+        else if (left == first)
+        {
+            this.fillLoopPredecessor(segment);
+        }
+
+        if (right == after - 1)
+        {
+            int following = Math.max(first, this.upperBound(segment.b.getTick() - loop.period()));
+            Keyframe<T> next = this.get(after);
+            if (next != null && next.getTick() <= segment.b.getTick() + passOffset)
+            {
+                next = this.get(this.upperBound(segment.b.getTick() + passOffset));
+            }
+            Keyframe<T> repeated = following < after ? this.get(following) : null;
+            float repeatedTick = repeated == null ? Float.POSITIVE_INFINITY : repeated.getTick() + loop.period() + passOffset;
+
+            if (repeatedTick <= end && (next == null || repeatedTick < next.getTick()))
+            {
+                segment.postB = this.shiftLoopNeighbour(repeated, loop.period());
+            }
+            else
+            {
+                segment.postB = next == null ? segment.b : this.shiftLoopNeighbour(next, -passOffset);
+            }
+        }
+        segment.setup(tick);
+        return segment;
+    }
+
+    /** A transient neighbour keeps the source value live without moving or copying stored keys. */
+    private Keyframe<T> shiftLoopNeighbour(Keyframe<T> key, float offset)
+    {
+        if (offset == 0) return key;
+
+        Keyframe<T> shifted = new Keyframe<>("", this.factory, key.getTick() + offset, key.getValue());
+        shifted.copyOverExtra(key);
+        shifted.setParent(this);
+        return shifted;
+    }
+
+    private KeyframeSegment<T> findRawSegment(float ticks)
+    {
+
         /* No keyframes, no values */
         if (this.list.isEmpty())
         {
@@ -188,6 +409,7 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
     {
         this.preNotify();
         this.list.clear();
+        this.loops.clear();
         this.postNotify();
     }
 
@@ -200,12 +422,33 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
 
         this.preNotify();
         this.list.remove(index);
+        this.loops.removeIf(loop -> this.lowerBound(loop.start()) >= this.upperBound(loop.sourceEnd()));
         this.sync();
         this.postNotify();
     }
 
     public void insertSpace(int where, int ticks)
     {
+        if (this.loops.stream().anyMatch(loop -> where > loop.start() && where <= loop.end()))
+        {
+            /* Inserting time into a block extends it; its source tempo stays unchanged.
+             * Before a block, both its keys and bounds move together. */
+            this.preNotify();
+            for (Keyframe<T> key : this.list)
+            {
+                boolean inSource = false;
+                for (KeyframeLoop loop : this.loops)
+                {
+                    if (loop.containsSource(key.getTick()) && where > loop.start()) inSource = true;
+                }
+                if (!inSource && key.getTick() >= where) key.setTick(key.getTick() + ticks);
+            }
+            this.loops.replaceAll(loop -> where <= loop.start() ? loop.move(ticks)
+                : where <= loop.end() ? loop.withEnd(loop.end() + ticks) : loop);
+            this.sort();
+            this.postNotify();
+            return;
+        }
         KeyframeSegment<T> segment = this.findSegment(where);
 
         if (segment == null || where > segment.b.getTick())
@@ -231,11 +474,12 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
                     kf.setTick(kf.getTick() + ticks);
                 }
 
-                Keyframe<T> kfA = keyframes.get(this.insert(where, copy));
-                Keyframe<T> kfB = keyframes.get(this.insert(where + ticks, this.factory.copy(copy)));
+                Keyframe<T> kfA = keyframes.get(this.insertRaw(where, copy));
+                Keyframe<T> kfB = keyframes.get(this.insertRaw(where + ticks, this.factory.copy(copy)));
 
                 kfA.getInterpolation().setInterp(Interpolations.CONST);
                 kfB.getInterpolation().copy(segment.a.getInterpolation());
+                this.loops.replaceAll(loop -> where <= loop.start() ? loop.move(ticks) : loop);
             });
         }
     }
@@ -269,6 +513,11 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
      * Also, it returns index at which it was inserted.
      */
     public int insert(float tick, T value)
+    {
+        return this.insertRaw(this.getSourceTick(tick), value);
+    }
+
+    private int insertRaw(float tick, T value)
     {
         this.preNotify();
 
@@ -371,6 +620,8 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
             keyframe.setTick(keyframe.getTick() + offset);
         }
 
+        this.loops.replaceAll(loop -> loop.move(offset));
+
         this.postNotify();
     }
 
@@ -396,6 +647,13 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
 
         data.put("keyframes", super.toData());
         data.putString("type", type);
+
+        if (!this.loops.isEmpty())
+        {
+            ListType loops = new ListType();
+            for (KeyframeLoop loop : this.loops) loops.add(loop.toData());
+            data.put("loops", loops);
+        }
 
         return data;
     }
@@ -440,6 +698,11 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
         super.fromData(map.getList("keyframes"));
 
         this.sort();
+        this.loops.clear();
+        for (BaseType entry : map.getList("loops"))
+        {
+            if (entry.isMap()) this.putLoop(KeyframeLoop.fromData(entry.asMap()));
+        }
     }
 
     public void copyKeyframes(KeyframeChannel<T> channel)
@@ -455,6 +718,20 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
         }
 
         this.sort();
+        this.loops.clear();
+        this.loops.addAll(channel.loops);
+    }
+
+    @Override
+    public void reset()
+    {
+        if (!this.list.isEmpty() || !this.loops.isEmpty()) this.removeAll();
+    }
+
+    @Override
+    public boolean equals(Object object)
+    {
+        return object instanceof KeyframeChannel<?> channel && super.equals(object) && this.loops.equals(channel.loops);
     }
 
     /**
@@ -488,6 +765,8 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
         double start = tick + ((Keyframe) channel.getKeyframes().get(0)).getTick();
 
         this.list.removeIf((next) -> next.getTick() >= start);
+        this.loops.removeIf(loop -> loop.sourceEnd() >= start);
+        this.loops.replaceAll(loop -> loop.withEnd(Math.min(loop.end(), (float) start)));
 
         for (Object o : channel.getKeyframes())
         {
@@ -500,6 +779,10 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
         }
 
         this.sync();
+        for (Object entry : channel.getLoops())
+        {
+            this.putLoop(((KeyframeLoop) entry).move(tick));
+        }
         this.postNotify();
     }
 }

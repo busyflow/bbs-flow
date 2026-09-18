@@ -13,6 +13,7 @@ import mchorse.bbs_mod.forms.forms.BodyPart;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.forms.forms.MobForm;
 import mchorse.bbs_mod.forms.renderers.mob.MobRenderContext;
+import mchorse.bbs_mod.forms.renderers.mob.MobPoseApplier;
 import mchorse.bbs_mod.forms.renderers.mob.MobPickerVertexConsumer;
 import mchorse.bbs_mod.forms.renderers.mob.MobRig;
 import mchorse.bbs_mod.forms.renderers.mob.MobRigMatrices;
@@ -26,6 +27,7 @@ import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.MatrixStackUtils;
 import mchorse.bbs_mod.utils.StringUtils;
 import mchorse.bbs_mod.utils.joml.Vectors;
+import mchorse.bbs_mod.utils.pose.Pose;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.model.ModelPart;
 import net.minecraft.client.render.LightmapTextureManager;
@@ -58,6 +60,12 @@ public class MobFormRenderer extends FormRenderer<MobForm> implements ITickable
     public MobFormRenderer(MobForm form)
     {
         super(form);
+    }
+
+    private Pose getCombinedPose()
+    {
+        this.form.syncOverlayTracks();
+        return MobPoseApplier.merge(this.form.pose.get(), this.form.poseOverlay.get(), this.form.additionalOverlays);
     }
 
     @Override
@@ -194,7 +202,7 @@ public class MobFormRenderer extends FormRenderer<MobForm> implements ITickable
 
         MatrixCache collected = new MatrixCache();
 
-        MobRigMatrices.evaluate(this.entity, this.getRig(), this.form.pose.get(), this.form.poseOverlay.get(), transition, collected);
+        MobRigMatrices.evaluate(this.entity, this.getRig(), this.getCombinedPose(), null, transition, collected);
 
         for (Map.Entry<String, MatrixCacheEntry> entry : collected.entrySet())
         {
@@ -299,7 +307,7 @@ public class MobFormRenderer extends FormRenderer<MobForm> implements ITickable
                 }
             });
 
-            MobRenderContext mob = MobRenderContext.push(this.getRig(), this.form.pose.get(), this.form.poseOverlay.get());
+            MobRenderContext mob = MobRenderContext.push(this.getRig(), this.getCombinedPose(), null);
 
             consumers.setUI(true);
 
@@ -427,10 +435,10 @@ public class MobFormRenderer extends FormRenderer<MobForm> implements ITickable
              * disagree. */
             if (this.hasBoundBodyParts())
             {
-                MobRigMatrices.evaluate(this.entity, this.getRig(), this.form.pose.get(), this.form.poseOverlay.get(), context.getTransition(), this.bones);
+                MobRigMatrices.evaluate(this.entity, this.getRig(), this.getCombinedPose(), null, context.getTransition(), this.bones);
             }
 
-            MobRenderContext mob = MobRenderContext.push(this.getRig(), this.form.pose.get(), this.form.poseOverlay.get()).picking(context.stencilMap);
+            MobRenderContext mob = MobRenderContext.push(this.getRig(), this.getCombinedPose(), null).picking(context.stencilMap);
 
             try
             {

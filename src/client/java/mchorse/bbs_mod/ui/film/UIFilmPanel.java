@@ -2327,13 +2327,25 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     @Override
     public void setCursor(int value)
     {
-        int ticks = Math.max(0, value);
+        this.setCursor((float) value);
+    }
+
+    @Override
+    public float getCursor(float transition)
+    {
+        return this.runner.getCursor(transition);
+    }
+
+    @Override
+    public void setCursor(float value)
+    {
+        int ticks = (int) Math.max(0F, value);
         boolean moved = ticks != this.runner.ticks;
 
         this.flightEditTime.mark();
         this.lastPosition.set(Position.ZERO);
 
-        this.runner.ticks = ticks;
+        this.runner.setCursor(value);
 
         this.syncCrowdPaint(ticks);
 
@@ -2575,7 +2587,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         super.applyUndoData(data);
 
         this.showPanel(data.getInt("panel"));
-        this.setCursor(data.getInt("tick"));
+        this.setCursor(data.getFloat("tick"));
         this.controller.createEntities();
     }
 
@@ -2585,7 +2597,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         super.collectUndoData(data);
 
         data.putInt("panel", this.getPanelIndex());
-        data.putInt("tick", this.getCursor());
+        data.putFloat("tick", this.getCursor(0F));
     }
 
     @Override

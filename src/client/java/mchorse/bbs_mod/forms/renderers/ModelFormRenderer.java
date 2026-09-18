@@ -188,6 +188,7 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
 
     public Pose getPose()
     {
+        this.form.syncOverlayTracks();
         BBSProfiler.count(BBSProfiler.Section.POSE_COPY);
 
         Pose pose = this.form.pose.get().copy();
