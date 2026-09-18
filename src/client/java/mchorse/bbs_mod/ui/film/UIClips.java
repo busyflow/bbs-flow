@@ -1424,7 +1424,7 @@ public class UIClips extends UITimelineCanvas
                 else
                 {
                     int step = (int) Math.copySign(2, context.mouseWheel);
-                    this.layerHeight = MathUtils.clamp(this.layerHeight + step, LAYER_HEIGHT_MIN, LAYER_HEIGHT_MAX);
+                    this.layerHeight = MathUtils.clamp(this.layerHeight - step, LAYER_HEIGHT_MIN, LAYER_HEIGHT_MAX);
                 }
             }
             else if (Window.isShiftPressed() && !Window.isCtrlPressed())
