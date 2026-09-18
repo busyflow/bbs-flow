@@ -10,7 +10,8 @@ import java.util.List;
 
 /**
  * How a cube's six sides read in the model editor: the arrow each one is drawn by, and what it is
- * called — so every place that names a side names it the same way.
+ * called. The weld rows of the configuration editor and the unwrap rows of the model editor both
+ * name sides, and they name them the same way.
  */
 public final class ModelFaces
 {
@@ -34,5 +35,13 @@ public final class ModelFaces
     public static IKey label(CubeFace face)
     {
         return LABELS[face.ordinal()];
+    }
+
+    /** The icon a side is shown by, from the name a weld calls it; null when the name names none. */
+    public static Icon icon(String face)
+    {
+        CubeFace value = CubeFace.fromName(face);
+
+        return value == null ? null : icon(value);
     }
 }

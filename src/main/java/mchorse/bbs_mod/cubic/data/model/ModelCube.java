@@ -254,136 +254,88 @@ public class ModelCube implements IMapSerializable
     {
         float tw = 1F / textureWidth;
         float th = 1F / textureHeight;
-        float[] box = this.box();
+
+        float minX = (this.origin.x - this.inflate) / 16F;
+        float minY = (this.origin.y - this.inflate) / 16F;
+        float minZ = (this.origin.z - this.inflate) / 16F;
+
+        float maxX = (this.origin.x + this.size.x + this.inflate) / 16F;
+        float maxY = (this.origin.y + this.size.y + this.inflate) / 16F;
+        float maxZ = (this.origin.z + this.size.z + this.inflate) / 16F;
 
         this.quads.clear();
 
         if (this.front != null)
         {
             Quad quad = this.front.createQuad();
-            Vector3f[] c = corners(CubeFace.FRONT, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(c[0].x, c[0].y, c[0].z, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(c[1].x, c[1].y, c[1].z, quad.p3.x * tw, quad.p3.y * th)
-                .vertex(c[2].x, c[2].y, c[2].z, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(c[3].x, c[3].y, c[3].z, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(maxX, minY, minZ, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(minX, minY, minZ, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(minX, maxY, minZ, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(maxX, maxY, minZ, quad.p1.x * tw, quad.p1.y * th)
                 .normal(0, 0, -1));
         }
 
         if (this.right != null)
         {
             Quad quad = this.right.createQuad();
-            Vector3f[] c = corners(CubeFace.RIGHT, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(c[0].x, c[0].y, c[0].z, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(c[1].x, c[1].y, c[1].z, quad.p3.x * tw, quad.p3.y * th)
-                .vertex(c[2].x, c[2].y, c[2].z, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(c[3].x, c[3].y, c[3].z, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(maxX, minY, maxZ, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(maxX, minY, minZ, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(maxX, maxY, minZ, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(maxX, maxY, maxZ, quad.p1.x * tw, quad.p1.y * th)
                 .normal(1, 0, 0));
         }
 
         if (this.back != null)
         {
             Quad quad = this.back.createQuad();
-            Vector3f[] c = corners(CubeFace.BACK, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(c[0].x, c[0].y, c[0].z, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(c[1].x, c[1].y, c[1].z, quad.p3.x * tw, quad.p3.y * th)
-                .vertex(c[2].x, c[2].y, c[2].z, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(c[3].x, c[3].y, c[3].z, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(minX, minY, maxZ, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(maxX, minY, maxZ, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(maxX, maxY, maxZ, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(minX, maxY, maxZ, quad.p1.x * tw, quad.p1.y * th)
                 .normal(0, 0, 1));
         }
 
         if (this.left != null)
         {
             Quad quad = this.left.createQuad();
-            Vector3f[] c = corners(CubeFace.LEFT, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(c[0].x, c[0].y, c[0].z, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(c[1].x, c[1].y, c[1].z, quad.p3.x * tw, quad.p3.y * th)
-                .vertex(c[2].x, c[2].y, c[2].z, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(c[3].x, c[3].y, c[3].z, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(minX, minY, minZ, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(minX, minY, maxZ, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(minX, maxY, maxZ, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(minX, maxY, minZ, quad.p1.x * tw, quad.p1.y * th)
                 .normal(-1, 0, 0));
         }
 
-        /* The top alone takes its unwrap's corners in another order; its corners go around the same way. */
         if (this.top != null)
         {
             Quad quad = this.top.createQuad();
-            Vector3f[] c = corners(CubeFace.TOP, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(c[0].x, c[0].y, c[0].z, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(c[1].x, c[1].y, c[1].z, quad.p1.x * tw, quad.p1.y * th)
-                .vertex(c[2].x, c[2].y, c[2].z, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(c[3].x, c[3].y, c[3].z, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(maxX, maxY, minZ, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(minX, maxY, minZ, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(minX, maxY, maxZ, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(maxX, maxY, maxZ, quad.p3.x * tw, quad.p3.y * th)
                 .normal(0, 1, 0));
         }
 
         if (this.bottom != null)
         {
             Quad quad = this.bottom.createQuad();
-            Vector3f[] c = corners(CubeFace.BOTTOM, box);
 
             this.quads.add(new ModelQuad()
-                .vertex(c[0].x, c[0].y, c[0].z, quad.p4.x * tw, quad.p4.y * th)
-                .vertex(c[1].x, c[1].y, c[1].z, quad.p3.x * tw, quad.p3.y * th)
-                .vertex(c[2].x, c[2].y, c[2].z, quad.p2.x * tw, quad.p2.y * th)
-                .vertex(c[3].x, c[3].y, c[3].z, quad.p1.x * tw, quad.p1.y * th)
+                .vertex(minX, minY, minZ, quad.p4.x * tw, quad.p4.y * th)
+                .vertex(maxX, minY, minZ, quad.p3.x * tw, quad.p3.y * th)
+                .vertex(maxX, minY, maxZ, quad.p2.x * tw, quad.p2.y * th)
+                .vertex(minX, minY, maxZ, quad.p1.x * tw, quad.p1.y * th)
                 .normal(0, -1, 0));
         }
-    }
-
-    /**
-     * The four corners of one of the box's sides, in blocks, in the order that side's quad lists its
-     * vertices: around the rectangle, so corner 0 neighbours 1 and 3. Whether the side is drawn or
-     * not — a weld glues sides by their corners, and the sides of a joint are often not drawn.
-     */
-    public Vector3f[] faceCorners(CubeFace face)
-    {
-        return corners(face, this.box());
-    }
-
-    /** The box in blocks, the inflate taken in: its near corner's x, y, z, then its far corner's. */
-    private float[] box()
-    {
-        return new float[] {
-            (this.origin.x - this.inflate) / 16F,
-            (this.origin.y - this.inflate) / 16F,
-            (this.origin.z - this.inflate) / 16F,
-            (this.origin.x + this.size.x + this.inflate) / 16F,
-            (this.origin.y + this.size.y + this.inflate) / 16F,
-            (this.origin.z + this.size.z + this.inflate) / 16F
-        };
-    }
-
-    /**
-     * A side's corners off the box, in the order its quad takes them. The quads and the welds both read
-     * them here, so a welded corner is bit for bit the vertex it stands on — the renderer finds the
-     * corners of a seam by that.
-     */
-    private static Vector3f[] corners(CubeFace face, float[] box)
-    {
-        float minX = box[0];
-        float minY = box[1];
-        float minZ = box[2];
-        float maxX = box[3];
-        float maxY = box[4];
-        float maxZ = box[5];
-
-        return switch (face)
-        {
-            case FRONT -> new Vector3f[] {new Vector3f(maxX, minY, minZ), new Vector3f(minX, minY, minZ), new Vector3f(minX, maxY, minZ), new Vector3f(maxX, maxY, minZ)};
-            case RIGHT -> new Vector3f[] {new Vector3f(maxX, minY, maxZ), new Vector3f(maxX, minY, minZ), new Vector3f(maxX, maxY, minZ), new Vector3f(maxX, maxY, maxZ)};
-            case BACK -> new Vector3f[] {new Vector3f(minX, minY, maxZ), new Vector3f(maxX, minY, maxZ), new Vector3f(maxX, maxY, maxZ), new Vector3f(minX, maxY, maxZ)};
-            case LEFT -> new Vector3f[] {new Vector3f(minX, minY, minZ), new Vector3f(minX, minY, maxZ), new Vector3f(minX, maxY, maxZ), new Vector3f(minX, maxY, minZ)};
-            case TOP -> new Vector3f[] {new Vector3f(maxX, maxY, minZ), new Vector3f(minX, maxY, minZ), new Vector3f(minX, maxY, maxZ), new Vector3f(maxX, maxY, maxZ)};
-            case BOTTOM -> new Vector3f[] {new Vector3f(minX, minY, minZ), new Vector3f(maxX, minY, minZ), new Vector3f(maxX, minY, maxZ), new Vector3f(minX, minY, maxZ)};
-        };
     }
 
     /** Move the cube as a whole: its corner and the pivot it turns about go by the same step. */
@@ -452,7 +404,7 @@ public class ModelCube implements IMapSerializable
     }
 
     /** A side's key in the file, where {@code uvs} and {@code hidden_uvs} name it the same way. */
-    static String faceKey(CubeFace face)
+    private static String faceKey(CubeFace face)
     {
         return face.name().toLowerCase(Locale.ROOT);
     }

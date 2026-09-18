@@ -57,10 +57,10 @@ public class WeldPatchBuffer
     }
 
     /**
-     * Note that an edge of a patch lies on a weld's seam, running from seam corner {@code seamA} to
+     * Note that an edge of a patch lies on a layer's seam, running from seam corner {@code seamA} to
      * {@code seamB} in the edge's own point order — that pair is how the edge finds its other side.
      */
-    public void addSeamEdge(Patch patch, WeldBinding weld, boolean source, Edge edge, int seamA, int seamB)
+    public void addSeamEdge(Patch patch, WeldBinding.Layer layer, boolean source, Edge edge, int seamA, int seamB)
     {
         if (this.seamEdgeCount == this.seamEdges.size())
         {
@@ -70,7 +70,7 @@ public class WeldPatchBuffer
         SeamEdge seamEdge = this.seamEdges.get(this.seamEdgeCount++);
 
         seamEdge.patch = patch;
-        seamEdge.weld = weld;
+        seamEdge.layer = layer;
         seamEdge.source = source;
         seamEdge.edge = edge;
         seamEdge.seamA = seamA;
@@ -107,7 +107,7 @@ public class WeldPatchBuffer
         {
             SeamEdge target = this.seamEdges.get(i);
 
-            if (target.source || !target.weld.smooth)
+            if (target.source || !target.layer.smooth)
             {
                 continue;
             }
@@ -116,7 +116,7 @@ public class WeldPatchBuffer
             {
                 SeamEdge source = this.seamEdges.get(j);
 
-                if (source.source && source.weld == target.weld && target.sameSeam(source))
+                if (source.source && source.layer == target.layer && target.sameSeam(source))
                 {
                     this.shareNormals(target, source);
                 }
@@ -233,11 +233,11 @@ public class WeldPatchBuffer
         }
     }
 
-    /** A patch edge that lies on a weld's seam, between two of the seam's corners. */
+    /** A patch edge that lies on a layer's seam, between two of the seam's corners. */
     private static class SeamEdge
     {
         private Patch patch;
-        private WeldBinding weld;
+        private WeldBinding.Layer layer;
         private boolean source;
         private Edge edge;
         private int seamA;

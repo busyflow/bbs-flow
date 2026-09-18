@@ -1589,13 +1589,6 @@ public class UIModelGeometryEditor extends UIElement
         if (this.instance != null)
         {
             this.instance.rebakeGroups(this.dirty);
-
-            /* A weld keeps the corners its cubes had when it was resolved; a seam dragged along with a
-             * cube is resolved again, or it holds the joint where the cube used to be until the drag ends. */
-            if (this.instance.hasWeldIn(this.dirty))
-            {
-                this.instance.invalidateWelds();
-            }
         }
 
         this.dirty.clear();

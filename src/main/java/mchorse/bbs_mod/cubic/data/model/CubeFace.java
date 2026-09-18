@@ -2,11 +2,9 @@ package mchorse.bbs_mod.cubic.data.model;
 
 import org.joml.Vector3f;
 
-import java.util.Locale;
-
 /**
- * One of the six box faces of a cube, identified by the local normal baked into its quads. Lets an
- * unwrap or a weld name a side ("top", "bottom", ...).
+ * One of the six box faces of a cube, identified by the local normal baked into its quads. Lets a weld
+ * name a side ("top", "bottom", ...) and the resolver find the matching quad by comparing normals.
  */
 public enum CubeFace
 {
@@ -33,8 +31,7 @@ public enum CubeFace
 
         try
         {
-            /* The root locale: a Turkish one upper-cases "right" with a dotted I, which names no face. */
-            return valueOf(name.trim().toUpperCase(Locale.ROOT));
+            return valueOf(name.trim().toUpperCase());
         }
         catch (IllegalArgumentException e)
         {

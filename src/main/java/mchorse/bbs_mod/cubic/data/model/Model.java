@@ -7,7 +7,6 @@ import mchorse.bbs_mod.cubic.MolangHelper;
 import mchorse.bbs_mod.cubic.RigBone;
 import mchorse.bbs_mod.cubic.data.animation.Animation;
 import mchorse.bbs_mod.data.IMapSerializable;
-import mchorse.bbs_mod.data.types.BaseType;
 import mchorse.bbs_mod.data.types.ListType;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.forms.entities.IEntity;
@@ -24,7 +23,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,9 +38,6 @@ public class Model implements IMapSerializable, IModel
      * This list contains only the root groups of the model (and not all of the groups)
      */
     public List<ModelGroup> topGroups = new ArrayList<>();
-
-    /** The welds between the model's cubes. One whose cube left the model is dropped when the model is next settled ({@link #initialize()}). */
-    public final List<ModelWeld> welds = new ArrayList<>();
 
     private Map<String, ModelGroup> namedGroups = new HashMap<>();
     private List<ModelGroup> orderedGroups = new ArrayList<>();
@@ -82,26 +77,6 @@ public class Model implements IMapSerializable, IModel
                 this.shapeKeys.addAll(mesh.data.keySet());
             }
         }
-
-        this.dropDeadWelds();
-    }
-
-    /** Forget the welds one of whose cubes is no longer in the model — removed, or gone along with its group. */
-    private void dropDeadWelds()
-    {
-        if (this.welds.isEmpty())
-        {
-            return;
-        }
-
-        Set<ModelCube> cubes = Collections.newSetFromMap(new IdentityHashMap<>());
-
-        for (ModelGroup group : this.orderedGroups)
-        {
-            cubes.addAll(group.cubes);
-        }
-
-        this.welds.removeIf((weld) -> !cubes.contains(weld.sourceCube) || !cubes.contains(weld.targetCube));
     }
 
     private void fillGroups(List<ModelGroup> groups, ModelGroup parent)
@@ -140,23 +115,6 @@ public class Model implements IMapSerializable, IModel
     public ModelGroup getGroup(String id)
     {
         return this.namedGroups.get(id);
-    }
-
-    /** The group the cube belongs to, or null for a cube that isn't in the model. */
-    public ModelGroup findGroup(ModelCube cube)
-    {
-        for (ModelGroup group : this.orderedGroups)
-        {
-            for (ModelCube other : group.cubes)
-            {
-                if (other == cube)
-                {
-                    return group;
-                }
-            }
-        }
-
-        return null;
     }
 
     /** Rebuild what these groups' cubes draw as, after their numbers changed. */
@@ -554,51 +512,6 @@ public class Model implements IMapSerializable, IModel
                 this.topGroups.add(flatGroups.get(rootGroup));
             }
         }
-
-        /* By the groups just read: the model's own map of them is only rebuilt by initialize(), and
-         * until then it holds the groups of before — or none, on a first load. */
-        this.readWelds(data.getList("welds"), flatGroups);
-    }
-
-    /** The file's welds, bound to the cubes just read; an entry naming a cube or a side that isn't there is left out. */
-    private void readWelds(ListType list, Map<String, ModelGroup> groups)
-    {
-        this.welds.clear();
-
-        for (BaseType element : list)
-        {
-            if (!element.isMap())
-            {
-                continue;
-            }
-
-            MapType entry = element.asMap();
-            MapType source = entry.getMap("source");
-            MapType target = entry.getMap("target");
-            ModelCube sourceCube = cubeAt(groups, source);
-            ModelCube targetCube = cubeAt(groups, target);
-            CubeFace sourceFace = CubeFace.fromName(source.getString("face"));
-            CubeFace targetFace = CubeFace.fromName(target.getString("face"));
-
-            if (sourceCube == null || targetCube == null || sourceFace == null || targetFace == null)
-            {
-                continue;
-            }
-
-            ModelWeld weld = new ModelWeld(sourceCube, sourceFace, targetCube, targetFace);
-
-            weld.settingsFromData(entry);
-            this.welds.add(weld);
-        }
-    }
-
-    /** The cube a weld's side names by its group and its place there, or null when there's none. */
-    private static ModelCube cubeAt(Map<String, ModelGroup> groups, MapType side)
-    {
-        ModelGroup group = groups.get(side.getString("group"));
-        int index = side.getInt("cube", -1);
-
-        return group != null && index >= 0 && index < group.cubes.size() ? group.cubes.get(index) : null;
     }
 
     @Override
@@ -613,28 +526,14 @@ public class Model implements IMapSerializable, IModel
          * ordered map: the file's order is the order they come back in, so a save must not shuffle
          * the tree. */
         MapType groups = new MapType(false);
-        Map<ModelCube, CubeAddress> addresses = new IdentityHashMap<>();
 
-        this.writeGroups(this.topGroups, null, groups, addresses);
+        this.writeGroups(this.topGroups, null, groups);
 
         data.put("texture", texture);
         data.put("groups", groups);
-
-        /* Only when there are any: whatever reads models without welds — an older BBS, a model
-         * exported off a form — has nothing new to skip. */
-        ListType welds = this.writeWelds(addresses);
-
-        if (!welds.isEmpty())
-        {
-            data.put("welds", welds);
-        }
     }
 
-    /**
-     * The groups, and where each cube of theirs is written — by this very walk rather than by the
-     * model's own maps, which an edit in progress hasn't settled yet ({@link #initialize()}).
-     */
-    private void writeGroups(List<ModelGroup> list, ModelGroup parent, MapType groups, Map<ModelCube, CubeAddress> addresses)
+    private void writeGroups(List<ModelGroup> list, ModelGroup parent, MapType groups)
     {
         for (ModelGroup group : list)
         {
@@ -645,55 +544,8 @@ public class Model implements IMapSerializable, IModel
                 groupData.putString("parent", parent.id);
             }
 
-            for (int i = 0; i < group.cubes.size(); i++)
-            {
-                addresses.put(group.cubes.get(i), new CubeAddress(group.id, i));
-            }
-
             groups.put(group.id, groupData);
-            this.writeGroups(group.children, group, groups, addresses);
-        }
-    }
-
-    /** The welds, each side by its cube's address; a weld whose cube was just taken out of the model isn't written. */
-    private ListType writeWelds(Map<ModelCube, CubeAddress> addresses)
-    {
-        ListType list = new ListType();
-
-        for (ModelWeld weld : this.welds)
-        {
-            CubeAddress source = addresses.get(weld.sourceCube);
-            CubeAddress target = addresses.get(weld.targetCube);
-
-            if (source == null || target == null)
-            {
-                continue;
-            }
-
-            MapType entry = new MapType(false);
-
-            entry.put("source", source.toData(weld.sourceFace));
-            entry.put("target", target.toData(weld.targetFace));
-            weld.settingsToData(entry);
-            list.add(entry);
-        }
-
-        return list;
-    }
-
-    /** Where a cube is written: its group and its place among the group's cubes. */
-    private record CubeAddress(String group, int cube)
-    {
-        /** A weld's side at this cube. */
-        public MapType toData(CubeFace face)
-        {
-            MapType side = new MapType(false);
-
-            side.putString("group", this.group);
-            side.putInt("cube", this.cube);
-            side.putString("face", ModelCube.faceKey(face));
-
-            return side;
+            this.writeGroups(group.children, group, groups);
         }
     }
 }

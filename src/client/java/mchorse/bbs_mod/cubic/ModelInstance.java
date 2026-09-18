@@ -9,7 +9,6 @@ import mchorse.bbs_mod.cubic.data.animation.Animations;
 import mchorse.bbs_mod.cubic.data.model.Model;
 import mchorse.bbs_mod.cubic.data.model.ModelGroup;
 import mchorse.bbs_mod.cubic.data.model.ModelMesh;
-import mchorse.bbs_mod.cubic.data.model.ModelWeld;
 import mchorse.bbs_mod.cubic.jem.CemAnimation;
 import mchorse.bbs_mod.cubic.model.ArmorSlot;
 import mchorse.bbs_mod.cubic.model.ArmorType;
@@ -26,6 +25,7 @@ import mchorse.bbs_mod.cubic.render.WeldGeometryCache;
 import mchorse.bbs_mod.cubic.render.vao.BOBJModelVAO;
 import mchorse.bbs_mod.cubic.render.vao.ModelVAO;
 import mchorse.bbs_mod.cubic.render.vao.ModelVAORenderer;
+import mchorse.bbs_mod.cubic.weld.ModelWeld;
 import mchorse.bbs_mod.cubic.weld.WeldBinding;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.forms.FormTranslucentQueue;
@@ -232,7 +232,7 @@ public class ModelInstance implements IModelInstance
         return this.vaos;
     }
 
-    /** Welds resolved against this model, built once. Empty when the model has none or isn't cubic. */
+    /** Welds resolved against this model, built once. Empty when the model declares none or isn't cubic. */
     public List<WeldBinding> getWeldBindings()
     {
         if (this.weldBindings == null)
@@ -242,7 +242,7 @@ public class ModelInstance implements IModelInstance
 
             if (this.model instanceof Model model)
             {
-                for (ModelWeld weld : model.welds)
+                for (ModelWeld weld : this.config.getWelds())
                 {
                     WeldBinding binding = WeldBinding.resolve(model, weld);
 
@@ -260,36 +260,15 @@ public class ModelInstance implements IModelInstance
     }
 
     /**
-     * Re-resolve welds after the model's welds or the cubes they join changed: drop the cached bindings,
-     * rebuilt on the next render. Cheap — a bake of a weld in progress may ask for it every frame.
+     * Re-resolve welds after the config's weld list was edited: drop the cached bindings (rebuilt on the
+     * next render) and refresh the config's derived caches so the new welds take effect.
      */
     public void invalidateWelds()
     {
         this.weldBindings = null;
         this.weldedGroups = null;
         this.weldCache.invalidate();
-    }
-
-    /** Whether one of the groups holds a welded cube — so a change of its numbers moves a seam too. */
-    public boolean hasWeldIn(Collection<ModelGroup> groups)
-    {
-        if (!(this.model instanceof Model model) || model.welds.isEmpty())
-        {
-            return false;
-        }
-
-        for (ModelWeld weld : model.welds)
-        {
-            for (ModelGroup group : groups)
-            {
-                if (group.cubes.contains(weld.sourceCube) || group.cubes.contains(weld.targetCube))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        this.config.rebuild();
     }
 
     /**
@@ -628,7 +607,10 @@ public class ModelInstance implements IModelInstance
     {
         for (WeldBinding binding : bindings)
         {
-            binding.resetCapture();
+            for (WeldBinding.Layer layer : binding.layers)
+            {
+                layer.resetCapture();
+            }
         }
 
         CubicCubeRenderer capture = new CubicCubeRenderer(light, overlay, stencilMap, keys);
@@ -639,7 +621,10 @@ public class ModelInstance implements IModelInstance
 
         for (WeldBinding binding : bindings)
         {
-            binding.computeSeam();
+            for (WeldBinding.Layer layer : binding.layers)
+            {
+                layer.computeSeam();
+            }
         }
     }
 
