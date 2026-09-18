@@ -29,7 +29,8 @@ public class LiveRecordingResetTest
     @BeforeAll
     public static void setup()
     {
-        BBSSettings.recordingPoseTransformOverlays = new ValueInt("pose_transform_overlays", 0);
+        BBSSettings.recordingPoseOverlays = new ValueInt("pose_overlays", 0);
+        BBSSettings.recordingTransformOverlays = new ValueInt("transform_overlays", 0);
         KeyframeFactories.setup();
     }
 
