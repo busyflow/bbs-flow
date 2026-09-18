@@ -1372,6 +1372,38 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         }
     }
 
+    private void renderSectionKeyframes(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area)
+    {
+        for (UIKeyframeSheet sheet : this.sheets)
+        {
+            Integer offset = this.sectionYCache.get(sheet.section);
+
+            if (offset == null)
+            {
+                continue;
+            }
+
+            int y = this.getDopeSheetY() + offset + (int) this.trackHeight / 2;
+
+            if (y + 3 < area.y || y - 3 > area.ey())
+            {
+                continue;
+            }
+
+            for (int i = 0; i < sheet.channel.getKeyframes().size(); i++)
+            {
+                Keyframe frame = (Keyframe) sheet.channel.getKeyframes().get(i);
+                int x = this.keyframes.toGraphX(frame.getTick());
+
+                if (x < area.x - CULL_MARGIN) continue;
+                if (x > area.ex() + CULL_MARGIN) break;
+
+                int color = sheet.section.color() | Colors.A100;
+                context.batcher.fillRect(builder, matrix, x - 3, y - 3, 6, 6, color, color, color, color);
+            }
+        }
+    }
+
     @Override
     public void renderTopmostKeyframes(UIContext context)
     {
@@ -1387,6 +1419,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
         context.batcher.clipBox(area.x, rulerBottom, area.ex(), area.ey(), context);
         builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
+        this.renderSectionKeyframes(context, builder, matrix, area);
         this.renderSheetsTopmostKeyframes(context, builder, matrix, area);
         RenderSystem.enableBlend();
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
