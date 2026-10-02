@@ -2,7 +2,7 @@
     "schemaVersion": 1,
     "id": "bbs",
     "version": "${version}",
-    "name": "BBS FS mod",
+    "name": "BBS Flow",
     "description": "A new generation of video production mod",
     "authors": [
         "McHorse",
