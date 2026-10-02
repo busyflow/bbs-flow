@@ -141,6 +141,11 @@ public class Film extends ValueGroup
         return this.getFirstPersonReplay() != null;
     }
 
+    public boolean shouldUseCameraTrack()
+    {
+        return this.camera != null && this.camera.calculateDuration() > 0;
+    }
+
     /**
      * How long this film actually runs: the camera's length, or the last keyframe of any enabled
      * replay when a take outlives the shot.

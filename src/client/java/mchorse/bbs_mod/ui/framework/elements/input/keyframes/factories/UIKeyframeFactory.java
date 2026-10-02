@@ -13,6 +13,7 @@ import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.utils.StringUtils;
 import mchorse.bbs_mod.ui.framework.elements.utils.ScrollMemory;
+import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.utils.keyframes.factories.IKeyframeFactory;
 import mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories;
 import mchorse.bbs_mod.utils.pose.Transform;
@@ -156,6 +157,15 @@ public abstract class UIKeyframeFactory <T> extends UIElement
     }
 
     public UIKeyframeSheet getSheet() { return this.track.sheet; }
+
+    public Keyframe<T> getKeyframe()
+    {
+        if (this.track != null && this.track.sheet != null && this.track.sheet.selection != null)
+        {
+            return (Keyframe<T>) this.track.sheet.selection.getSelectedFirst();
+        }
+        return null;
+    }
 
     protected T getDisplayValue() { return this.track.getValue(); }
 

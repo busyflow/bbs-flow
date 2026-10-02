@@ -81,6 +81,14 @@ public class UIKeyframeEditor extends UITimelinePanel
         return UIKeys.KEYFRAMES_EMPTY_PICK;
     }
 
+    public void pickKeyframe(Keyframe keyframe)
+    {
+        if (this.view != null)
+        {
+            this.view.pickKeyframe(keyframe);
+        }
+    }
+
     private void refreshSelection()
     {
         UIKeyframeSheet sheet = this.view.getActiveSheet();

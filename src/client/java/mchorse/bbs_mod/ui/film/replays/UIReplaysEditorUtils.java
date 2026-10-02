@@ -263,6 +263,11 @@ public class UIReplaysEditorUtils
      * their parent row. The catalog decides what exists and where it sits; this only builds widgets,
      * which is why both timelines — a replay's and an animation state's — go through it.
      */
+    public static void buildSheets(List<TrackDescriptor> catalog, List<UIKeyframeSheet> sheets)
+    {
+        buildSheets(catalog, sheets, null);
+    }
+
     public static void buildSheets(List<TrackDescriptor> catalog, List<UIKeyframeSheet> sheets, FormProperties properties)
     {
         Map<TrackId, UIKeyframeSheet> rows = new HashMap<>();

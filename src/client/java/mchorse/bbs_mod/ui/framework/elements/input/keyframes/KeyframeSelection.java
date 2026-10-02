@@ -162,6 +162,11 @@ public class KeyframeSelection
         return null;
     }
 
+    public Keyframe getSelectedFirst()
+    {
+        return this.getFirst();
+    }
+
     public List<Keyframe> getSelected()
     {
         this.tmp.clear();
