@@ -25,6 +25,14 @@ public class SystemTimeUniformsTimerMixin
     @Inject(method = "beginFrame", at = @At("HEAD"), cancellable = true, remap = false)
     public void onBeginFrame(CallbackInfo info)
     {
+        if (BBSRendering.isHoldingExportFrame())
+        {
+            this.heldFrames = 0;
+            info.cancel();
+
+            return;
+        }
+
         VideoRecorder videoRecorder = BBSModClient.getVideoRecorder();
 
         if (videoRecorder.isRecording())

@@ -31,7 +31,8 @@ public class SaveVersion
      * <p>2 — stable ids: replays and body parts carry an {@code "id"}; track keys, anchors and
      * camera selectors address them by it instead of by list position ({@link FilmStableIds}).
      */
-    public static final int CURRENT = 2;
+    /* 3 — root form anchor and its animation moved to the owning replay. */
+    public static final int CURRENT = 3;
 
     /** Documents written before versioning existed: they carry no {@link #KEY} at all. */
     public static final int LEGACY = 0;

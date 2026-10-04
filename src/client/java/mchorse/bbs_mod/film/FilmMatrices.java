@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.film;
 
+import mchorse.bbs_mod.forms.entities.ReplayEntity;
+
 import mchorse.bbs_mod.cubic.spline.SplinePath;
 import mchorse.bbs_mod.forms.forms.SplineForm;
 import mchorse.bbs_mod.ui.utils.SplineEditorUtils;
@@ -43,6 +45,17 @@ import org.joml.Vector3f;
  */
 public class FilmMatrices
 {
+    public static Anchor getAnchor(IEntity entity)
+    {
+        return entity instanceof ReplayEntity actor && !actor.replay.relative.get() ? actor.replay.anchor.get() : null;
+    }
+
+    public static Anchor getAnchor(IEntity entity, Replay replay)
+    {
+        return entity instanceof ReplayEntity ? getAnchor(entity)
+            : replay == null || replay.relative.get() ? null : replay.anchor.get();
+    }
+
     /** Full linear frame of a spline's point coordinates, including actor and anchor. */
     public static Matrix4f getSplineParentCompositeMatrix(Map<String, IEntity> entities, IEntity entity, Replay replay,
         double cameraX, double cameraY, double cameraZ, float transition, SplineEditorUtils.Point point)
@@ -54,7 +67,7 @@ public class FilmMatrices
         Matrix4f target = getMatrixForRenderWithRotation(entity, origin.x, origin.y, origin.z, transition);
         if (!relative)
         {
-            Pair<Matrix4f, Float> anchor = getTotalMatrix(entities, form.anchor.get(), target, origin.x, origin.y, origin.z, transition, 0);
+            Pair<Matrix4f, Float> anchor = getTotalMatrix(entities, getAnchor(entity, replay), target, origin.x, origin.y, origin.z, transition, 0);
             if (anchor.a != null) target = anchor.a;
         }
         Matrix4f parent = SplineEditorUtils.parentMatrix(FormUtils.getRoot(form), entity, transition, point.form(), point.chain());
@@ -80,6 +93,7 @@ public class FilmMatrices
      */
     public static Pair<Matrix4f, Float> getTotalMatrix(Map<String, IEntity> entities, Anchor value, Matrix4f defaultMatrix, double cx, double cy, double cz, float transition, int i, boolean fullMatrix, FormFrameCache frame)
     {
+        if (value == null) return new Pair<>(null, 1F);
         value = FormPoseEvents.ANCHOR.invoker().resolve(value);
 
         /* Stupid recursion stop, I don't think anyone would need more than that */
@@ -146,6 +160,7 @@ public class FilmMatrices
 
     public static Matrix4f getEntityMatrix(Map<String, IEntity> entities, double cameraX, double cameraY, double cameraZ, Anchor anchor, Matrix4f defaultMatrix, float transition, int i, boolean fullMatrix, FormFrameCache frame)
     {
+        if (anchor == null) return defaultMatrix;
         if (anchor.spline && cyclic(entities, anchor.replay, new java.util.HashSet<>())) return defaultMatrix;
         IEntity entity = entities.get(anchor.replay);
 
@@ -153,17 +168,13 @@ public class FilmMatrices
         {
             Matrix4f basic = getMatrixForRenderWithRotation(entity, cameraX, cameraY, cameraZ, transition);
 
+            Pair<Matrix4f, Float> totalMatrix = getTotalMatrix(entities, getAnchor(entity), basic, cameraX, cameraY, cameraZ, transition, i + 1, fullMatrix, frame);
+            if (totalMatrix.a != null) basic = totalMatrix.a;
+
             Form form = entity.getForm();
 
             if (form != null)
             {
-                Pair<Matrix4f, Float> totalMatrix = getTotalMatrix(entities, form.anchor.get(), basic, cameraX, cameraY, cameraZ, transition, i + 1, fullMatrix, frame);
-
-                if (totalMatrix.a != null)
-                {
-                    basic = totalMatrix.a;
-                }
-
                 /* The pose evaluation the attachment bone comes from — shared with the caller's pass when it
                  * established one (see FormFrameCache), evaluated fresh otherwise. Note it does NOT depend on
                  * the camera position, which is why resolving the same anchor for the camera-relative and the
@@ -210,7 +221,7 @@ public class FilmMatrices
         if (id.isEmpty()) return false;
         if (!visited.add(id) || visited.size() > 32) return true;
         IEntity entity = entities.get(id);
-        Anchor next = entity == null || entity.getForm() == null ? null : entity.getForm().anchor.get();
+        Anchor next = getAnchor(entity);
         boolean result = next != null && (cyclic(entities, next.replay, visited)
             || next.previous != null && cyclic(entities, next.previous.replay, visited));
         visited.remove(id);
@@ -371,7 +382,7 @@ public class FilmMatrices
 
         if (!relative)
         {
-            Pair<Matrix4f, Float> pair = getTotalMatrix(entities, form.anchor.get(), defaultMatrix, cx, cy, cz, transition, 0, false, frame);
+            Pair<Matrix4f, Float> pair = getTotalMatrix(entities, getAnchor(entity, replay), defaultMatrix, cx, cy, cz, transition, 0, false, frame);
 
             target = pair.a != null ? pair.a : defaultMatrix;
         }
@@ -398,8 +409,8 @@ public class FilmMatrices
     /**
      * The anchor's resolved world matrix as composed for the film viewport — the
      * same {@code target} {@link #renderEntity} renders the form with, i.e.
-     * {@code getTotalMatrix(form.anchor)}. Used by the gizmo drag to numerically
-     * sample how {@code form.anchor.transform} maps to world position/rotation
+     * {@code getTotalMatrix(replay.anchor)}. Used by the gizmo drag to numerically
+     * sample how {@code replay.anchor.transform} maps to world position/rotation
      * (the counterpart of {@link #getGizmoBoneCompositeMatrix} for the anchor,
      * with no bone multiply since the anchor moves the whole form).
      */
@@ -412,9 +423,9 @@ public class FilmMatrices
         double cameraZ,
         float transition
     ) {
-        Matrix4f full = entity == null || entity.getForm() == null
+        Matrix4f full = entity == null
             ? null
-            : getAnchorMatrix(entities, entity, replay, cameraX, cameraY, cameraZ, transition, entity.getForm().anchor.get());
+            : getAnchorMatrix(entities, entity, replay, cameraX, cameraY, cameraZ, transition, getAnchor(entity, replay));
 
         return full == null ? null : MatrixStackUtils.stripScale(full);
     }
@@ -441,7 +452,7 @@ public class FilmMatrices
         float transition,
         Anchor anchor
     ) {
-        if (entity == null || entity.getForm() == null || anchor == null)
+        if (entity == null)
         {
             return null;
         }

@@ -46,7 +46,22 @@ public class UIAnimationStateKeyframes extends UIKeyframes
     @Override
     public Float getAutoKeyframeTick()
     {
-        return this.editor != null && BBSSettings.autoKeyframe.get() ? this.getOffset() : null;
+        return this.editor != null && (BBSSettings.autoKeyframe.get() || this.editor.isRunning()) ? this.getOffset() : null;
+    }
+
+    @Override
+    public boolean stopPlaybackOnValueChange()
+    {
+        if (this.editor == null || BBSSettings.autoKeyframe.get() || !this.editor.isRunning())
+        {
+            return false;
+        }
+
+        float tick = this.getOffset();
+        this.editor.stopPlayback();
+        this.editor.setCursor(tick);
+
+        return true;
     }
 
     @Override

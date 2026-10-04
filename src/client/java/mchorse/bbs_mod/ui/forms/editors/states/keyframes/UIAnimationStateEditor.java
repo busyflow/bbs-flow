@@ -347,7 +347,7 @@ public class UIAnimationStateEditor extends UIElement
         {
             entry.getValue().removeFromParent();
             TrackCategory candidate = entry.getKey();
-            if (candidate == TrackCategory.FORM || candidate == TrackCategory.POSE || catalog.stream()
+            if (candidate == TrackCategory.FORM || catalog.stream()
                 .anyMatch(track -> TrackCategories.categoryOf(track.id(), track.owner() != null) == candidate))
             {
                 this.visibleCategories.add(candidate);
@@ -611,10 +611,10 @@ public class UIAnimationStateEditor extends UIElement
     private void pickFormBone(Form form, String bone, boolean insert)
     {
         this.selectForm(form);
-        if (!this.allMode && this.category != TrackCategory.POSE && form != null
+        if (!this.allMode && this.category != TrackCategory.FORM && form != null
             && (!(form instanceof IPosedForm) || (bone != null && !bone.isEmpty())))
         {
-            this.setCategory(TrackCategory.POSE);
+            this.setCategory(TrackCategory.FORM);
         }
         UIReplaysEditorUtils.pickForm(this.keyframeEditor, this.editor, form, bone, insert);
     }

@@ -3,6 +3,8 @@ package mchorse.bbs_mod.film.replays;
 import mchorse.bbs_mod.data.types.ListType;
 import mchorse.bbs_mod.forms.entities.EntityState;
 import mchorse.bbs_mod.forms.entities.IEntity;
+import mchorse.bbs_mod.forms.entities.ReplayEntity;
+import mchorse.bbs_mod.forms.forms.utils.Anchor;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.core.ValueGroup;
 import mchorse.bbs_mod.utils.MathUtils;
@@ -69,7 +71,7 @@ public class ReplayKeyframes extends ValueGroup
      */
     private static List<String> buildCuratedChannels()
     {
-        List<String> channels = new ArrayList<>(Arrays.asList("x", "y", "z", "pitch", "yaw", "headYaw", "bodyYaw"));
+        List<String> channels = new ArrayList<>(Arrays.asList("x", "y", "z", "pitch", "yaw", "headYaw", "bodyYaw", "anchor"));
 
         for (EntityState state : EntityState.values())
         {
@@ -82,6 +84,7 @@ public class ReplayKeyframes extends ValueGroup
     }
 
     public final KeyframeChannel<Double> x = new KeyframeChannel<>("x", KeyframeFactories.DOUBLE);
+    public final KeyframeChannel<Anchor> anchor = new KeyframeChannel<>("anchor", KeyframeFactories.ANCHOR);
     public final KeyframeChannel<Double> y = new KeyframeChannel<>("y", KeyframeFactories.DOUBLE);
     public final KeyframeChannel<Double> z = new KeyframeChannel<>("z", KeyframeFactories.DOUBLE);
 
@@ -142,6 +145,7 @@ public class ReplayKeyframes extends ValueGroup
         super(id);
 
         this.add(this.x);
+        this.add(this.anchor);
         this.add(this.y);
         this.add(this.z);
         this.add(this.vX);
@@ -484,6 +488,11 @@ public class ReplayKeyframes extends ValueGroup
 
     public void apply(float tick, IEntity entity, List<String> groups)
     {
+        if (entity instanceof ReplayEntity actor)
+        {
+            Replay source = this.getParent() instanceof Replay replay ? replay : actor.replay;
+            actor.replay.anchor.setRuntimeValue(source.evaluateAnchor(tick));
+        }
         boolean empty = groups == null || groups.isEmpty();
         boolean position = empty || !groups.contains(GROUP_POSITION);
         boolean rotation = empty || !groups.contains(GROUP_ROTATION);

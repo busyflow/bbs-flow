@@ -9,21 +9,39 @@ import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.settings.values.base.BaseKeyframeFactoryValue;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.numeric.ValueBoolean;
+import mchorse.bbs_mod.settings.values.numeric.ValueFloat;
+import mchorse.bbs_mod.settings.values.numeric.ValueInt;
 import mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories;
 import mchorse.bbs_mod.utils.pose.Transform;
 
-/** Editor-only path geometry. Rendering it never produces scene geometry. */
+/** Editor-only path geometry, optionally repeating its ordinary body parts. */
 public class SplineForm extends Form implements SplineSource
 {
     public final BaseKeyframeFactoryValue<SplinePositions> curve = new BaseKeyframeFactoryValue<>("curve", KeyframeFactories.SPLINE_POINTS, new SplinePositions());
     public final ValueSplinePoints points = new ValueSplinePoints("points");
     public final ValueBoolean closed = new ValueBoolean("closed", false);
+    public final ValueBoolean repeatEnabled = new ValueBoolean("repeatEnabled", false);
+    public final ValueInt repeatMode = new ValueInt("repeatMode", 0, 0, 1);
+    public final ValueInt repeatCount = new ValueInt("repeatCount", 5, 1, SplineArray.MAX_COPIES);
+    public final ValueFloat repeatDistance = new ValueFloat("repeatDistance", 1F, 0.001F, Float.MAX_VALUE);
+    public final ValueInt repeatRotation = new ValueInt("repeatRotation", 1, 0, 2);
+    public final ValueFloat repeatStart = new ValueFloat("repeatStart", 0F, 0F, 100F);
+    public final ValueFloat repeatEnd = new ValueFloat("repeatEnd", 100F, 0F, 100F);
+    public final ValueFloat repeatOffset = new ValueFloat("repeatOffset", 0F);
 
     public SplineForm()
     {
         this.add(this.curve);
         this.add(this.points);
         this.add(this.closed.animatable(false));
+        this.add(this.repeatEnabled);
+        this.add(this.repeatMode);
+        this.add(this.repeatCount);
+        this.add(this.repeatDistance);
+        this.add(this.repeatRotation);
+        this.add(this.repeatStart);
+        this.add(this.repeatEnd);
+        this.add(this.repeatOffset);
         for (int i = 0; i < 2; i++)
         {
             SplinePoint point = new SplinePoint("");

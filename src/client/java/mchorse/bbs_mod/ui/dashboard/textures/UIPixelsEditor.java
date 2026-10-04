@@ -267,7 +267,7 @@ public class UIPixelsEditor extends UICanvasEditor
 
         if (macro == PixelMacro.CLEAR)
         {
-            Color transparent = new Color(0F, 0F, 0F, 0F);
+            Color transparent = this.getEraseColor();
 
             for (int x = x1; x < x2; x++)
             {
@@ -361,7 +361,7 @@ public class UIPixelsEditor extends UICanvasEditor
             int w = this.document.width;
             int h = this.document.height;
             Pixels lifted = Pixels.fromSize(w, h);
-            Color transparent = new Color(0F, 0F, 0F, 0F);
+            Color transparent = this.getEraseColor();
 
             for (int dx = 0; dx < w; dx++)
             {
@@ -428,6 +428,11 @@ public class UIPixelsEditor extends UICanvasEditor
     protected Color getActiveDrawColor()
     {
         return this.colorSupplier.get();
+    }
+
+    protected Color getEraseColor()
+    {
+        return new Color(0F, 0F, 0F, this.document != null && this.document.material ? 1F : 0F);
     }
 
     public UIPixelsEditor backgroundSupplier(Supplier<Float> supplier)
@@ -910,8 +915,15 @@ public class UIPixelsEditor extends UICanvasEditor
 
                 if (destination != null)
                 {
-                    color = destination.copy();
-                    color.a = color.a * (1.0F - opacity);
+                    if (this.document.material)
+                    {
+                        color = this.blendColorOver(destination, this.getWeightedStrokeColor(this.drawColor, opacity));
+                    }
+                    else
+                    {
+                        color = destination.copy();
+                        color.a = color.a * (1.0F - opacity);
+                    }
                 }
             }
         }
@@ -1545,7 +1557,7 @@ public class UIPixelsEditor extends UICanvasEditor
 
     /**
      * Ctrl+X / layers "cut": copy the selection (or the whole active layer when nothing is selected) to
-     * the clipboard, then erase that region from the active layer (set transparent). The layer itself
+     * the clipboard, then erase that region from the active layer. The layer itself
      * stays. Recorded as one undo step.
      */
     public void cut()
@@ -1560,7 +1572,7 @@ public class UIPixelsEditor extends UICanvasEditor
         this.recordLayerChange(null, () ->
         {
             Pixels pixels = layer.pixels;
-            Color transparent = new Color(0F, 0F, 0F, 0F);
+            Color cleared = this.getEraseColor();
             boolean selection = this.hasSelection();
             int ox = layer.offsetX;
             int oy = layer.offsetY;
@@ -1571,7 +1583,7 @@ public class UIPixelsEditor extends UICanvasEditor
                 {
                     if (!selection || this.isInsideSelection(x + ox, y + oy))
                     {
-                        pixels.setColor(x, y, transparent);
+                        pixels.setColor(x, y, cleared);
                     }
                 }
             }
@@ -1980,7 +1992,7 @@ public class UIPixelsEditor extends UICanvasEditor
             this.pixelsUndo.layerIndex = this.document == null ? -1 : this.document.activeLayerIndex;
             this.strokeStrengths.clear();
             this.blendStroke = tool == TexturePaintTool.BRUSH;
-            this.drawColor = tool == TexturePaintTool.ERASER ? new Color(0, 0, 0, 0) : this.colorSupplier.get();
+            this.drawColor = tool == TexturePaintTool.ERASER ? this.getEraseColor() : this.getActiveDrawColor();
 
             Vector2i pixel = this.getHoverPixel(context.mouseX, context.mouseY);
 
@@ -2080,8 +2092,7 @@ public class UIPixelsEditor extends UICanvasEditor
         }
         else if (this.document != null)
         {
-            this.renderOnionSkin(context);
-            this.renderLayers(context, this.frameX, this.frameY, 1F);
+            this.renderEditingContent(context);
         }
 
         /* Draw brush preview for stroke tools */
@@ -2164,6 +2175,12 @@ public class UIPixelsEditor extends UICanvasEditor
 
     private static final float ONION_ALPHA = 0.35F;
 
+    protected void renderEditingContent(UIContext context)
+    {
+        this.renderOnionSkin(context);
+        this.renderLayers(context, this.frameX, this.frameY, 1F);
+    }
+
     /** The frame before the one on show, faint, under it. */
     private void renderOnionSkin(UIContext context)
     {
@@ -2192,32 +2209,42 @@ public class UIPixelsEditor extends UICanvasEditor
      */
     protected void renderLayers(UIContext context, int frameX, int frameY, float alpha)
     {
+        this.renderLayers(context, this.document, frameX, frameY, alpha);
+    }
+
+    protected void renderLayers(UIContext context, Document document, int frameX, int frameY, float alpha)
+    {
+        for (TextureLayer layer : document.layers)
+        {
+            this.renderLayer(context, layer, frameX, frameY, alpha);
+        }
+    }
+
+    protected void renderLayer(UIContext context, TextureLayer layer, int frameX, int frameY, float alpha)
+    {
         int vx = -this.w / 2;
         int vy = -this.h / 2;
 
-        for (TextureLayer layer : this.document.layers)
+        if (!layer.visible)
         {
-            if (!layer.visible)
-            {
-                continue;
-            }
-
-            /* Window ∩ layer, in document coordinates */
-            int x1 = Math.max(frameX, layer.offsetX);
-            int y1 = Math.max(frameY, layer.offsetY);
-            int x2 = Math.min(frameX + this.w, layer.offsetX + layer.width());
-            int y2 = Math.min(frameY + this.h, layer.offsetY + layer.height());
-
-            if (x2 <= x1 || y2 <= y1)
-            {
-                continue;
-            }
-
-            Area part = this.calculate(vx + x1 - frameX, vy + y1 - frameY, vx + x2 - frameX, vy + y2 - frameY);
-            int color = Colors.setA(Colors.WHITE, layer.opacity * alpha);
-
-            layer.draw(context.batcher, color, part.x, part.y, part.w, part.h, x1 - layer.offsetX, y1 - layer.offsetY, x2 - layer.offsetX, y2 - layer.offsetY);
+            return;
         }
+
+        /* Window ∩ layer, in document coordinates */
+        int x1 = Math.max(frameX, layer.offsetX);
+        int y1 = Math.max(frameY, layer.offsetY);
+        int x2 = Math.min(frameX + this.w, layer.offsetX + layer.width());
+        int y2 = Math.min(frameY + this.h, layer.offsetY + layer.height());
+
+        if (x2 <= x1 || y2 <= y1)
+        {
+            return;
+        }
+
+        Area part = this.calculate(vx + x1 - frameX, vy + y1 - frameY, vx + x2 - frameX, vy + y2 - frameY);
+        int color = Colors.setA(Colors.WHITE, layer.opacity * alpha);
+
+        layer.draw(context.batcher, color, part.x, part.y, part.w, part.h, x1 - layer.offsetX, y1 - layer.offsetY, x2 - layer.offsetX, y2 - layer.offsetY);
     }
 
     /** The window's part of a document-sized texture over the window's area; a texture of another size is shown whole. */

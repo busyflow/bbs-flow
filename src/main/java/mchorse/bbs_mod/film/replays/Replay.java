@@ -9,6 +9,9 @@ import mchorse.bbs_mod.camera.data.Point;
 import org.joml.Vector3d;
 import mchorse.bbs_mod.camera.values.ValuePoint;
 import mchorse.bbs_mod.film.Film;
+import mchorse.bbs_mod.film.FilmLegacy;
+import mchorse.bbs_mod.forms.forms.utils.Anchor;
+import mchorse.bbs_mod.forms.values.ValueAnchor;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.settings.values.core.ValueForm;
@@ -29,6 +32,7 @@ import java.util.List;
 public class Replay extends ValueGroup
 {
     public final ValueForm form = new ValueForm("form");
+    public final ValueAnchor anchor = new ValueAnchor("anchor", new Anchor());
     public final ReplayKeyframes keyframes = new ReplayKeyframes("keyframes");
     public final FormProperties properties = new FormProperties("properties");
     public final Clips actions = new Clips("actions", BBSMod.getFactoryActionClips());
@@ -64,6 +68,7 @@ public class Replay extends ValueGroup
         super(id);
 
         this.add(this.form);
+        this.add(this.anchor);
         this.add(this.keyframes);
         this.add(this.properties);
         this.add(this.actions);
@@ -123,6 +128,14 @@ public class Replay extends ValueGroup
         }
 
         super.fromData(data);
+        FilmLegacy.migrateAnchor(this, data);
+    }
+
+    /** Tick is already in this replay's local time, like the other replay channels. */
+    public Anchor evaluateAnchor(float tick)
+    {
+        var segment = this.keyframes.anchor.find(tick);
+        return segment == null ? this.anchor.getOriginalValue().copy() : segment.createInterpolated(this.anchor.getOriginalValue());
     }
 
     public String getName()

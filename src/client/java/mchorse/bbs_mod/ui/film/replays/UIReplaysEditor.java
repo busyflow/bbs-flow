@@ -38,6 +38,7 @@ import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.l10n.L10n;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.ui.UIKeys;
+import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.film.UIClipsPanel;
 import mchorse.bbs_mod.ui.film.UIFilmPanel;
 import mchorse.bbs_mod.ui.film.replays.overlays.UIAnimationToPoseOverlayPanel;
@@ -195,7 +196,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
     /** Single home of the category rule: tabs only filter now, so collectors always gather and this decides where a sheet lands. */
     public static TrackCategory categoryOf(UIKeyframeSheet sheet)
     {
-        return categoryOf(sheet.id, sheet.property != null || sheet.form != null);
+        return categoryOf(sheet.id, getSheetForm(sheet) != null);
     }
 
     /**
@@ -596,7 +597,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
 
         for (TrackCategory category : TrackCategories.values())
         {
-            if (category != TrackCategory.REPLAY && category != TrackCategory.FORM && category != TrackCategory.POSE)
+            if (category != TrackCategory.REPLAY && category != TrackCategory.FORM)
                 this.updateTab(category, sheets);
         }
         /* Reattach in registry order, including tabs which became visible again. */
@@ -847,7 +848,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
                 if (replaySection(key).equals(group))
                 {
                     KeyframeChannel channel = (KeyframeChannel) this.replay.keyframes.get(key);
-                    UIKeyframeSheet sheet = new UIKeyframeSheet(getColor(key), channel, null).icon(getIcon(key));
+                    UIKeyframeSheet sheet = new UIKeyframeSheet(key, IKey.constant(key), getColor(key), channel, key.equals("anchor") ? this.replay.anchor : null, false).icon(getIcon(key));
                     sheet.section = section;
                     sheets.add(sheet);
                 }
@@ -863,7 +864,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
 
         return switch (key)
         {
-            case "x", "y", "z", "pitch", "yaw", "headYaw", "bodyYaw" -> "position_rotation";
+            case "x", "y", "z", "pitch", "yaw", "headYaw", "bodyYaw", "anchor" -> "position_rotation";
             case "vX", "vY", "vZ" -> "velocity";
             default -> "states";
         };
@@ -1095,8 +1096,8 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
 
     /**
      * Picking a model bone in the viewport is a pose edit, but the pose/bone tracks
-     * only exist in the {@link TrackCategory#POSE} category. So when another category
-     * is open, jump to Pose first (and out of actions mode) before delegating to the
+     * only exist in the {@link TrackCategory#FORM} category. So when another category
+     * is open, jump to Form first (and out of actions mode) before delegating to the
      * shared pick logic — otherwise the click finds no pose sheet in the current graph
      * and silently does nothing, forcing a manual tab switch.
      */
@@ -1122,9 +1123,9 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
             {
                 this.setActionsMode(false);
             }
-            else if (this.category != TrackCategory.POSE || this.actionsMode)
+            else if (this.category != TrackCategory.FORM || this.actionsMode)
             {
-                this.setCategory(TrackCategory.POSE);
+                this.setCategory(TrackCategory.FORM);
             }
         }
 
@@ -1133,6 +1134,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
 
     public boolean clickViewport(UIContext context, Area area)
     {
+        if (!this.filmPanel.isFlying() && this.filmPanel.getController().pickShapeController(context)) return true;
         if (!this.filmPanel.isFlying() && this.filmPanel.getController().pickSplinePoint(context)) return true;
         /* In flight the buttons are the flight camera's, so the left one is left for it to
          * pick up as free look; only the middle one has to be handed over by hand. */

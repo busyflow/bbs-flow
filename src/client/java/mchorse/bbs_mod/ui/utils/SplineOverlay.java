@@ -6,6 +6,7 @@ import mchorse.bbs_mod.cubic.spline.SplineIK;
 import mchorse.bbs_mod.cubic.spline.SplineSource;
 import mchorse.bbs_mod.cubic.spline.SplinePoint;
 import mchorse.bbs_mod.ui.framework.UIContext;
+import mchorse.bbs_mod.ui.framework.UIBaseMenu;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -54,17 +55,18 @@ public class SplineOverlay
         }
     }
 
-    /** Clear pick data for this editor frame. Only IK sources obey the debug switch. */
+    /** Clear pick data and share the axes visibility switch across editor viewports. */
     public boolean begin()
     {
         this.handles.clear();
         this.curveHit = null;
-        return true;
+        return UIBaseMenu.shouldRenderAxes();
     }
 
     public Hit pick(int x, int y)
     {
         /* The shortcut can hide the overlay between its last draw and the next click. */
+        if (!UIBaseMenu.shouldRenderAxes()) return null;
         Hit best = null;
         float distance = 100;
         for (Hit hit : this.handles)
@@ -160,6 +162,7 @@ public class SplineOverlay
 
     public CurveHit insertionAt(int x, int y)
     {
+        if (!UIBaseMenu.shouldRenderAxes()) return null;
         if (this.curveHit == null || (this.curveHit.chain instanceof SplineIK && !BBSSettings.ikDebug.enabled.get()) || this.pick(x, y) != null) return null;
         float dx = this.curveHit.x - x, dy = this.curveHit.y - y;
         return dx * dx + dy * dy <= 64F ? this.curveHit : null;

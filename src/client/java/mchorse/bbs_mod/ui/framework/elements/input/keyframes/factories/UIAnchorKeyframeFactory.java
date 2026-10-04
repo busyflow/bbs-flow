@@ -13,6 +13,15 @@ import mchorse.bbs_mod.ui.film.UIFilmPanel;
 import mchorse.bbs_mod.ui.film.controller.ReplayContextAction;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
+import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeSheet;
+import mchorse.bbs_mod.ui.film.utils.keyframes.UIFilmKeyframes;
+import mchorse.bbs_mod.settings.values.IValueListener;
+import mchorse.bbs_mod.settings.values.base.BaseValue;
+import mchorse.bbs_mod.ui.utils.UI;
+import mchorse.bbs_mod.utils.keyframes.Keyframe;
+import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
+import org.joml.Vector3d;
 import mchorse.bbs_mod.ui.framework.elements.context.UISimpleContextMenu;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
@@ -33,6 +42,7 @@ public class UIAnchorKeyframeFactory extends UIKeyframeFactory<Anchor>
     @Override public Transform getGizmoTransform(Anchor value) { return value.transform; }
 
     private UIToggle keepTransform;
+    private UIIcon detach;
     public UIPropTransform transform;
 
     /**
@@ -108,8 +118,68 @@ public class UIAnchorKeyframeFactory extends UIKeyframeFactory<Anchor>
         this.transform.enableHotkeys();
         this.transform.setTransform(track.getValue().transform);
 
+        this.detach = new UIIcon(Icons.CUT, button -> this.detach());
+        this.detach.wh(16, 16);
+        this.detach.tooltip(UIKeys.GENERIC_KEYFRAMES_ANCHOR_DETACH_TOOLTIP);
+
         this.scroll.add(new UIAnchorBinding(
-            () -> this.track.getValue(), this::retarget, change -> this.track.edit(change), this.transform, this.keepTransform));
+            () -> this.track.getValue(), this::retarget, change -> this.track.edit(change), this.transform,
+            editor instanceof UIFilmKeyframes ? UI.row(this.keepTransform, this.detach) : this.keepTransform));
+    }
+
+    private void detach()
+    {
+        UIFilmPanel panel = this.getPanel();
+        Replay replay = panel == null ? null : panel.replayEditor.getReplay();
+
+        if (replay == null || replay.relative.get()) return;
+
+        this.editor.endValueGesture();
+        Map<String, IEntity> entities = panel.getController().getEntities();
+        IEntity entity = entities.get(replay.getId());
+        float cursor = this.editor.getTick();
+        float tick = replay.getTick((int) cursor) + cursor - (int) cursor;
+        float transition = panel.getRunner().getTransition(0F);
+        Anchor from = (Anchor) this.track.sheet.sample(tick);
+        Vector3d position = new Vector3d();
+        Anchor anchor = AnchorRebase.detach(entities, entity, replay, transition, from, position);
+
+        if (anchor == null) return;
+
+        BaseValue.edit(replay, IValueListener.FLAG_UNMERGEABLE, value ->
+        {
+            this.insertKeyframe(replay.keyframes.x, tick, position.x);
+            this.insertKeyframe(replay.keyframes.y, tick, position.y);
+            this.insertKeyframe(replay.keyframes.z, tick, position.z);
+            this.insertKeyframe(this.track.sheet.channel, tick, anchor);
+        });
+
+        panel.setCursor(cursor);
+        this.editor.triggerChange();
+        this.requestUpdate();
+    }
+
+    private <T> void insertKeyframe(KeyframeChannel<T> channel, float tick, T value)
+    {
+        for (UIKeyframeSheet sheet : this.editor.getSheets())
+        {
+            if (sheet.channel != channel) continue;
+            Keyframe<T> keyframe = sheet.ensureKeyframe(tick);
+            keyframe.setValue(value);
+            sheet.selection.add(keyframe);
+            return;
+        }
+
+        channel.insertInheriting(tick, value);
+    }
+
+    @Override
+    public void render(UIContext context)
+    {
+        UIFilmPanel panel = this.getPanel();
+        Replay replay = panel == null ? null : panel.replayEditor.getReplay();
+        this.detach.setEnabled(replay != null && !replay.relative.get());
+        super.render(context);
     }
 
     /**
@@ -151,8 +221,7 @@ public class UIAnchorKeyframeFactory extends UIKeyframeFactory<Anchor>
     }
 
     /**
-     * Rebase against the replay this anchor belongs to. Only a root form's anchor is animatable
-     * (see {@code TrackCatalog}), so the edited track is always the selected replay's own —
+     * Rebase against the selected replay that owns this track —
      * and the entity is what carries the live pose everything is measured from, which is why
      * there is nothing to compensate against when the replay isn't in the scene right now.
      */

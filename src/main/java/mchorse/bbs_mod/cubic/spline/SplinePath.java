@@ -18,6 +18,11 @@ public final class SplinePath
     private final float length;
     private float seam;
 
+    public float length()
+    {
+        return this.length;
+    }
+
     public static SplinePath create(SplineSource source, Matrix4f matrix)
     {
         if (matrix == null || !matrix.isFinite() || source.points().getAllTyped().isEmpty()) return null;

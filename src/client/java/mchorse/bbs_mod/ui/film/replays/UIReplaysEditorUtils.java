@@ -102,7 +102,7 @@ public class UIReplaysEditorUtils
 
         for (TrackDescriptor track : catalog)
         {
-            if (animationState && (track.kind().isSolver() || track.key().equals("anchor"))) continue;
+            if (animationState && track.kind().isSolver()) continue;
             String path = track.id().formPath();
             String location = names.getOrDefault("", "");
             String prefix = "";
@@ -563,7 +563,7 @@ public class UIReplaysEditorUtils
         {
             /* The anchor track has no model bone: its transform parents the whole
              * form, so sample the form's resolved anchor matrix instead. */
-            if (keyframeEditor.isFormAnchorTrack() && replay != null && entity != null)
+            if (keyframeEditor.isReplayAnchorTrack() && replay != null && entity != null)
             {
                 buildAnchorGizmoDrag(panel, camera, drag, transform, replay, entity, transition);
             }
@@ -768,6 +768,7 @@ public class UIReplaysEditorUtils
     /** Lay the replay's properties onto its form at the cursor, the pose everything here measures from. */
     private static void applyFormProperties(UIFilmPanel panel, Replay replay, IEntity entity, float transition)
     {
+        replay.anchor.setRuntimeValue(replay.evaluateAnchor(replay.getTick(panel.getCursor()) + panel.getRunner().getTransition(transition)));
         Form form = entity.getForm();
 
         if (form != null)

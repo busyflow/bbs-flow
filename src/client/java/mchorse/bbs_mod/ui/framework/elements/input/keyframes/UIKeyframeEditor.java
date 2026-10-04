@@ -274,7 +274,7 @@ public class UIKeyframeEditor extends UITimelinePanel
         return null;
     }
 
-    /** The frame of the active editable transform, bone or form anchor alike (mirrors
+    /** The frame of the active editable transform, bone or replay anchor alike (mirrors
      *  {@code UIReplaysEditorUtils.getEditableTransform}'s dispatch). */
     public TransformSpace getBoneSpace()
     {
@@ -333,13 +333,13 @@ public class UIKeyframeEditor extends UITimelinePanel
     }
 
     /**
-     * Whether the active editor is the form's "anchor" property track — the one that
+     * Whether the active editor is the replay's "anchor" track — the one that
      * re-parents the form and carries a Transform offset the gizmo can edit. The
      * IK/pole/physics targets reuse the {@code Anchor} type without a backing property,
      * so {@code property != null} excludes them, and the {@code "anchor"} id keeps this
-     * to the root form's track.
+     * to the replay's track.
      */
-    public boolean isFormAnchorTrack()
+    public boolean isReplayAnchorTrack()
     {
         if (!(this.editor instanceof UIAnchorKeyframeFactory))
         {

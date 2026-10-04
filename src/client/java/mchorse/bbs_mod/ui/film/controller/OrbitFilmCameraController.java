@@ -265,7 +265,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
 
             if (center != null)
             {
-                Anchor v = form.anchor.get();
+                Anchor v = FilmMatrices.getAnchor(entity);
                 Matrix4f defaultMatrix = FilmMatrices.getMatrixForRenderWithRotation(entity, x, y, z, transition);
                 Pair<Matrix4f, Float> totalMatrix = FilmMatrices.getTotalMatrix(this.controller.getEntities(), v, defaultMatrix, x, y, z, transition, 0, false, frame);
 

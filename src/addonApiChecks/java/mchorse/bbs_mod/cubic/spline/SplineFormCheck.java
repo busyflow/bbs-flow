@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.cubic.spline;
 
+import mchorse.bbs_mod.forms.entities.ReplayEntity;
+
 import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.camera.clips.misc.TrackerFrame;
 import mchorse.bbs_mod.camera.clips.overwrite.SplineClip;
@@ -32,7 +34,6 @@ import org.joml.Matrix4f;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
 
-import java.lang.reflect.Proxy;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -63,6 +64,7 @@ public final class SplineFormCheck
         data();
         geometry();
         consumers();
+        detach();
         if (Boolean.getBoolean("bbs.check.splineUI")) editor();
         System.out.println("SplineFormCheck: " + checks + " checks passed");
     }
@@ -144,6 +146,42 @@ public final class SplineFormCheck
         part.setForm(form);
         parent.parts.addBodyPart(part);
         check(FormUtils.getProperty(parent, FormUtils.getPropertyPath(form.curve)) == form.curve, "Nested curve property resolves");
+    }
+
+    private static void detach()
+    {
+        SplineForm source = curve(List.of(new Vector3f(), new Vector3f(4, 3, 8)));
+        source.transform.get().scale.set(2);
+        Map<String, IEntity> entities = Map.of("path", entity(source, 10, 2, -3));
+        var replay = new mchorse.bbs_mod.film.replays.Replay("follower");
+        IEntity follower = entity(new SplineForm(), 20, 5, 8);
+
+        for (boolean spline : new boolean[] {false, true})
+        {
+            for (int flags = 0; flags < 8; flags++)
+            {
+                Anchor from = anchor(35);
+                from.spline = spline;
+                from.inheritPosition = (flags & 1) != 0;
+                from.inheritRotation = (flags & 2) != 0;
+                from.inheritScale = (flags & 4) != 0;
+                from.transform.translate.set(1, -2, 3);
+                from.transform.rotate.set(0.2F, -0.4F, 0.1F);
+                from.transform.scale.set(1, 2, 3);
+                Matrix4f before = FilmMatrices.getAnchorMatrix(entities, follower, replay, 0, 0, 0, 0, from);
+                Vector3d position = new Vector3d();
+                Anchor detached = AnchorRebase.detach(entities, follower, replay, 0, from, position);
+                check(detached != null && !detached.hasTarget() && !detached.spline && detached.attachment.isEmpty(), "Detach clears actor, bone and spline target");
+                check(detached.transform.translate.lengthSquared() == 0, "Detach stores translation in replay coordinates");
+                IEntity moved = entity(new SplineForm(), position.x, position.y, position.z);
+                matrix(FilmMatrices.getAnchorMatrix(entities, moved, replay, 0, 0, 0, 0, detached), before, "Detach preserves world placement with each inheritance combination");
+                check(from.hasTarget(), "Detach does not mutate the sampled anchor");
+            }
+        }
+
+        replay.relative.set(true);
+        check(AnchorRebase.detach(entities, follower, replay, 0, anchor(35), new Vector3d()) == null, "Relative replay cannot detach");
+        check(AnchorRebase.detach(entities, null, replay, 0, anchor(35), new Vector3d()) == null, "Missing entity cannot detach");
     }
 
     private static void geometry()
@@ -268,18 +306,18 @@ public final class SplineFormCheck
         source.transform.get().scale.set(1);
         check(FilmMatrices.getPathMatrix(entities, "missing", "", 25, false, 0, 0, 0, 0) == null, "Missing replay is unresolved");
         check(FilmMatrices.getPathMatrix(entities, "path", "missing", 25, false, 0, 0, 0, 0) == null, "Missing path is unresolved");
-        source.anchor.set(anchor(0));
+        setAnchor(entity, anchor(0));
         check(FilmMatrices.getPathMatrix(entities, "path", "", 25, false, 0, 0, 0, 0) == null, "Self cycle is unresolved");
-        source.anchor.reset();
+        setAnchor(entity, new Anchor());
         SplineForm other = new SplineForm();
         entities.put("other", entity(other, 0, 0, 0));
         Anchor throughOther = anchor(0);
         throughOther.replay = "other";
-        source.anchor.set(throughOther);
-        other.anchor.set(anchor(0));
+        setAnchor(entity, throughOther);
+        setAnchor(entities.get("other"), anchor(0));
         check(FilmMatrices.getPathMatrix(entities, "path", "", 25, false, 0, 0, 0, 0) == null, "Indirect cycle is unresolved");
-        source.anchor.reset();
-        other.anchor.reset();
+        setAnchor(entity, new Anchor());
+        setAnchor(entities.get("other"), new Anchor());
         BodyPart part = new BodyPart("");
         part.setForm(source);
         other.parts.addBodyPart(part);
@@ -414,27 +452,22 @@ public final class SplineFormCheck
 
     private static IEntity entity(Form form, double x, double y, double z)
     {
-        return (IEntity) Proxy.newProxyInstance(IEntity.class.getClassLoader(), new Class<?>[] {IEntity.class}, (proxy, method, args) ->
-        {
-            return switch (method.getName())
-            {
-                case "getForm" -> form;
-                case "getX", "getPrevX" -> x;
-                case "getY", "getPrevY" -> y;
-                case "getZ", "getPrevZ" -> z;
-                case "hashCode" -> System.identityHashCode(proxy);
-                case "equals" -> proxy == args[0];
-                default -> {
-                    if (method.getReturnType() == float.class) yield 0F;
-                    if (method.getReturnType() == double.class) yield 0D;
-                    if (method.getReturnType() == boolean.class) yield false;
-                    if (method.getReturnType() == int.class) yield 0;
-                    yield null;
-                }
-            };
-        });
+        var replay = new mchorse.bbs_mod.film.replays.Replay("fixture");
+        var entity = new ReplayEntity(null, replay);
+        entity.setForm(form);
+        entity.setPosition(x, y, z);
+        entity.setPrevX(x);
+        entity.setPrevY(y);
+        entity.setPrevZ(z);
+        return entity;
     }
 
+    private static void setAnchor(IEntity entity, Anchor anchor)
+    {
+        var actor = (ReplayEntity) entity;
+        actor.replay.anchor.set(anchor);
+        actor.replay.anchor.setRuntimeValue(null);
+    }
     private static void near(float actual, float expected, String message) { check(Math.abs(actual - expected) < 0.001F, message + ": " + actual + " != " + expected); }
     private static void close(Vector3f actual, Vector3f expected, String message) { check(actual.distance(expected) < 0.001F, message + ": " + actual + " != " + expected); }
     private static void matrix(Matrix4f actual, Matrix4f expected, String message) { check(actual.equals(expected, 0.001F), message); }

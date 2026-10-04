@@ -108,8 +108,11 @@ public class TrailFormRenderer extends FormRenderer<TrailForm> implements ITicka
 
         float current = (float) this.tick + context.transition;
         ArrayDeque<Trail> trails = this.record.computeIfAbsent(context.type, (k) -> new ArrayDeque<>());
+        RepeatedFormRender repeated = RepeatedFormRender.current();
+        Matrix4f displacement = repeated == null ? null : repeated.displacement(this.form,
+            new Matrix4f(camInverse).mul(stack.peek().getPositionMatrix()));
 
-        if (!this.form.paused.get())
+        if (!this.form.paused.get() && !context.isPicking() && (repeated == null || repeated.first(this.form)))
         {
             Matrix4f modelView = stack.peek().getPositionMatrix();
 
@@ -172,6 +175,7 @@ public class TrailFormRenderer extends FormRenderer<TrailForm> implements ITicka
 
         m.set(camInverse);
         m.invert();
+        if (displacement != null) m.mul(displacement);
 
         builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE);
 

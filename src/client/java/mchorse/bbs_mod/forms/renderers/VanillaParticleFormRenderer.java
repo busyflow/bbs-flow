@@ -57,6 +57,7 @@ public class VanillaParticleFormRenderer extends FormRenderer<VanillaParticleFor
     private VanillaParticleScene scene;
     private int previewTicks;
     private int worldRenderTicks;
+    private int repeatedTicks;
     private long lastPreviewTick = Long.MIN_VALUE;
 
     public VanillaParticleFormRenderer(VanillaParticleForm form)
@@ -82,6 +83,9 @@ public class VanillaParticleFormRenderer extends FormRenderer<VanillaParticleFor
         Matrix4f matrix = new Matrix4f(RenderSystem.getInverseViewRotationMatrix());
 
         matrix.mul(context.stack.peek().getPositionMatrix());
+        RepeatedFormRender repeated = RepeatedFormRender.current();
+        Matrix4f displacement = repeated == null ? null : repeated.displacement(this.form, matrix);
+        if (repeated != null) matrix.set(repeated.source(this.form, matrix));
 
         Vector3d translation = new Vector3d(matrix.getTranslation(Vectors.TEMP_3F));
 
@@ -113,7 +117,12 @@ public class VanillaParticleFormRenderer extends FormRenderer<VanillaParticleFor
             this.previewTicks = RENDER_GRACE_TICKS;
 
             this.updatePreview(context.modelRendererTick);
-            this.getScene().render(context.camera, context.getTransition());
+            this.getScene().render(context.camera, context.getTransition(), displacement);
+        }
+        else if (repeated != null && !context.isPicking() && !mchorse.bbs_mod.client.BBSRendering.isIrisShadowPass())
+        {
+            this.repeatedTicks = RENDER_GRACE_TICKS;
+            this.getScene().render(context.camera, context.getTransition(), displacement);
         }
     }
 
@@ -173,6 +182,14 @@ public class VanillaParticleFormRenderer extends FormRenderer<VanillaParticleFor
              * running the burst. The world must not get a second copy of it */
             this.previewTicks -= 1;
 
+            return;
+        }
+
+        if (this.repeatedTicks > 0)
+        {
+            this.repeatedTicks -= 1;
+            this.getScene().tick();
+            this.emitTick(this.getScene()::spawn);
             return;
         }
 

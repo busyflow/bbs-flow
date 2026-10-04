@@ -30,6 +30,17 @@ public class RenderTickCounterMixin
     @Inject(method = "beginRenderTick", at = @At("HEAD"), cancellable = true)
     public void onBeginRenderTick(long timeMillis, CallbackInfoReturnable<Integer> info)
     {
+        if (BBSRendering.isHoldingExportFrame())
+        {
+            this.prevTimeMillis = timeMillis;
+            this.lastFrameDuration = 0;
+            this.heldFrames = 0;
+            this.lastFrameTime = 0;
+            info.setReturnValue(0);
+
+            return;
+        }
+
         VideoRecorder videoRecorder = BBSModClient.getVideoRecorder();
 
         if (videoRecorder.isRecording())

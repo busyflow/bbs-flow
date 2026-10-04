@@ -860,7 +860,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
      */
     private void applyPreviewSizeToBBS()
     {
-        if (this.recorder.isExporting())
+        if (this.recorder.isExporting() || BBSRendering.isHoldingExportFrame())
         {
             return;
         }

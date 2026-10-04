@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.ui.film.replays;
 
+
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.film.FilmMatrices;
 import mchorse.bbs_mod.film.replays.Replay;
@@ -53,6 +54,7 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
             ? replayEditor.getContext().getTransition()
             : 0F;
         float tick = this.panel.getCursor() + transition;
+        replay.anchor.setRuntimeValue(replay.evaluateAnchor(tick));
         Form form = entity.getForm();
 
         /* Push the (possibly perturbed) pose into the model so the matrix cache reflects it. */

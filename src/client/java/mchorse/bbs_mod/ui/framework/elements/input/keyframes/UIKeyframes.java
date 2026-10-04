@@ -1294,6 +1294,12 @@ public class UIKeyframes extends UITimelineCanvas
         return null;
     }
 
+    /** Pause a manual value edit at the playhead; continued dragging edits its new key. */
+    public boolean stopPlaybackOnValueChange()
+    {
+        return false;
+    }
+
     public boolean isSelecting()
     {
         return this.marquee.isPressed();

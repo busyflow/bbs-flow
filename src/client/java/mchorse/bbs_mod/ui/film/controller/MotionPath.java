@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.ui.film.controller;
 
+import mchorse.bbs_mod.forms.entities.ReplayEntity;
+
 import com.mojang.blaze3d.systems.RenderSystem;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.cubic.animation.ActionConfig;
@@ -72,7 +74,7 @@ public class MotionPath
      * happens every frame while a bone is being dragged — does not pay a deep form copy each
      * time; it is only rebuilt when the form itself changes. */
     private static Form scratchForm;
-    private static StubEntity scratchEntity;
+    private static ReplayEntity scratchEntity;
 
     /* The animator's action slots (mirrors Animator#setup) — emptied on the scratch form so the
      * always-applied actions don't perturb the sampled bone path. */
@@ -359,7 +361,7 @@ public class MotionPath
         World world = MinecraftClient.getInstance().world;
         Form form = replay.form.get();
 
-        if (!ensureScratch(world, form))
+        if (!ensureScratch(world, form, replay))
         {
             return null;
         }
@@ -376,6 +378,8 @@ public class MotionPath
 
         if (boneCache == null || !signature.equals(boneCacheSignature))
         {
+            /* The sampling replay owns its runtime values; the visible replay is never changed. */
+            scratchEntity.replay.copy(replay);
             boneCache = computeSampledTrajectory(entities, replay, target);
             boneCacheSignature = signature;
         }
@@ -389,14 +393,14 @@ public class MotionPath
      * tick from the entity's movement, which made the sampled bone path jitter. The path is meant
      * to show the authored motion (keyframes + IK), so the procedural overlay is dropped.
      */
-    private static boolean ensureScratch(World world, Form form)
+    private static boolean ensureScratch(World world, Form form, Replay replay)
     {
         if (world == null || form == null)
         {
             return false;
         }
 
-        if (scratchEntity == null || scratchForm != form)
+        if (scratchEntity == null || scratchForm != form || !scratchEntity.replay.getId().equals(replay.getId()))
         {
             Form copy = FormUtils.copy(form);
 
@@ -410,7 +414,7 @@ public class MotionPath
 
             disableActions(copy);
 
-            scratchEntity = new StubEntity(world);
+            scratchEntity = new ReplayEntity(world, new Replay(replay.getId()));
             scratchEntity.setForm(copy);
             scratchForm = form;
         }
@@ -454,6 +458,7 @@ public class MotionPath
 
         TreeSet<Float> ticks = new TreeSet<>();
         String marker = trackMarker(target);
+        if (target.is(FilmTarget.Kind.ANCHOR)) collectTicks(ticks, replay.keyframes.anchor);
 
         for (KeyframeChannel<?> channel : replay.properties.tracks.values())
         {
@@ -670,6 +675,8 @@ public class MotionPath
         signature(builder, replay.keyframes.x);
         signature(builder, replay.keyframes.y);
         signature(builder, replay.keyframes.z);
+        signature(builder, replay.keyframes.anchor);
+        builder.append('|').append(replay.anchor.getOriginalValue().toData());
 
         for (KeyframeChannel<?> channel : replay.properties.tracks.values())
         {

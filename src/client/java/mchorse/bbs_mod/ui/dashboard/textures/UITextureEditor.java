@@ -9,10 +9,12 @@ import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.dashboard.textures.data.Document;
 import mchorse.bbs_mod.ui.dashboard.textures.data.TextureAnimation;
+import mchorse.bbs_mod.ui.dashboard.textures.data.TextureLayer;
 import mchorse.bbs_mod.ui.dashboard.textures.undo.PixelsUndo;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.utils.MathUtils;
+import mchorse.bbs_mod.utils.StringUtils;
 import mchorse.bbs_mod.utils.PNGEncoder;
 import mchorse.bbs_mod.utils.colors.Color;
 import mchorse.bbs_mod.utils.resources.Pixels;
@@ -31,12 +33,134 @@ public class UITextureEditor extends UIPixelsEditor
 {
     private boolean dirty;
 
+    /* One tab owns both editors. Each keeps its document, selection and undo stack. */
+    private UITextureEditor baseEditor;
+    private UITextureEditor materialEditor;
+    private boolean materialMode;
+    private float materialOverlay = 0.5F;
+    private TextureLayer materialComposite;
+    private int materialRevision = -1;
+
     private Consumer<Link> saveCallback;
     private Consumer<Link> renameCallback;
 
     public UITextureEditor()
     {
         super();
+    }
+
+    public static Link materialLink(Link base)
+    {
+        return new Link(base.source, StringUtils.removeExtension(base.path) + "_s.png");
+    }
+
+    static File materialFile(Link base)
+    {
+        File source = BBSMod.getProvider().getFile(base);
+
+        return source == null ? null : new File(source.getParentFile(), StringUtils.removeExtension(source.getName()) + "_s.png");
+    }
+
+    public boolean isMaterial()
+    {
+        return this.baseEditor != null;
+    }
+
+    public UITextureEditor getBaseEditor()
+    {
+        return this.isMaterial() ? this.baseEditor : this;
+    }
+
+    public UITextureEditor getActiveEditor()
+    {
+        return this.materialMode && this.materialEditor != null ? this.materialEditor : this;
+    }
+
+    UITextureEditor getMaterialEditor()
+    {
+        return this.materialEditor;
+    }
+
+    void setMaterialEditor(UITextureEditor editor)
+    {
+        this.materialEditor = editor;
+        editor.baseEditor = this;
+        editor.document.material = true;
+    }
+
+    void toggleMaterial()
+    {
+        UITextureEditor previous = this.getActiveEditor();
+
+        this.materialMode = !this.materialMode;
+
+        UITextureEditor next = this.getActiveEditor();
+
+        next.setFrame(previous.getFrame());
+        next.scaleX.copy(previous.scaleX);
+        next.scaleY.copy(previous.scaleY);
+    }
+
+    public float getMaterialOverlay()
+    {
+        return this.materialOverlay;
+    }
+
+    public void setMaterialOverlay(float opacity)
+    {
+        this.materialOverlay = MathUtils.clamp(opacity, 0F, 1F);
+    }
+
+    @Override
+    protected void renderEditingContent(UIContext context)
+    {
+        if (!this.isMaterial())
+        {
+            super.renderEditingContent(context);
+
+            return;
+        }
+
+        this.renderLayers(context, this.baseEditor.document, this.getFrameX(), this.getFrameY(), 1F);
+
+        if (this.materialOverlay <= 0F)
+        {
+            return;
+        }
+
+        /* Flatten first, then apply viewing opacity once to the whole map, never to each layer. */
+        if (this.materialComposite == null || this.materialRevision != this.document.revision)
+        {
+            if (this.materialComposite != null)
+            {
+                this.materialComposite.delete();
+            }
+
+            this.materialComposite = new TextureLayer("", this.flattenLayers());
+            this.materialRevision = this.document.revision;
+        }
+
+        this.renderLayer(context, this.materialComposite, this.getFrameX(), this.getFrameY(), this.materialOverlay);
+    }
+
+    @Override
+    public void deleteTexture()
+    {
+        if (this.materialEditor != null)
+        {
+            this.materialEditor.removeFromParent();
+            this.materialEditor.deleteTexture();
+            this.materialEditor = null;
+        }
+
+        if (this.materialComposite != null)
+        {
+            this.materialComposite.delete();
+            this.materialComposite = null;
+        }
+
+        this.materialMode = false;
+        super.deleteTexture();
     }
 
     /**
@@ -66,6 +190,13 @@ public class UITextureEditor extends UIPixelsEditor
      */
     public void openSaveOverlay()
     {
+        if (this.isMaterial())
+        {
+            this.saveCurrentTexture();
+
+            return;
+        }
+
         if (this.getTexture() == null)
         {
             return;
@@ -247,6 +378,7 @@ public class UITextureEditor extends UIPixelsEditor
 
         this.undoManager.pushUndo(pixelsUndo);
         this.updateTexture();
+        this.wasChanged();
     }
 
     private void floodFill(PixelsUndo undo, Pixels pixels, int x, int y, int targetColor, int replacementColor, int ox, int oy)
@@ -783,6 +915,11 @@ public class UITextureEditor extends UIPixelsEditor
 
     private File writeTexture(Link link)
     {
+        if (this.isMaterial())
+        {
+            link = materialLink(this.baseEditor.getTexture());
+        }
+
         if (!Link.isAssets(link) || !link.path.endsWith(".png"))
         {
             this.getContext().notifyError(UIKeys.TEXTURES_SAVE_WRONG_PATH);
@@ -790,7 +927,14 @@ public class UITextureEditor extends UIPixelsEditor
             return null;
         }
 
-        File file = BBSMod.getProvider().getFile(link);
+        File file = this.isMaterial() ? materialFile(this.baseEditor.getTexture()) : BBSMod.getProvider().getFile(link);
+
+        if (file == null)
+        {
+            this.getContext().notifyError(UIKeys.TEXTURES_SAVE_WRONG_PATH);
+
+            return null;
+        }
 
         if (link.path.contains("/"))
         {
@@ -810,6 +954,12 @@ public class UITextureEditor extends UIPixelsEditor
              * file. The watchdog may be delayed while the game is paused in the editor. */
             BBSModClient.getTextures().delete(link);
             BBSModClient.getTextures().getExtruder().delete(link);
+            if (this.isMaterial())
+            {
+                /* Iris holders are keyed by the albedo GL id. Recreate it as well, including
+                 * the case where the specular file did not exist when the model was loaded. */
+                BBSModClient.getTextures().delete(this.baseEditor.getTexture());
+            }
             BBSResources.markAssetsChanged();
 
             this.setDirty(false);
@@ -817,6 +967,12 @@ public class UITextureEditor extends UIPixelsEditor
             if (!link.equals(this.document.link))
             {
                 this.document.link = link;
+
+                if (this.materialEditor != null)
+                {
+                    this.materialEditor.document.link = materialLink(link);
+                    this.materialEditor.setDirty(true);
+                }
 
                 if (this.renameCallback != null)
                 {
@@ -828,7 +984,7 @@ public class UITextureEditor extends UIPixelsEditor
              * NAME_INCLUDING_EXTENSION.dat so re-opening restores the full layer stack. */
             this.document.write(Document.datFile(file));
 
-            if (this.saveCallback != null)
+            if (this.saveCallback != null && !this.isMaterial())
             {
                 this.saveCallback.accept(link);
             }

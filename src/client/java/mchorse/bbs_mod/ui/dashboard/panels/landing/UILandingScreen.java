@@ -64,7 +64,8 @@ public class UILandingScreen extends UIElement
     private static final Banner[] BANNERS = {
         new Banner(Link.assets("textures/banners/bg1.png"), "Anderson"),
         new Banner(Link.assets("textures/banners/bg2.png"), "Kizrum"),
-        new Banner(Link.assets("textures/banners/bg3.png"), "Xavin")
+        new Banner(Link.assets("textures/banners/bg3.png"), "Xavin"),
+        new Banner(Link.assets("textures/banners/bg4.png"), "qualet")
     };
     private static final double BANNER_HOLD_SECONDS = 6;
     private static final double BANNER_FADE_SECONDS = 1;

@@ -10,6 +10,7 @@ import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.utils.IOUtils;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
@@ -91,6 +92,21 @@ public class TextureAnimation implements IMapSerializable
         }
 
         try (InputStream stream = BBSMod.getProvider().getAsset(new Link(link.source, link.path + EXTENSION)))
+        {
+            MapType data = DataToString.mapFromString(IOUtils.readText(stream));
+
+            return data == null || !data.has("animation") ? null : fromMcmeta(data, stripW, stripH);
+        }
+        catch (Exception e)
+        {
+            return null;
+        }
+    }
+
+    /** Read metadata beside an exact file, including material maps in the world's library. */
+    public static TextureAnimation read(File texture, int stripW, int stripH)
+    {
+        try (InputStream stream = new FileInputStream(file(texture)))
         {
             MapType data = DataToString.mapFromString(IOUtils.readText(stream));
 

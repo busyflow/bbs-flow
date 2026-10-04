@@ -127,6 +127,9 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
             Matrix4f matrix = new Matrix4f(RenderSystem.getInverseViewRotationMatrix());
 
             matrix.mul(context.stack.peek().getPositionMatrix());
+            RepeatedFormRender repeated = RepeatedFormRender.current();
+            Matrix4f displacement = repeated == null ? null : repeated.displacement(this.form, matrix);
+            if (repeated != null) matrix.set(repeated.source(this.form, matrix));
 
             Vector3d translation = new Vector3d(matrix.getTranslation(Vectors.TEMP_3F));
             translation.add(context.camera.position.x, context.camera.position.y, context.camera.position.z);
@@ -139,6 +142,7 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
             context.stack.push();
             context.stack.loadIdentity();
             context.stack.multiplyPositionMatrix(new Matrix4f(RenderSystem.getInverseViewRotationMatrix()).invert());
+            if (displacement != null) context.stack.multiplyPositionMatrix(displacement);
 
             emitter.lastGlobal.set(translation);
             emitter.rotation.set(matrix);

@@ -52,13 +52,13 @@ public class FilmKeyframeInsertion
 
         TrackCategory category = this.controller.panel.replayEditor.getCategory();
 
-        if (category == TrackCategory.POSE)
+        if (category == TrackCategory.FORM)
         {
             UIReplaysEditorUtils.insertPoseKeyframesAtTick(replay, this.controller.getTick(), this.controller.panel.replayEditor.getExpandedPoseTabIds());
             return;
         }
 
-        /* Only the Replay tab keys the player's own channels; every other tab (Form, IK,
+        /* Only the Replay tab keys the player's own channels; every other tab (IK,
          * Physics...) has no take on "insert frame" and must not silently write position and
          * rotation keys the animator never asked for. */
         if (category != TrackCategory.REPLAY)

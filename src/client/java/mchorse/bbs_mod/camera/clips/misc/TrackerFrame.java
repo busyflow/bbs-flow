@@ -85,7 +85,7 @@ public class TrackerFrame
         }
 
         Matrix4f formTransform = FilmMatrices.getMatrixForRenderWithRotation(entity, cx, cy, cz, transition);
-        Pair<Matrix4f, Float> totalMatrix = FilmMatrices.getTotalMatrix(entities, form.anchor.get(), formTransform, cx, cy, cz, transition, 0);
+        Pair<Matrix4f, Float> totalMatrix = FilmMatrices.getTotalMatrix(entities, FilmMatrices.getAnchor(entity), formTransform, cx, cy, cz, transition, 0);
 
         if (totalMatrix.a != null)
         {

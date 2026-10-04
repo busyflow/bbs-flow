@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.film;
 
+import mchorse.bbs_mod.forms.entities.ReplayEntity;
+
 import com.mojang.blaze3d.systems.RenderSystem;
 import mchorse.bbs_mod.BBSModClient;
 import java.util.Collections;
@@ -108,7 +110,7 @@ public abstract class BaseFilmController
             if (replay.enabled.get())
             {
                 World world = MinecraftClient.getInstance().world;
-                IEntity entity = new StubEntity(world);
+                IEntity entity = new ReplayEntity(world, replay);
                 int ticks = replay.getTick(this.getTick());
 
                 entity.setForm(FormUtils.copy(replay.form.get()));
@@ -439,6 +441,10 @@ public abstract class BaseFilmController
      */
     protected void applyTracks(Replay replay, Form root, float tick, float transition)
     {
+        if (replay != null)
+        {
+            replay.anchor.setRuntimeValue(replay.evaluateAnchor(tick));
+        }
         if (replay == null || root == null)
         {
             return;
@@ -552,7 +558,7 @@ public abstract class BaseFilmController
     {
         Form form = entity.getForm();
 
-        if (form == null || form.anchor.get().hasTarget())
+        if (form == null || FilmMatrices.getAnchor(entity) != null && FilmMatrices.getAnchor(entity).hasTarget())
         {
             return false;
         }

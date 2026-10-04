@@ -67,6 +67,7 @@ public class UIElement implements IUIElement, IUndoElement
      * Tooltip instance
      */
     public ITooltip tooltip;
+    public boolean tooltipImmediate;
 
     /**
      * Keybind manager
@@ -525,6 +526,14 @@ public class UIElement implements IUIElement, IUndoElement
     /* Custom data */
 
     /* Setters */
+
+    /** Show essential hover labels immediately, such as names of icon-only tabs. */
+    public UIElement tooltipImmediate()
+    {
+        this.tooltipImmediate = true;
+
+        return this;
+    }
 
     public UIElement removeTooltip()
     {

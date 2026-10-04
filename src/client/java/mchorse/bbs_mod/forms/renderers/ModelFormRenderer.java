@@ -396,7 +396,7 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
 
             stack.push();
 
-            Matrix4f uiMatrix = getUIMatrix(context, x1, y1, x2, y2);
+            Matrix4f uiMatrix = this.getPreviewMatrix(context, x1, y1, x2, y2);
 
             this.applyTransforms(uiMatrix, context.getTransition());
 
@@ -404,12 +404,10 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
             Link texture = link == null ? model.getTexture() : link;
             Color contextColor = Color.white();
             Color formColor = this.form.color.get();
-            float scale = this.form.uiScale.get() * model.getUiScale();
 
             this.evaluateChannels(null, model, context.getTransition());
 
             MatrixStackUtils.multiply(stack, uiMatrix);
-            stack.scale(scale, scale, scale);
 
             BBSModClient.getTextures().bindTexture(FormPbr.resolveAlbedo(this.form, "", texture, BBSModClient.getTextures().getTexture(texture)));
             RenderSystem.depthFunc(GL11.GL_LEQUAL);
@@ -471,10 +469,15 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
          * honest answer, so they run model-local, as they do in the UI. */
         Matrix4f baseTransform = ui || world == null ? null : new Matrix4f(world.peek().getPositionMatrix());
 
-        this.applyIK(model, baseTransform);
-        this.applyPhysics(target, model, transition, baseTransform);
-        this.applySpline(model);
-        this.applyConstraints(model);
+        RepeatedFormRender repeated = RepeatedFormRender.current();
+        if (repeated == null || repeated.pose(this) == null)
+        {
+            this.applyIK(model, baseTransform);
+            this.applyPhysics(target, model, transition, baseTransform);
+            this.applySpline(model);
+            this.applyConstraints(model);
+            if (repeated != null) repeated.capture(this, model, this.splineMotion);
+        }
         this.applySplineMotion(newStack);
 
         /* Default texture for materials without their own: the form's texture override, else the
@@ -947,7 +950,14 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
                 contextColor.mul(formColor);
                 formColor = Color.white();
             }
-            this.evaluateChannels(context.entity, model, context.getTransition());
+            RepeatedFormRender repeated = RepeatedFormRender.current();
+            RepeatedFormRender.ModelPose pose = repeated == null ? null : repeated.pose(this);
+            if (pose == null) this.evaluateChannels(context.entity, model, context.getTransition());
+            else
+            {
+                pose.restore();
+                this.splineMotion = pose.motion;
+            }
 
             context.stack.multiply(RotationAxis.POSITIVE_Y.rotation(MathUtils.PI));
             if (context.world != null)

@@ -168,6 +168,11 @@ public class VanillaParticleScene
      */
     public void render(mchorse.bbs_mod.camera.Camera previewCamera, float transition)
     {
+        this.render(previewCamera, transition, null);
+    }
+
+    public void render(mchorse.bbs_mod.camera.Camera previewCamera, float transition, Matrix4f displacement)
+    {
         if (this.particles.isEmpty())
         {
             return;
@@ -185,7 +190,7 @@ public class VanillaParticleScene
 
         Matrix4f previousModelView = new Matrix4f(RenderSystem.getModelViewMatrix());
 
-        applyModelView(previewCamera.view);
+        applyModelView(displacement == null ? previewCamera.view : new Matrix4f(previewCamera.view).mul(displacement));
 
         LightmapTextureManager lightmap = mc.gameRenderer.getLightmapTextureManager();
 

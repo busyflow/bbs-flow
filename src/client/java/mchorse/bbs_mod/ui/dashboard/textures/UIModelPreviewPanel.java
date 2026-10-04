@@ -72,6 +72,12 @@ public class UIModelPreviewPanel extends UIElement
         this.area.render(context.batcher, BBSSettings.chromeSurface());
 
         UITextureEditor editor = this.painter.getCurrentEditor();
+
+        if (editor != null)
+        {
+            editor = editor.getBaseEditor();
+        }
+
         Document document = editor == null ? null : editor.getDocument();
         TextureManager textures = BBSModClient.getTextures();
 

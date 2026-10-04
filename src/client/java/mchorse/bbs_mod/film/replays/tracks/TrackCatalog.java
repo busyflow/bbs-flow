@@ -65,9 +65,6 @@ public class TrackCatalog
     /** Hues bone tracks are coloured from, one per parent bone, so siblings share a colour. */
     private static final int BONE_TRACK_HUE_COUNT = 12;
 
-    /** Body part anchors are not worth animating, and the timeline has always hidden them. */
-    private static final String ANCHOR = "anchor";
-
     /**
      * The catalog of a form nothing is animating yet — every track it <em>could</em> have, with no
      * channels behind them. Answers "what tracks does this form have" for the per-form track filter,
@@ -239,13 +236,6 @@ public class TrackCatalog
 
             /* CEM states belong only to JEM models, including forms nested in body parts. */
             if (form instanceof ModelForm && name.startsWith("cem_") && (model == null || model.cemAnimation == null))
-            {
-                continue;
-            }
-
-            /* The root form's own anchor is animatable (it is what parents a replay to another one);
-             * a body part's anchor is what glues it to its parent, and animating that is meaningless. */
-            if (ANCHOR.equals(name) && !path.isEmpty())
             {
                 continue;
             }

@@ -69,6 +69,8 @@ public final class AddonApiCheck implements net.fabricmc.loader.api.entrypoint.P
         categories();
         SplineIKDataTest.main(new String[]{"client"});
         SplineFormCheck.run();
+        mchorse.bbs_mod.film.ReplayAnchorCheck.run();
+        mchorse.bbs_mod.cubic.ShapeControllerCheck.run();
         System.out.println("AddonApiCheck: " + checks + " checks passed");
     }
 
@@ -94,7 +96,7 @@ public final class AddonApiCheck implements net.fabricmc.loader.api.entrypoint.P
         require(mchorse.bbs_mod.api.client.editor.TrackCategories.categoryOf(TrackId.property("", "x"), false)
             == mchorse.bbs_mod.api.client.editor.TrackCategory.REPLAY, "recording category fallback");
         require(mchorse.bbs_mod.api.client.editor.TrackCategories.categoryOf(TrackId.bone("", "arm"), true)
-            == mchorse.bbs_mod.api.client.editor.TrackCategory.POSE, "pose category fallback");
+            == mchorse.bbs_mod.api.client.editor.TrackCategory.FORM, "pose shares form category");
         boolean duplicate = false;
         try { event.register(custom, (track, owned) -> true); }
         catch (IllegalArgumentException expected) { duplicate = true; }

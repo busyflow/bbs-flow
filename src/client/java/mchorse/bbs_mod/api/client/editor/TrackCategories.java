@@ -2,8 +2,6 @@ package mchorse.bbs_mod.api.client.editor;
 
 import mchorse.bbs_mod.film.replays.tracks.TrackId;
 import mchorse.bbs_mod.film.replays.tracks.TrackKind;
-import mchorse.bbs_mod.forms.FormUtils;
-import mchorse.bbs_mod.utils.StringUtils;
 import mchorse.bbs_mod.l10n.L10n;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
@@ -17,7 +15,7 @@ public final class TrackCategories
 {
     private record Entry(TrackCategory category, BiPredicate<TrackId, Boolean> matches) {}
     private static final List<TrackCategory> categories = new ArrayList<>(List.of(
-        TrackCategory.REPLAY, TrackCategory.FORM, TrackCategory.POSE));
+        TrackCategory.REPLAY, TrackCategory.FORM));
     private static final List<Entry> addons = new ArrayList<>();
     private static final List<KeyCombo> shortcuts = new ArrayList<>();
     private static boolean frozen;
@@ -47,7 +45,6 @@ public final class TrackCategories
         if (track != null)
             for (Entry entry : addons)
                 if (entry.matches.test(track, owned)) return entry.category;
-        String id = track == null ? "" : track.toKey();
         TrackKind kind = track == null ? null : track.kind();
 
         if (kind != null)
@@ -55,14 +52,14 @@ public final class TrackCategories
             if (kind == TrackKind.PROPERTY && (track.subject().startsWith("splines/")
                 || Set.of("ik", "physics", "spline_ik", "wind").contains(track.subject())))
             {
-                return TrackCategory.POSE;
+                return TrackCategory.FORM;
             }
 
             switch (kind)
             {
                 case IK_CONTROLS, IK_TARGET, POLE_TARGET, PHYSICS_CONTROLS, PHYSICS_TARGET,
                     WIND_CONTROLS, BONE, BONE_CONSTRAINT:
-                    return TrackCategory.POSE;
+                    return TrackCategory.FORM;
                 case MATERIAL_TEXTURE, MATERIAL_PROP:
                     return TrackCategory.FORM;
                 default:
@@ -78,7 +75,7 @@ public final class TrackCategories
         }
 
 
-        return FormUtils.isPoseProperty(StringUtils.fileName(id)) ? TrackCategory.POSE : TrackCategory.FORM;
+        return TrackCategory.FORM;
     }
 
     /** Called once after category registration, before loading keybind settings. */

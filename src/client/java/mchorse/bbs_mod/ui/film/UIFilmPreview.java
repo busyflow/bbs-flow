@@ -231,17 +231,28 @@ public class UIFilmPreview extends UIElement
         {
             menu.action(Icons.CAMERA, UIKeys.FILM_SCREENSHOT, () ->
             {
+                if (BBSRendering.isHoldingExportFrame() || this.panel.recorder.isExporting())
+                {
+                    return;
+                }
+
                 ScreenshotRecorder recorder = BBSModClient.getScreenshotRecorder();
                 File output = Window.isAltPressed() ? null : recorder.getScreenshotFile();
 
                 UIFilmPanel.applyExportSizeToBBS();
-                BBSRendering.scheduleAfterNextExportFrame(() ->
+                BBSRendering.scheduleAfterHeldExportFrame(() ->
                 {
                     Texture texture = BBSRendering.getTexture();
                     int w = BBSRendering.getVideoWidth();
                     int h = BBSRendering.getVideoHeight();
-                    recorder.takeScreenshot(output, texture.id, w, h);
-                    this.panel.restorePreviewSize();
+                    try
+                    {
+                        recorder.takeScreenshot(output, texture.id, w, h);
+                    }
+                    finally
+                    {
+                        this.panel.restorePreviewSize();
+                    }
 
                     UIBaseMenu currentMenu = UIScreen.getCurrentMenu();
                     if (currentMenu != null)
@@ -356,6 +367,11 @@ public class UIFilmPreview extends UIElement
      */
     private boolean canExport()
     {
+        if (BBSRendering.isHoldingExportFrame())
+        {
+            return false;
+        }
+
         if (this.panel.checkShowNoCamera())
         {
             return false;

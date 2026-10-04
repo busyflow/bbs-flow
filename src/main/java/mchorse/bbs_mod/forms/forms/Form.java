@@ -14,11 +14,9 @@ import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.ITickable;
 import mchorse.bbs_mod.forms.entities.IEntity;
-import mchorse.bbs_mod.forms.forms.utils.Anchor;
 import mchorse.bbs_mod.forms.states.AnimationState;
 import mchorse.bbs_mod.forms.states.AnimationStates;
 import mchorse.bbs_mod.forms.states.StatePlayer;
-import mchorse.bbs_mod.forms.values.ValueAnchor;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.base.BaseValueBasic;
 import mchorse.bbs_mod.settings.values.base.BaseValueGroup;
@@ -74,8 +72,6 @@ public abstract class Form extends ValueGroup
     public final ValueString name = new ValueString("name", "");
     public final ValueTransform transform = new ValueTransform("transform", new Transform());
     public final ValueTransform transformOverlay = new ValueTransform("transform_overlay", new Transform());
-    public final ValueFloat uiScale = new ValueFloat("uiScale", 1F);
-    public final ValueAnchor anchor = new ValueAnchor("anchor", new Anchor());
     public final ValueBoolean shaderShadow = new ValueBoolean("shaderShadow", true);
     public final ValueBoolean additiveColor = new ValueBoolean("additive_color", false);
 
@@ -139,7 +135,6 @@ public abstract class Form extends ValueGroup
         this.disabledTracks.invisible();
         this.trackName.animatable(false).invisible();
         this.name.animatable(false).invisible();
-        this.uiScale.animatable(false).invisible();
         this.shaderShadow.animatable(false).invisible();
         this.additiveColor.animatable(false).invisible();
 
@@ -162,8 +157,6 @@ public abstract class Form extends ValueGroup
 
         this.syncOverlayTracks();
 
-        this.add(this.uiScale);
-        this.add(this.anchor);
         this.add(this.shaderShadow);
         this.add(this.additiveColor);
 

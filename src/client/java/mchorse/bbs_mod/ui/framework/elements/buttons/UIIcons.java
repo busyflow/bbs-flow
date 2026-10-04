@@ -20,6 +20,8 @@ public class UIIcons extends UIIconStrip<UIIcons>
     public UIIcons(Consumer<UIIcons> callback)
     {
         super(callback);
+
+        this.tooltipImmediate();
     }
 
     public UIIcons add(Icon icon, IKey tooltip)

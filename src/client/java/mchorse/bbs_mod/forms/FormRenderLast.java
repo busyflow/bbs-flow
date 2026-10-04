@@ -37,8 +37,40 @@ import java.util.List;
  */
 public class FormRenderLast
 {
-    private static final List<Postponed> postponed = new ArrayList<>();
+    private static List<Postponed> postponed = new ArrayList<>();
     private static boolean active;
+
+    /** Repeated compositions order their parts without draining another scene's pending draws. */
+    public static final class LocalScope implements AutoCloseable
+    {
+        private final List<Postponed> previous = postponed;
+        private final boolean wasActive = active;
+
+        public LocalScope()
+        {
+            postponed = new ArrayList<>();
+            active = true;
+        }
+
+        @Override
+        public void close()
+        {
+            boolean draws = !postponed.isEmpty();
+            boolean depth = draws && org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_DEPTH_TEST);
+            boolean blend = draws && org.lwjgl.opengl.GL11.glIsEnabled(org.lwjgl.opengl.GL11.GL_BLEND);
+            try { FormRenderLast.close(true); }
+            finally
+            {
+                postponed = this.previous;
+                active = this.wasActive;
+                if (draws)
+                {
+                    if (depth) RenderSystem.enableDepthTest(); else RenderSystem.disableDepthTest();
+                    if (blend) RenderSystem.enableBlend(); else RenderSystem.disableBlend();
+                }
+            }
+        }
+    }
 
     /**
      * Whether forms skip their turn right now: inside an open scope, and never in the Iris
@@ -104,7 +136,7 @@ public class FormRenderLast
      */
     public static boolean postpone(Form form, FormRenderingContext context)
     {
-        if (form == null || !form.renderLast.get() || !isActive() || context.isPicking())
+        if (form == null || !isActive() || context.isPicking() || !rendersLast(form))
         {
             return false;
         }
@@ -112,6 +144,28 @@ public class FormRenderLast
         postponed.add(new Postponed(form, context));
 
         return true;
+    }
+
+    private static boolean rendersLast(Form form)
+    {
+        if (form.renderLast.get()) return true;
+        if (form instanceof mchorse.bbs_mod.forms.forms.SplineForm spline && spline.repeatEnabled.get())
+        {
+            // A repeated composition shares one evaluation. Defer it as a unit when any source
+            // asks to draw last; its own local pass then orders those parts within the composition.
+            return hasLastPart(form);
+        }
+        return false;
+    }
+
+    private static boolean hasLastPart(Form form)
+    {
+        for (var part : form.parts.getAllTyped())
+        {
+            Form child = part.getForm();
+            if (child != null && (child.renderLast.get() || hasLastPart(child))) return true;
+        }
+        return false;
     }
 
     private static void flush()
@@ -153,6 +207,9 @@ public class FormRenderLast
         private final int overlay;
         private final int color;
         private final float transition;
+        private final boolean ui;
+        private final boolean modelRenderer;
+        private final long modelRendererTick;
         private final Camera camera = new Camera();
 
         private Postponed(Form form, FormRenderingContext context)
@@ -171,6 +228,9 @@ public class FormRenderLast
             this.overlay = context.overlay;
             this.color = context.color;
             this.transition = context.transition;
+            this.ui = context.ui;
+            this.modelRenderer = context.modelRenderer;
+            this.modelRendererTick = context.modelRendererTick;
             this.camera.copy(context.camera);
         }
 
@@ -185,6 +245,9 @@ public class FormRenderLast
                 .set(this.type, this.entity, stack, this.light, this.overlay, this.transition)
                 .camera(this.camera)
                 .color(this.color);
+            context.ui = this.ui;
+            context.modelRenderer = this.modelRenderer;
+            context.modelRendererTick = this.modelRendererTick;
 
             /* set() rebuilt the world stack from the entity alone; the capture holds what the
              * pass really had there — a body part's slot on its parent, a film's anchor. */

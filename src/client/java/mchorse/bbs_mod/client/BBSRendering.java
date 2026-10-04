@@ -98,6 +98,8 @@ public class BBSRendering
     private static mchorse.bbs_mod.graphics.Framebuffer /* NECESSARY */ exportFramebuffer;
 
     private static Runnable pendingExportResolutionAction;
+    private static int pendingExportFrames;
+    private static volatile boolean holdingExportFrame;
 
     public static int getMotionBlur()
     {
@@ -183,6 +185,13 @@ public class BBSRendering
 
     public static void setCustomSize(boolean customSize, int w, int h)
     {
+        if (!customSize)
+        {
+            pendingExportResolutionAction = null;
+            pendingExportFrames = 0;
+            holdingExportFrame = false;
+        }
+
         int newWidth = !customSize ? 0 : w;
         int newHeight = !customSize ? 0 : h;
 
@@ -484,10 +493,11 @@ public class BBSRendering
 
         toggleFramebuffer(false);
 
-        if (pendingExportResolutionAction != null)
+        if (pendingExportResolutionAction != null && --pendingExportFrames <= 0)
         {
             Runnable action = pendingExportResolutionAction;
             pendingExportResolutionAction = null;
+            holdingExportFrame = false;
             MinecraftClient.getInstance().execute(action);
         }
     }
@@ -495,6 +505,21 @@ public class BBSRendering
     public static void scheduleAfterNextExportFrame(Runnable action)
     {
         pendingExportResolutionAction = action;
+        pendingExportFrames = 1;
+        holdingExportFrame = false;
+    }
+
+    /** Render one frozen scene repeatedly at export resolution before capturing it. */
+    public static void scheduleAfterHeldExportFrame(Runnable action)
+    {
+        pendingExportResolutionAction = action;
+        pendingExportFrames = BBSSettings.videoHeldFrames.get();
+        holdingExportFrame = true;
+    }
+
+    public static boolean isHoldingExportFrame()
+    {
+        return holdingExportFrame;
     }
 
     public static void onRenderChunkLayer(MatrixStack stack)

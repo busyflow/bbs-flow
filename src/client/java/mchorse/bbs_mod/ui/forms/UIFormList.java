@@ -70,8 +70,8 @@ public class UIFormList extends UIElement
     public UIIcon edit;
     public UIIcon close;
     public UIIcon categoryFilter;
-    public UIIcon collapseAll;
-    public UIIcon expandAll;
+    public UIIcon hideModels;
+    public UIIcon sectionsToggle;
 
     /* Forms are matched by identity: two equal-looking forms in different categories are different picks */
     public final Selection<Form> selection = new Selection<>((a, b) -> a == b);
@@ -118,16 +118,29 @@ public class UIFormList extends UIElement
         this.forms.relative(this).xy(0, BAR_HEIGHT + STATUS_HEIGHT).w(1F).h(1F, -BAR_HEIGHT - STATUS_HEIGHT);
         this.close.w(20);
 
+        this.hideModels = new UIIcon(Icons.INVISIBLE, (b) ->
+        {
+            BBSSettings.hideMorphModels.set(!BBSSettings.hideMorphModels.get());
+            this.refreshCategories();
+        });
+        this.hideModels.tooltip(() -> (BBSSettings.hideMorphModels.get() ? UIKeys.MORPHING_SHOW_MODELS : UIKeys.MORPHING_HIDE_MODELS).get(), Direction.TOP);
+        this.hideModels.highlight(() -> BBSSettings.hideMorphModels.get(), Direction.BOTTOM);
+        this.hideModels.context(menu -> menu.action(Icons.PARTICLE,
+            BBSSettings.hideMorphParticles.get() ? UIKeys.MORPHING_SHOW_PARTICLES : UIKeys.MORPHING_HIDE_PARTICLES,
+            BBSSettings.hideMorphParticles.get(), () ->
+            {
+                BBSSettings.hideMorphParticles.set(!BBSSettings.hideMorphParticles.get());
+                this.refreshCategories();
+            }));
+        this.hideModels.w(20);
         this.categoryFilter = new UIIcon(Icons.FILTER, this::openMorphCategoryFilter);
         this.categoryFilter.tooltip(UIKeys.MORPHING_FILTER_CATEGORIES, Direction.TOP);
         this.categoryFilter.w(20);
-        this.collapseAll = new UIIcon(Icons.COLLAPSE_ALL, (b) -> this.setAllExpanded(false));
-        this.collapseAll.tooltip(UIKeys.FORMS_LIST_COLLAPSE_ALL, Direction.TOP);
-        this.collapseAll.w(20);
-        this.expandAll = new UIIcon(Icons.EXPAND_ALL, (b) -> this.setAllExpanded(true));
-        this.expandAll.tooltip(UIKeys.FORMS_LIST_EXPAND_ALL, Direction.TOP);
-        this.expandAll.w(20);
-        this.bar.add(this.categoryFilter, this.collapseAll, this.expandAll, this.search, this.edit, this.close);
+        this.sectionsToggle = new UIIcon(Icons.COLLAPSE_ALL, (b) -> this.setAllExpanded(!this.hasExpandedSections()));
+        this.sectionsToggle.tooltip(() -> (this.hasExpandedSections()
+            ? UIKeys.FORMS_LIST_COLLAPSE_ALL : UIKeys.FORMS_LIST_EXPAND_ALL).get(), Direction.TOP);
+        this.sectionsToggle.w(20);
+        this.bar.add(this.categoryFilter, this.hideModels, this.sectionsToggle, this.search, this.edit, this.close);
 
         this.add(this.forms, this.bar);
 
@@ -135,6 +148,14 @@ public class UIFormList extends UIElement
 
         this.markContainer();
         this.setupForms(BBSModClient.getFormCategories());
+    }
+
+    private void refreshCategories()
+    {
+        Form selected = this.getSelected();
+        this.lastScroll = (int) this.forms.scroll.getScroll();
+        this.setupForms(BBSModClient.getFormCategories());
+        this.setSelected(selected);
     }
 
     private void openMorphCategoryFilter(UIIcon b)
@@ -177,7 +198,7 @@ public class UIFormList extends UIElement
         this.categories.clear();
         this.forms.removeAll();
 
-        for (FormCategory category : forms.getAllCategories())
+        for (FormCategory category : forms.getAllCategories(!BBSSettings.hideMorphModels.get(), !BBSSettings.hideMorphParticles.get()))
         {
             if (BBSSettings.disabledMorphFormCategories.get().contains(category.visible.getId()))
             {
@@ -335,6 +356,19 @@ public class UIFormList extends UIElement
     }
 
     /* Collapsing */
+
+    private boolean hasExpandedSections()
+    {
+        for (UIFormCategory category : this.categories)
+        {
+            if (category.category.visible.get())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private void setAllExpanded(boolean expanded)
     {
@@ -770,6 +804,9 @@ public class UIFormList extends UIElement
 
         context.batcher.box(this.area.x, this.area.y, this.area.ex(), this.area.y + BAR_HEIGHT, BBSSettings.color(BBSSettings.chromeSurface(), Colors.A50));
         this.renderStatus(context);
+
+        this.sectionsToggle.both(this.hasExpandedSections() ? Icons.COLLAPSE_ALL : Icons.EXPAND_ALL);
+        this.sectionsToggle.setEnabled(!this.categories.isEmpty());
 
         DiffuseLighting.enableGuiDepthLighting();
 

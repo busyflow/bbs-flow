@@ -560,7 +560,6 @@ public class UIKeys
     public static final IKey FORMS_EDITORS_GENERAL_SHADER_SHADOW = L10n.lang("bbs.ui.forms.editors.general.shader_shadow");
     public static final IKey FORMS_EDITORS_GENERAL_STEP_HEIGHT = L10n.lang("bbs.ui.forms.editors.general.step_height");
     public static final IKey FORMS_EDITORS_GENERAL_TRACK_NAME_TOOLTIP = L10n.lang("bbs.ui.forms.editors.general.track_name-tooltip");
-    public static final IKey FORMS_EDITORS_GENERAL_UI_SCALE = L10n.lang("bbs.ui.forms.editors.general.ui_scale");
     public static final IKey FORMS_EDITORS_GENERAL_VISIBLE = L10n.lang("bbs.ui.forms.editors.general.visible");
     public static final IKey FORMS_EDITORS_GENERAL_SECTION_DISPLAY = L10n.lang("bbs.ui.forms.editors.general.section_display");
     public static final IKey FORMS_EDITORS_GENERAL_SECTION_TRACKS = L10n.lang("bbs.ui.forms.editors.general.section_tracks");
@@ -589,6 +588,8 @@ public class UIKeys
     public static final IKey FORMS_EDITORS_MODEL_IK_BONES_TOOLTIP = L10n.lang("bbs.ui.forms.editors.model.ik.bones_tooltip");
     public static final IKey FORMS_EDITORS_MODEL_IK_DEBUG = L10n.lang("bbs.ui.forms.editors.model.ik.debug");
     public static final IKey FORMS_EDITORS_MODEL_IK_SETTINGS = L10n.lang("bbs.ui.forms.editors.model.ik.settings");
+    public static final IKey FORMS_EDITORS_MODEL_IK_BONE_CONTROLLER = L10n.lang("bbs.ui.forms.editors.model.ik.bone_controller");
+    public static final IKey FORMS_EDITORS_MODEL_IK_BONE_CONTROLLER_TOOLTIP = L10n.lang("bbs.ui.forms.editors.model.ik.bone_controller_tooltip");
     public static final IKey FORMS_EDITORS_MODEL_IK_ENABLED = L10n.lang("bbs.ui.forms.editors.model.ik.enabled");
     public static final IKey FORMS_EDITORS_MODEL_IK_TARGET = L10n.lang("bbs.ui.forms.editors.model.ik.target");
     public static final IKey FORMS_EDITORS_MODEL_IK_TARGET_LABEL = L10n.lang("bbs.ui.forms.editors.model.ik.target_label");
@@ -899,6 +900,8 @@ public class UIKeys
     public static final IKey GENERAL_Z = IKey.constant("Z");
     public static final IKey GENERIC_KEYFRAMES_ANCHOR_PICK_ACTOR = L10n.lang("bbs.ui.generic_keyframes.anchor.pick_actor");
     public static final IKey GENERIC_KEYFRAMES_ANCHOR_PICK_ATTACHMENT = L10n.lang("bbs.ui.generic_keyframes.anchor.pick_attachment");
+    public static final IKey GENERIC_KEYFRAMES_ANCHOR_DETACH = L10n.lang("bbs.ui.generic_keyframes.anchor.detach");
+    public static final IKey GENERIC_KEYFRAMES_ANCHOR_DETACH_TOOLTIP = L10n.lang("bbs.ui.generic_keyframes.anchor.detach_tooltip");
     public static final IKey GENERIC_KEYFRAMES_ANCHOR_KEEP_TRANSFORM = L10n.lang("bbs.ui.generic_keyframes.anchor.keep_transform");
     public static final IKey GENERIC_KEYFRAMES_ANCHOR_KEEP_TRANSFORM_TOOLTIP = L10n.lang("bbs.ui.generic_keyframes.anchor.keep_transform_tooltip");
     public static final IKey GENERIC_KEYFRAMES_BOOLEAN_TRUE = L10n.lang("bbs.ui.generic_keyframes.boolean.true");
@@ -1159,7 +1162,6 @@ public class UIKeys
     public static final IKey MODEL_EDITOR_POSE_GROUP = L10n.lang("bbs.ui.model_editor.pose_group");
     public static final IKey MODEL_EDITOR_ANCHOR = L10n.lang("bbs.ui.model_editor.anchor");
     public static final IKey MODEL_EDITOR_TEXTURE = L10n.lang("bbs.ui.model_editor.texture");
-    public static final IKey MODEL_EDITOR_UI_SCALE = L10n.lang("bbs.ui.model_editor.ui_scale");
     public static final IKey MODEL_EDITOR_SCALE = L10n.lang("bbs.ui.model_editor.scale");
     public static final IKey MODEL_EDITOR_RENDER = L10n.lang("bbs.ui.model_editor.render");
     public static final IKey MODEL_EDITOR_SIZE = L10n.lang("bbs.ui.model_editor.size");
@@ -1241,6 +1243,10 @@ public class UIKeys
     public static final IKey MORPHING_FROM_MOB = L10n.lang("bbs.ui.morphing.from_mob");
     public static final IKey MORPHING_FILTER_CATEGORIES = L10n.lang("bbs.ui.morphing.filter_categories");
     public static final IKey MORPHING_FILTER_CATEGORIES_TITLE = L10n.lang("bbs.ui.morphing.filter_categories-title");
+    public static final IKey MORPHING_HIDE_MODELS = L10n.lang("bbs.ui.morphing.hide_models");
+    public static final IKey MORPHING_SHOW_MODELS = L10n.lang("bbs.ui.morphing.show_models");
+    public static final IKey MORPHING_HIDE_PARTICLES = L10n.lang("bbs.ui.morphing.hide_particles");
+    public static final IKey MORPHING_SHOW_PARTICLES = L10n.lang("bbs.ui.morphing.show_particles");
     public static final IKey MORPHING_TITLE = L10n.lang("bbs.ui.morphing.title");
     public static final IKey OVERLAYS_SOUNDS_ADD_MODE = L10n.lang("bbs.ui.overlays.sounds.add_mode");
     public static final IKey OVERLAYS_SOUNDS_FOLDER_MODE = L10n.lang("bbs.ui.overlays.sounds.folder_mode");
@@ -1712,6 +1718,15 @@ public class UIKeys
     public static final IKey TEXTURES_ALPHA_LOCK = L10n.lang("bbs.ui.textures.alpha_lock");
     public static final IKey TEXTURES_ERASER_OPACITY = L10n.lang("bbs.ui.textures.eraser_opacity");
     public static final IKey TEXTURES_COLOR_PRIMARY = L10n.lang("bbs.ui.textures.color.primary");
+    public static final IKey TEXTURES_MATERIAL = L10n.lang("bbs.ui.textures.material");
+    public static final IKey TEXTURES_MATERIAL_OVERLAY = L10n.lang("bbs.ui.textures.material.overlay");
+    public static final IKey TEXTURES_MATERIAL_NONE = L10n.lang("bbs.ui.textures.material.none");
+    public static final IKey TEXTURES_MATERIAL_EMISSION = L10n.lang("bbs.ui.textures.material.emission");
+    public static final IKey TEXTURES_MATERIAL_SMOOTHNESS = L10n.lang("bbs.ui.textures.material.smoothness");
+    public static final IKey TEXTURES_MATERIAL_METAL = L10n.lang("bbs.ui.textures.material.metal");
+    public static final IKey TEXTURES_MATERIAL_SMOOTH_METAL = L10n.lang("bbs.ui.textures.material.smooth_metal");
+    public static final IKey TEXTURES_MATERIAL_SMOOTH_EMISSION = L10n.lang("bbs.ui.textures.material.smooth_emission");
+    public static final IKey TEXTURES_MATERIAL_LOAD_ERROR = L10n.lang("bbs.ui.textures.material.load_error");
     public static final IKey TEXTURES_COLOR_SECONDARY = L10n.lang("bbs.ui.textures.color.secondary");
     public static final IKey TEXTURES_VIEWER_BRIGHTNESS = L10n.lang("bbs.ui.textures.viewer.brightness");
     public static final IKey TEXTURES_VIEWER_CONTEXT_COPY_HEX = L10n.lang("bbs.ui.textures.viewer.context.copy_hex");

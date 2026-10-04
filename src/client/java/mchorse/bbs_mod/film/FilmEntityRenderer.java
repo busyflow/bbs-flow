@@ -64,11 +64,6 @@ public class FilmEntityRenderer
 
         Form form = entity.getForm();
 
-        if (form == null)
-        {
-            return;
-        }
-
         Vector3d position = Vectors.TEMP_3D.set(
             Lerps.lerp(entity.getPrevX(), entity.getX(), transition),
             Lerps.lerp(entity.getPrevY(), entity.getY(), transition),
@@ -97,7 +92,7 @@ public class FilmEntityRenderer
 
         if (!relative)
         {
-            Pair<Matrix4f, Float> pair = FilmMatrices.getTotalMatrix(entities, form.anchor.get(), defaultMatrix, cx, cy, cz, transition, 0, false, anchorFrame);
+            Pair<Matrix4f, Float> pair = FilmMatrices.getTotalMatrix(entities, FilmMatrices.getAnchor(entity, context.replay), defaultMatrix, cx, cy, cz, transition, 0, false, anchorFrame);
 
             target = pair.a;
             opacity = pair.b;
@@ -117,6 +112,17 @@ public class FilmEntityRenderer
             target = defaultMatrix;
         }
 
+        if (form == null)
+        {
+            FilmTarget gizmo = context.gizmoTarget;
+            if (UIBaseMenu.shouldRenderAxes())
+            {
+                if (gizmo.is(FilmTarget.Kind.ANCHOR)) renderAnchorGizmo(entities, entity, target, defaultMatrix, cx, cy, cz, transition, gizmo.space(), context.gizmoView, context.map, stack, anchorFrame);
+                else if (gizmo.is(FilmTarget.Kind.ROOT)) renderReplayGizmo(entity, cx, cy, cz, transition, gizmo.space(), context.gizmoView, context.map, stack);
+            }
+            return;
+        }
+
         Matrix4f targetWorld;
 
         if (relative)
@@ -126,7 +132,7 @@ public class FilmEntityRenderer
         else
         {
             Matrix4f defaultWorldMatrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, transition);
-            Pair<Matrix4f, Float> pairWorld = FilmMatrices.getTotalMatrix(entities, form.anchor.get(), defaultWorldMatrix, 0D, 0D, 0D, transition, 0, false, anchorFrame);
+            Pair<Matrix4f, Float> pairWorld = FilmMatrices.getTotalMatrix(entities, FilmMatrices.getAnchor(entity, context.replay), defaultWorldMatrix, 0D, 0D, 0D, transition, 0, false, anchorFrame);
 
             targetWorld = pairWorld.a != null ? pairWorld.a : defaultWorldMatrix;
         }
@@ -348,15 +354,13 @@ public class FilmEntityRenderer
     /**
      * The editing gizmo for the form's anchor offset. The anchor is applied as
      * {@code parent.mul(transform)}, so the gizmo sits at the resolved matrix {@code full}
-     * and edits {@code form.anchor.transform}. Placement mirrors {@link #renderAxes}: the
+     * and edits {@code replay.anchor.transform}. Placement mirrors {@link #renderAxes}: the
      * anchor's own orientation for LOCAL, the attachment's (this path's origin flavour)
      * otherwise, reoriented into the active frame just the same.
      */
     private static void renderAnchorGizmo(Map<String, IEntity> entities, IEntity entity, Matrix4f full, Matrix4f defaultMatrix, double cx, double cy, double cz, float transition, TransformSpace space, Matrix4f gizmoView, StencilMap stencilMap, MatrixStack stack, FormFrameCache frame)
     {
-        Form form = entity.getForm();
-
-        if (form == null || full == null)
+        if (full == null)
         {
             return;
         }
@@ -369,7 +373,7 @@ public class FilmEntityRenderer
         }
         else
         {
-            Matrix4f parent = FilmMatrices.getEntityMatrix(entities, cx, cy, cz, form.anchor.get(), defaultMatrix, transition, 0, true, frame);
+            Matrix4f parent = FilmMatrices.getEntityMatrix(entities, cx, cy, cz, FilmMatrices.getAnchor(entity), defaultMatrix, transition, 0, true, frame);
 
             matrix = MatrixStackUtils.stripScale(parent);
             matrix.setTranslation(full.getTranslation(new Vector3f()));

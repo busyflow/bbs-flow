@@ -22,6 +22,7 @@ import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.UIScrollView;
 import mchorse.bbs_mod.ui.framework.elements.UISection;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
+import mchorse.bbs_mod.ui.framework.elements.buttons.UIButton;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
 import mchorse.bbs_mod.ui.framework.elements.input.UIColor;
 import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
@@ -45,6 +46,7 @@ import mchorse.bbs_mod.utils.resources.Pixels;
 import org.joml.Vector2i;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -104,6 +106,9 @@ public class UITexturePainter extends UIElement
     public UIIcon extractIcon;
     public UIIcon macrosIcon;
     public UIIcon animationIcon;
+    public UIIcon materialIcon;
+    private UIElement materialOptions;
+    private UISliderTrackpad materialOverlay;
 
     private TexturePaintTool activeTool = TexturePaintTool.BRUSH;
     private TextureStrokeShape activeStrokeShape = TextureStrokeShape.SQUARE;
@@ -232,6 +237,8 @@ public class UITexturePainter extends UIElement
         this.modelPreviewIcon.tooltip(UIKeys.TEXTURES_PREVIEW_MODEL);
         this.animationIcon = new UIIcon(Icons.FILM, (b) -> this.withEditor(this::toggleAnimation));
         this.animationIcon.tooltip(UIKeys.TEXTURES_FRAMES_TOGGLE);
+        this.materialIcon = new UIIcon(Icons.MATERIAL, (b) -> this.toggleMaterial());
+        this.materialIcon.tooltip(UIKeys.TEXTURES_MATERIAL);
         this.macrosIcon = new UIIcon(Icons.WRENCH, (b) -> this.openMacrosMenu());
         this.macrosIcon.tooltip(UIKeys.TEXTURES_MACROS_TOOLTIP);
     }
@@ -260,7 +267,8 @@ public class UITexturePainter extends UIElement
     {
         this.actionBar = bar;
 
-        bar.action(this.resizeIcon)
+        bar.action(this.materialIcon, () -> this.editor != null && this.editor.isMaterial())
+            .action(this.resizeIcon)
             .action(this.extractIcon)
             .action(this.macrosIcon)
             .action(this.animationIcon, this::isAnimated)
@@ -276,6 +284,7 @@ public class UITexturePainter extends UIElement
         this.macrosIcon.setVisible(visible);
         this.animationIcon.setVisible(visible);
         this.modelPreviewIcon.setVisible(visible);
+        this.materialIcon.setVisible(visible);
 
         if (this.actionBar != null)
         {
@@ -367,6 +376,25 @@ public class UITexturePainter extends UIElement
         this.colorPickersRow = UI.row(UIConstants.MARGIN, this.primary, this.secondary);
         this.colorPickersRow.row().preferred(0).height(UIConstants.CONTROL_HEIGHT);
 
+        this.materialOptions = new UIElement();
+        this.materialOptions.column(UIConstants.MARGIN).stretch().vertical();
+        this.materialOverlay = new UISliderTrackpad((v) -> this.withEditor((editor) -> editor.setMaterialOverlay(v.floatValue() / 100F)));
+        this.materialOverlay.integer().limit(0, 100).setValue(50);
+        UIElement materialPresets = UI.row(UIConstants.MARGIN,
+            this.materialPreset(0xFF000000, UIKeys.TEXTURES_MATERIAL_NONE),
+            this.materialPreset(0xFF0000FF, UIKeys.TEXTURES_MATERIAL_EMISSION),
+            this.materialPreset(0xFFFF0000, UIKeys.TEXTURES_MATERIAL_SMOOTHNESS),
+            this.materialPreset(0xFF00FF00, UIKeys.TEXTURES_MATERIAL_METAL),
+            this.materialPreset(0xFFFFFF00, UIKeys.TEXTURES_MATERIAL_SMOOTH_METAL),
+            this.materialPreset(0xFFFF00FF, UIKeys.TEXTURES_MATERIAL_SMOOTH_EMISSION)
+        );
+        materialPresets.row().preferred(0).height(UIConstants.CONTROL_HEIGHT);
+        this.materialOptions.add(
+            materialPresets,
+            UI.labelRow(UIKeys.TEXTURES_MATERIAL_OVERLAY, this.materialOverlay)
+        );
+        this.materialOptions.setVisible(false);
+
         this.alphaLockToggle = new UIToggle(UIKeys.TEXTURES_ALPHA_LOCK, false, (b) -> {});
         this.alphaLockToggle.h(UIConstants.CONTROL_HEIGHT);
 
@@ -414,6 +442,7 @@ public class UITexturePainter extends UIElement
         this.animationSection.setVisible(false);
 
         this.options.add(
+            this.materialOptions,
             this.colorPickersRow,
             this.alphaLockToggle,
             UI.labelRow(UIKeys.TEXTURES_VIEWER_BRIGHTNESS, this.brightness),
@@ -424,6 +453,82 @@ public class UITexturePainter extends UIElement
             this.eraserOpacityRow,
             this.animationSection
         );
+    }
+
+    private UIButton materialPreset(int color, IKey label)
+    {
+        UIButton button = new UIButton(IKey.EMPTY, (b) -> this.primary.setColor(color)).color(color);
+
+        button.tooltip(label).tooltipImmediate();
+
+        return button;
+    }
+
+    private void toggleMaterial()
+    {
+        if (this.editor == null || this.editor.dragging)
+        {
+            return;
+        }
+
+        UITextureEditor base = this.editor.getBaseEditor();
+        Link link = base.getTexture();
+
+        if (link == null || !Link.isAssets(link) || !link.path.endsWith(".png"))
+        {
+            this.getContext().notifyError(UIKeys.TEXTURES_SAVE_WRONG_PATH);
+
+            return;
+        }
+
+        if (base.getMaterialEditor() == null)
+        {
+            Link materialLink = UITextureEditor.materialLink(link);
+            File file = UITextureEditor.materialFile(link);
+            Document source = base.getDocument();
+            Document material;
+            boolean existing = file != null && file.isFile();
+
+            if (existing)
+            {
+                material = this.loadDocument(materialLink, file);
+
+                if (material == null)
+                {
+                    this.getContext().notifyError(UIKeys.TEXTURES_MATERIAL_LOAD_ERROR);
+
+                    return;
+                }
+            }
+            else
+            {
+                Pixels pixels = Pixels.fromSize(source.width, source.height);
+                Color black = new Color(0F, 0F, 0F, 1F);
+
+                for (int i = 0; i < pixels.getCount(); i++)
+                {
+                    pixels.setColor(i, black);
+                }
+
+                pixels.rewindBuffer();
+                material = Document.fromPixels(materialLink, pixels);
+            }
+
+            if (material.animation == null && source.animation != null
+                && material.width == source.width && material.height == source.height)
+            {
+                material.animation = new TextureAnimation();
+                material.animation.fromData(source.animation.toData());
+            }
+
+            UITextureEditor editor = this.createEditor(material);
+
+            base.setMaterialEditor(editor);
+            editor.setDirty(!existing);
+        }
+
+        base.toggleMaterial();
+        this.setEditor(base);
     }
 
     private void buildModelPreviewHost()
@@ -847,6 +952,11 @@ public class UITexturePainter extends UIElement
      */
     public void setEditor(UITextureEditor editor)
     {
+        if (editor != null)
+        {
+            editor = editor.getActiveEditor();
+        }
+
         List<IUIElement> hostChildren = this.canvasHost.getChildren();
 
         if (!hostChildren.isEmpty() && hostChildren.get(0) instanceof UITextureEditor currentInHost)
@@ -870,6 +980,11 @@ public class UITexturePainter extends UIElement
         }
 
         this.framesPanel.setEditor(editor);
+        this.materialOptions.setVisible(editor != null && editor.isMaterial());
+        if (editor != null)
+        {
+            this.materialOverlay.setValue(editor.getMaterialOverlay() * 100F);
+        }
         this.updateFramesVisibility();
         this.resize();
     }
@@ -892,11 +1007,17 @@ public class UITexturePainter extends UIElement
      */
     private Document loadDocument(Link link)
     {
-        Document document = this.loadProject(link);
+        return this.loadDocument(link, null);
+    }
+
+    private Document loadDocument(Link link, File file)
+    {
+        Document document = this.loadProject(link, file);
 
         if (document != null)
         {
-            document.animation = TextureAnimation.read(link, document.width, document.height);
+            document.animation = file == null ? TextureAnimation.read(link, document.width, document.height)
+                : TextureAnimation.read(file, document.width, document.height);
         }
 
         return document;
@@ -906,9 +1027,9 @@ public class UITexturePainter extends UIElement
      * Deserializes the {@code NAME_INCLUDING_EXTENSION.dat} sidecar next to the texture when present,
      * otherwise builds a fresh single-layer document from the texture's pixels.
      */
-    private Document loadProject(Link link)
+    private Document loadProject(Link link, File file)
     {
-        File source = BBSMod.getProvider().getFile(link);
+        File source = file == null ? BBSMod.getProvider().getFile(link) : file;
         File datFile = source == null ? null : Document.datFile(source);
 
         if (datFile != null && datFile.isFile())
@@ -918,6 +1039,18 @@ public class UITexturePainter extends UIElement
             if (document != null)
             {
                 return document;
+            }
+        }
+
+        if (file != null)
+        {
+            try (FileInputStream stream = new FileInputStream(file))
+            {
+                return Document.fromPixels(link, toRGBA(Pixels.fromPNGStream(stream)));
+            }
+            catch (Exception e)
+            {
+                return null;
             }
         }
 

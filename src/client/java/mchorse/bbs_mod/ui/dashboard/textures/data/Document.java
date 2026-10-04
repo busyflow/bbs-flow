@@ -35,6 +35,9 @@ public class Document implements IMapSerializable
     /** Runtime association with the texture file; not serialized (it is implied by the .dat location). */
     public Link link;
 
+    /** OldPBR maps compose over opaque black, independently of individual layers' alpha. */
+    public boolean material;
+
     public final List<TextureLayer> layers = new ArrayList<>();
     public int activeLayerIndex = -1;
     public int width;
@@ -328,7 +331,7 @@ public class Document implements IMapSerializable
         float r = 0F;
         float g = 0F;
         float b = 0F;
-        float a = 0F;
+        float a = this.material ? 1F : 0F;
 
         for (TextureLayer layer : this.layers)
         {
@@ -384,6 +387,16 @@ public class Document implements IMapSerializable
 
         Pixels output = Pixels.fromSize(this.width, this.height);
 
+        if (this.material)
+        {
+            Color black = new Color(0F, 0F, 0F, 1F);
+
+            for (int i = 0; i < output.getCount(); i++)
+            {
+                output.setColor(i, black);
+            }
+        }
+
         for (TextureLayer layer : this.layers)
         {
             if (layer.visible && layer.pixels != null && layer.opacity > 0F)
@@ -435,6 +448,10 @@ public class Document implements IMapSerializable
         data.putInt("width", this.width);
         data.putInt("height", this.height);
         data.putInt("active", this.activeLayerIndex);
+        if (this.material)
+        {
+            data.putBool("material", true);
+        }
 
         ListType layersData = new ListType();
 
@@ -462,6 +479,7 @@ public class Document implements IMapSerializable
 
         this.width = data.getInt("width");
         this.height = data.getInt("height");
+        this.material = data.getBool("material");
 
         int count = this.width * this.height;
         ListType layersData = data.getList("layers");

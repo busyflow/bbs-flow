@@ -3,7 +3,9 @@ package mchorse.bbs_mod.film;
 import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.utils.Anchor;
+import mchorse.bbs_mod.utils.Pair;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
 
 import java.util.Map;
 
@@ -27,6 +29,40 @@ import java.util.Map;
  */
 public class AnchorRebase
 {
+    /** Detach at the evaluated world placement, moving translation into the replay's XYZ tracks. */
+    public static Anchor detach(Map<String, IEntity> entities, IEntity entity, Replay replay, float transition, Anchor from, Vector3d position)
+    {
+        if (entity == null || replay == null || replay.relative.get())
+        {
+            return null;
+        }
+
+        double x = entity.getX();
+        double y = entity.getY();
+        double z = entity.getZ();
+        Matrix4f basis = FilmMatrices.getMatrixForRenderWithRotation(entity, x, y, z, transition);
+        Matrix4f fallback = new Matrix4f(basis);
+        Pair<Matrix4f, Float> result = FilmMatrices.getTotalMatrix(entities, from, fallback, x, y, z, transition, 0);
+        Matrix4f world = result.a == null ? fallback : result.a;
+
+        if (!world.isFinite())
+        {
+            return null;
+        }
+
+        position.set(x + world.m30(), y + world.m31(), z + world.m32());
+        basis.setTranslation(world.m30(), world.m31(), world.m32()).invert().mul(world);
+
+        Anchor anchor = from.copy();
+        anchor.replay = Anchor.NO_ATTACHMENT;
+        anchor.attachment = "";
+        anchor.spline = false;
+        anchor.transform.fromMatrix(basis);
+        anchor.transform.translate.zero();
+
+        return anchor;
+    }
+
     /**
      * Rebase {@code to}'s transform so a form hanging off it sits exactly where {@code from} had
      * it at this moment. Returns whether it could — a replay in relative mode ignores anchors

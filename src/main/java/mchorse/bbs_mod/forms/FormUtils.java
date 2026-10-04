@@ -304,17 +304,6 @@ public class FormUtils
 
         collectPropertyPaths(form, properties, "");
 
-        /* There is no need to animate body part anchor properties */
-        Iterator<String> it = properties.iterator();
-
-        while (it.hasNext())
-        {
-            if (it.next().endsWith("/anchor"))
-            {
-                it.remove();
-            }
-        }
-
         return properties;
     }
 

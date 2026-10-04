@@ -361,7 +361,7 @@ public class UIDashboardPanels extends UIElement
         public void apply(Direction side)
         {
             /* The tooltip leans into the screen, the selection mark sits on the docked edge */
-            this.icon.tooltip(this.tooltip, side.opposite());
+            this.icon.tooltip(this.tooltip, side.opposite()).tooltipImmediate();
 
             if (this.highlight != null)
             {

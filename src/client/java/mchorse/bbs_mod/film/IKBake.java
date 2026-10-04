@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.film;
 
+import mchorse.bbs_mod.forms.entities.ReplayEntity;
+
 import mchorse.bbs_mod.cubic.IModel;
 import mchorse.bbs_mod.cubic.ModelInstance;
 import mchorse.bbs_mod.cubic.RigBone;
@@ -421,9 +423,11 @@ public class IKBake
                     continue;
                 }
 
-                StubEntity entity = new StubEntity(world);
+                Replay sampled = new Replay(other.getId());
+                sampled.copy(other);
+                StubEntity entity = new ReplayEntity(world, sampled);
 
-                entity.setForm(FormUtils.copy(other.form.get()));
+                entity.setForm(sampled.form.get());
                 sampler.entities.put(other.getId(), entity);
 
                 if (other == replay)
@@ -592,7 +596,7 @@ public class IKBake
             }
 
             Matrix4f base = FilmMatrices.getMatrixForRenderWithRotation(this.entity, 0D, 0D, 0D, 0F);
-            Pair<Matrix4f, Float> pair = FilmMatrices.getTotalMatrix(this.entities, this.entity.getForm().anchor.get(), base, 0D, 0D, 0D, 0F, 0, false, null);
+            Pair<Matrix4f, Float> pair = FilmMatrices.getTotalMatrix(this.entities, FilmMatrices.getAnchor(this.entity), base, 0D, 0D, 0D, 0F, 0, false, null);
 
             return pair.a != null ? pair.a : base;
         }

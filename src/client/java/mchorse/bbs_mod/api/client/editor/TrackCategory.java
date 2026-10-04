@@ -10,8 +10,7 @@ import java.util.Objects;
 public final class TrackCategory
 {
     public static final TrackCategory REPLAY = builtin("replay", Icons.PLAYER);
-    public static final TrackCategory FORM = builtin("form", Icons.BLOCK);
-    public static final TrackCategory POSE = builtin("pose", Icons.POSE);
+    public static final TrackCategory FORM = builtin("form", Icons.MORPH);
 
     public final String id;
     public final Icon icon;

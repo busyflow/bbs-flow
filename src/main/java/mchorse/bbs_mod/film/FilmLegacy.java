@@ -31,6 +31,28 @@ import java.util.List;
  */
 public class FilmLegacy
 {
+    /** Move the old root-form value and track once; explicit replay data always wins. */
+    public static void migrateAnchor(Replay replay, BaseType data)
+    {
+        if (!data.isMap()) return;
+        MapType map = data.asMap();
+        if (!map.has("anchor") && map.getMap("form").has("anchor"))
+        {
+            replay.anchor.fromData(map.getMap("form").get("anchor"));
+        }
+
+        var id = mchorse.bbs_mod.film.replays.tracks.TrackId.property("", "anchor");
+        KeyframeChannel<?> legacy = replay.properties.get(id);
+        if (legacy != null)
+        {
+            if (!map.getMap("keyframes").has("anchor") && legacy.getFactory() == KeyframeFactories.ANCHOR)
+            {
+                replay.keyframes.anchor.fromData(legacy.toData());
+            }
+            replay.properties.remove(id);
+        }
+    }
+
     public static final String LEGACY_MAIN_HAND = "item_main_hand";
     public static final String LEGACY_INVENTORY = "inventory";
 
