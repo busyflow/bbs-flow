@@ -236,6 +236,10 @@ public class UIReplayList extends UIList<ReplayListEntry>
             .label(UIKeys.SCENE_REPLAYS_CONTEXT_DUPE)
             .active(this::hasReplaySelection)
             .category(UIKeys.FILM_REPLAY_TITLE);
+        this.keys().register(Keys.REPLAYS_ENABLE, this::toggleReplaysEnabled)
+            .inside()
+            .active(this::hasReplaySelection)
+            .category(UIKeys.FILM_REPLAY_TITLE);
         this.keys().register(Keys.REPLAYS_SELECT_ALL, this::selectAllReplays)
             .inside()
             .category(UIKeys.FILM_REPLAY_TITLE);
@@ -648,6 +652,28 @@ public class UIReplayList extends UIList<ReplayListEntry>
             {
                 replay.enabled.set(enabled);
             }
+        }
+
+        this.updateFilmEditor();
+    }
+
+    /**
+     * Turn the picked replays off while any of them is on, otherwise turn them all on — the same
+     * rule a folder follows, so a mixed pick ends up all one way instead of swapping places.
+     */
+    private void toggleReplaysEnabled()
+    {
+        List<Replay> replays = this.getSelectedReplays();
+        boolean enabled = false;
+
+        for (Replay replay : replays)
+        {
+            enabled |= replay.enabled.get();
+        }
+
+        for (Replay replay : replays)
+        {
+            replay.enabled.set(!enabled);
         }
 
         this.updateFilmEditor();
@@ -1609,7 +1635,20 @@ public class UIReplayList extends UIList<ReplayListEntry>
 
         if (this.getRoot() != null)
         {
-            target = this.getParentContainer();
+            UIElement container = this.getParentContainer();
+
+            if (container != null)
+            {
+                target = container;
+            }
+        }
+
+        if (target != null && target.getRoot() != null)
+        {
+            for (UIFormPalette existing : target.getRoot().getChildren(UIFormPalette.class))
+            {
+                existing.removeFromParent();
+            }
         }
 
         UIFormPalette palette = UIFormPalette.open(target, editing, form.get(), (f) ->
@@ -1631,7 +1670,10 @@ public class UIReplayList extends UIList<ReplayListEntry>
             }
         });
 
-        palette.updatable();
+        if (palette != null)
+        {
+            palette.updatable();
+        }
     }
 
     public void addReplay()

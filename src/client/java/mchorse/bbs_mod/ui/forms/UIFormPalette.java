@@ -32,11 +32,21 @@ public class UIFormPalette extends UIElement implements IUIFormList
 
     public static UIFormPalette open(UIElement parent, boolean editing, Form form, boolean ignore, Consumer<Form> callback)
     {
+        if (parent == null)
+        {
+            return null;
+        }
+
         UIContext context = parent.getContext();
+
+        if (context == null)
+        {
+            return null;
+        }
 
         if (!ignore)
         {
-            if (!parent.getRoot().getChildren(UIFormPalette.class).isEmpty() || context == null)
+            if (parent.getRoot() != null && !parent.getRoot().getChildren(UIFormPalette.class).isEmpty())
             {
                 return null;
             }

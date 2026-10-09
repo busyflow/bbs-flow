@@ -607,7 +607,8 @@ public class UIColorPicker extends UIElement
     public void resize()
     {
         int previousHeight = this.area.h;
-        PickerLayout layout = this.createLayout(this.embedded && this.area.w > 0 ? this.area.w : POPUP_WIDTH);
+        int effectiveWidth = this.embedded && this.area.w > 0 ? Math.min(this.area.w, POPUP_WIDTH) : POPUP_WIDTH;
+        PickerLayout layout = this.createLayout(effectiveWidth);
 
         this.layoutHsv = layout.hsv;
 
@@ -621,7 +622,7 @@ public class UIColorPicker extends UIElement
 
         if (this.embedded)
         {
-            layout = this.createLayout(this.area.w);
+            layout = this.createLayout(Math.min(this.area.w > 0 ? this.area.w : POPUP_WIDTH, POPUP_WIDTH));
 
             if (previousHeight != layout.height && this.hasParent())
             {

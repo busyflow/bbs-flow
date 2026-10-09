@@ -130,7 +130,6 @@ public class UIReplaysEditorUtils
             if (sheet.id.equals(entry.key()) && entry.owned() == (UIReplaysEditor.getSheetForm(sheet) != null))
             {
                 editor.view.getDopeSheet().revealSheet(sheet);
-                editor.view.selectTrack(sheet);
                 if (createKeyframe)
                 {
                     var graph = editor.view.getDopeSheet();
@@ -176,7 +175,7 @@ public class UIReplaysEditorUtils
             if (count.get() >= count.getMax()) return;
             count.set(count.get() + 1);
             owner.syncOverlayTracks();
-            refresh.accept(TrackId.property(track.formPath(), pose ? "pose" : "transform"));
+            refresh.accept(TrackId.property(track.formPath(), pose ? "pose_overlay" : "transform_overlay"));
         });
     }
 
@@ -816,10 +815,9 @@ public class UIReplaysEditorUtils
         }
 
         /* Ctrl multi-select: toggle the bone in the live pose editor without changing the
-         * selected keyframe. Selecting a keyframe recreates the factory (see
-         * UIKeyframeEditor#pickKeyframe), which resets the pose editor — so it caps the
-         * multi-selection. When a pose factory is already up and owns this bone, just
-         * toggle it and stop, so the selection accumulates. */
+         * selected keyframe. Picking a keyframe on another track recreates the panel, which
+         * resets the pose editor — so it caps the multi-selection. When a pose factory is
+         * already up and owns this bone, just toggle it and stop, so the selection accumulates. */
         if (!insert && Window.isCtrlPressed()
             && keyframeEditor.editor instanceof UIPoseKeyframeFactory poseFactory
             && poseFactory.poseEditor.hasBone(bone))
@@ -838,7 +836,7 @@ public class UIReplaysEditorUtils
         {
             IUIKeyframeGraph graph = keyframeEditor.view.getGraph();
             Keyframe selected = graph.getSelected();
-            UIKeyframeSheet currentSheet = keyframeEditor.view.getActiveSheet();
+            UIKeyframeSheet currentSheet = selected != null ? graph.getSheet(selected) : null;
             TrackId currentPath = currentSheet == null ? null : TrackId.parse(currentSheet.id, TrackKind.BONE);
             if (currentPath != null && !path.equals(currentPath.formPath()))
             {
@@ -847,6 +845,16 @@ public class UIReplaysEditorUtils
             if (isPoseSheet(currentSheet, path))
             {
                 keyframeEditor.view.getDopeSheet().revealSheet(currentSheet);
+                float tick = keyframeEditor.view.getTick();
+                Keyframe closest = getClosestKeyframe(currentSheet, tick);
+                if (closest != null)
+                {
+                    if (currentSheet.selection.getSelected().size() <= 1)
+                    {
+                        forceSelectInSheet(graph, currentSheet, closest);
+                    }
+                    cursor.setCursor(closest.getTick());
+                }
                 updatePoseEditorBoneSelection(keyframeEditor, bone);
                 return;
             }
@@ -874,7 +882,7 @@ public class UIReplaysEditorUtils
              * keyframe of this form is the active selection. */
             IUIKeyframeGraph graph = keyframeEditor.view.getGraph();
             Keyframe selected = graph.getSelected();
-            UIKeyframeSheet currentSheet = keyframeEditor.view.getActiveSheet();
+            UIKeyframeSheet currentSheet = selected != null ? graph.getSheet(selected) : null;
 
             if (isPoseSheet(currentSheet, path))
             {
@@ -952,7 +960,7 @@ public class UIReplaysEditorUtils
          * the last selected sheet (remembered across clicks) - so picks and inserts stay on that track (e.g.
          * an overlay) instead of snapping back to the form's base track. */
         Keyframe selected = graph.getSelected();
-        UIKeyframeSheet current = graph.getKeyframes().getActiveSheet();
+        UIKeyframeSheet current = selected != null ? graph.getSheet(selected) : null;
 
         if (isPropertySheet(current, formPath, property))
         {
@@ -1003,9 +1011,31 @@ public class UIReplaysEditorUtils
             return;
         }
 
-        keyframeEditor.view.selectTrack(sheet);
+        Keyframe closest = getClosestKeyframe(sheet, tick);
+
         TrackId path = TrackId.parse(sheet.id, TrackKind.BONE);
-        updatePoseEditorBoneSelection(keyframeEditor, path != null ? path.subject() : bone);
+        String boneForEditor = path != null ? path.subject() : bone;
+
+        if (closest != null)
+        {
+            if (sheet.selection.getSelected().size() <= 1)
+            {
+                forceSelectInSheet(graph, sheet, closest);
+            }
+            updatePoseEditorBoneSelection(keyframeEditor, boneForEditor);
+            filmPanel.setCursor(closest.getTick());
+        }
+        else
+        {
+            updatePoseEditorBoneSelection(keyframeEditor, boneForEditor);
+        }
+    }
+
+    private static Keyframe getClosestKeyframe(UIKeyframeSheet sheet, float tick)
+    {
+        KeyframeSegment segment = sheet.channel.find(tick);
+
+        return segment != null ? segment.getClosest() : null;
     }
 
     private static Keyframe getKeyframeAt(UIKeyframeSheet sheet, float tick)

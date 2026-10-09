@@ -216,35 +216,38 @@ public class UIModelBlockPanel extends UIDashboardPanel implements GizmoViewport
                 }
             });
 
-            palette.immersive();
-            palette.editor.keys().register(Keys.MODEL_BLOCKS_TOGGLE_RENDERING, () -> this.toggleRendering = !this.toggleRendering);
-            palette.editor.renderer.full(dashboard.getRoot());
-            palette.editor.renderer.setTarget(this.modelBlock.getEntity());
-            palette.editor.renderer.setRenderForm(() -> !this.toggleRendering);
-            palette.getEvents().register(UIToggleEditorEvent.class, (e) ->
+            if (palette != null)
             {
-                if (e.editing)
+                palette.immersive();
+                palette.editor.keys().register(Keys.MODEL_BLOCKS_TOGGLE_RENDERING, () -> this.toggleRendering = !this.toggleRendering);
+                palette.editor.renderer.full(dashboard.getRoot());
+                palette.editor.renderer.setTarget(this.modelBlock.getEntity());
+                palette.editor.renderer.setRenderForm(() -> !this.toggleRendering);
+                palette.getEvents().register(UIToggleEditorEvent.class, (e) ->
+                {
+                    if (e.editing)
+                    {
+                        this.addCameraController(palette);
+                    }
+                    else
+                    {
+                        this.removeCameraController();
+                    }
+                });
+                palette.getEvents().register(UIRemovedEvent.class, (e) ->
+                {
+                    this.recordChange(editedBlock, before, null);
+                    this.fillData();
+                    this.scrollView.setVisible(true);
+                    this.draggable.setVisible(true);
+                });
+
+                palette.resize();
+
+                if (editing)
                 {
                     this.addCameraController(palette);
                 }
-                else
-                {
-                    this.removeCameraController();
-                }
-            });
-            palette.getEvents().register(UIRemovedEvent.class, (e) ->
-            {
-                this.recordChange(editedBlock, before, null);
-                this.fillData();
-                this.scrollView.setVisible(true);
-                this.draggable.setVisible(true);
-            });
-
-            palette.resize();
-
-            if (editing)
-            {
-                this.addCameraController(palette);
             }
 
             this.scrollView.setVisible(false);
