@@ -103,6 +103,8 @@ public class TransformGesture implements DragContext
 
         default boolean cancelGesture() { return false; }
 
+        default boolean isRunning() { return false; }
+
         /** The session was torn down (accepted, rejected or dismissed) — drop cached reads. */
         void gestureStopped();
 
@@ -1045,6 +1047,12 @@ public class TransformGesture implements DragContext
     public boolean rotationChannelOnly()
     {
         return this.host.isRotationChannelOnly();
+    }
+
+    @Override
+    public boolean isRunning()
+    {
+        return this.host != null && this.host.isRunning();
     }
 
     @Override

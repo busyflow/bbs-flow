@@ -94,7 +94,7 @@ public class TrackballDrag extends SphereDrag
         this.lastX = mouseX;
         this.lastY = mouseY;
 
-        if (dx == 0 && dy == 0)
+        if (dx == 0 && dy == 0 && !this.ctx.isRunning())
         {
             return;
         }

@@ -15,6 +15,96 @@ public abstract class UIKeyframePropTransform extends UIDeltaPropTransform
     @Override public boolean isUserEditing() { return this.applying || super.isUserEditing(); }
 
     @Override
+    public boolean isRunning()
+    {
+        return this.getKeyframes() != null && this.getKeyframes().isRunning();
+    }
+
+    @Override
+    public void setT(mchorse.bbs_mod.utils.Axis axis, double x, double y, double z)
+    {
+        if (this.isRunning())
+        {
+            this.preCallback();
+            this.applyToTarget((t) -> t.translate.set((float) x, (float) y, (float) z));
+            this.postCallback();
+            this.syncTargetTransform();
+            return;
+        }
+
+        super.setT(axis, x, y, z);
+    }
+
+    @Override
+    public void setS(mchorse.bbs_mod.utils.Axis axis, double x, double y, double z)
+    {
+        if (this.isRunning())
+        {
+            this.preCallback();
+            this.applyToTarget((t) -> t.scale.set((float) x, (float) y, (float) z));
+            this.postCallback();
+            this.syncTargetTransform();
+            return;
+        }
+
+        super.setS(axis, x, y, z);
+    }
+
+    @Override
+    public void setR(mchorse.bbs_mod.utils.Axis axis, double x, double y, double z)
+    {
+        if (this.isRunning())
+        {
+            float rx = mchorse.bbs_mod.utils.MathUtils.toRad((float) x);
+            float ry = mchorse.bbs_mod.utils.MathUtils.toRad((float) y);
+            float rz = mchorse.bbs_mod.utils.MathUtils.toRad((float) z);
+
+            this.preCallback();
+            this.applyToTarget((t) ->
+            {
+                if (t.rotationMode == Transform.RotationMode.QUATERNION)
+                {
+                    t.quat.set(mchorse.bbs_mod.utils.joml.Matrices.toQuaternionZYXRadians(rx, ry, rz));
+                }
+                else
+                {
+                    t.rotate.set(rx, ry, rz);
+                }
+            });
+            this.postCallback();
+            this.syncTargetTransform();
+            return;
+        }
+
+        super.setR(axis, x, y, z);
+    }
+
+    @Override
+    public void setRQuat(org.joml.Quaternionf quat)
+    {
+        if (this.isRunning())
+        {
+            this.preCallback();
+            this.applyToTarget((t) ->
+            {
+                if (t.rotationMode == Transform.RotationMode.QUATERNION)
+                {
+                    t.quat.set(quat);
+                }
+                else
+                {
+                    mchorse.bbs_mod.utils.joml.Matrices.toCompatibleEulerZYXRadians(quat, t.rotate, t.rotate);
+                }
+            });
+            this.postCallback();
+            this.syncTargetTransform();
+            return;
+        }
+
+        super.setRQuat(quat);
+    }
+
+    @Override
     protected void applyToTarget(Consumer<Transform> edit)
     {
         this.applying = true;

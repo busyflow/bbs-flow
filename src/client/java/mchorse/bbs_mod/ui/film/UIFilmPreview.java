@@ -83,6 +83,7 @@ public class UIFilmPreview extends UIElement
     public UIIcon control;
     public UIIcon perspective;
     public UIIcon autoKeyframe;
+    public UIIcon liveRecording;
     public UIIcon recordReplay;
     public UIIcon recordVideo;
     public UIIcon shaders;
@@ -195,6 +196,9 @@ public class UIFilmPreview extends UIElement
         this.autoKeyframe = new UIIcon(Icons.KEY, (b) -> this.toggleAutoKeyframe());
         this.autoKeyframe.highlight(() -> BBSSettings.autoKeyframe.get(), Direction.BOTTOM);
         this.autoKeyframe.tooltip(UIKeys.FILM_AUTO_KEYFRAME);
+        this.liveRecording = new UIIcon(Icons.OUTLINE_SPHERE, (b) -> this.toggleLiveRecording());
+        this.liveRecording.highlight(() -> BBSSettings.liveRecording.get(), Direction.BOTTOM);
+        this.liveRecording.tooltip(UIKeys.FILM_LIVE_RECORDING);
         this.recordReplay = new UIIcon(Icons.SPHERE, (b) -> this.panel.getController().pickRecording());
         this.recordReplay.highlight(() -> this.panel.getController().isRecording(), Direction.BOTTOM);
         this.recordReplay.tooltip(UIKeys.FILM_REPLAY_RECORD);
@@ -293,6 +297,7 @@ public class UIFilmPreview extends UIElement
         this.iconSettings.put(this.control, BBSSettings.previewIconControl);
         this.iconSettings.put(this.perspective, BBSSettings.previewIconPerspective);
         this.iconSettings.put(this.autoKeyframe, BBSSettings.previewIconAutoKeyframe);
+        this.iconSettings.put(this.liveRecording, BBSSettings.previewIconLiveRecording);
         this.iconSettings.put(this.shaders, BBSSettings.previewIconShaders);
         this.iconSettings.put(this.recordReplay, BBSSettings.previewIconRecordReplay);
         this.iconSettings.put(this.recordVideo, BBSSettings.previewIconExport);
@@ -341,6 +346,11 @@ public class UIFilmPreview extends UIElement
     private void toggleAutoKeyframe()
     {
         BBSSettings.autoKeyframe.set(!BBSSettings.autoKeyframe.get());
+    }
+
+    private void toggleLiveRecording()
+    {
+        BBSSettings.liveRecording.set(!BBSSettings.liveRecording.get());
     }
 
     public void openOnionSkin()

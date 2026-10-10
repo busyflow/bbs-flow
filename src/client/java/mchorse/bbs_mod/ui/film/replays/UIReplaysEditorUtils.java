@@ -366,6 +366,7 @@ public class UIReplaysEditorUtils
         {
             UIReplayPropTransform replayTransform = panel.replayEditor.replayTransform;
 
+            replayTransform.setRunning(panel.isRunning());
             replayTransform.syncFromReplay(
                 panel.replayEditor.getReplay(),
                 panel.getController().getCurrentEntity(),
@@ -418,6 +419,7 @@ public class UIReplaysEditorUtils
          * gizmo (a form-transform property track), and that one must keep its wiring. */
         UIReplayPropTransform replayTransform = panel.replayEditor.replayTransform;
 
+        replayTransform.setRunning(panel.isRunning());
         replayTransform.syncFromReplay(
             panel.replayEditor.getReplay(),
             panel.getController().getCurrentEntity(),

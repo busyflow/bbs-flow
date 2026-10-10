@@ -1263,6 +1263,11 @@ public class UIKeyframes extends UITimelineCanvas
         return false;
     }
 
+    public boolean isRunning()
+    {
+        return false;
+    }
+
     public boolean isSelecting()
     {
         return this.marquee.isPressed();

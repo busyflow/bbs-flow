@@ -142,6 +142,11 @@ public class UIFilmKeyframes extends UIKeyframes
             return 0;
         }
 
+        if (this.editor.isRunning())
+        {
+            return (float) (this.editor.getCursor() - this.getClipOffset());
+        }
+
         UIContext context = this.getContext();
 
         return this.editor.getKeyframeCursor(context == null ? 0F : context.getTransition()) - this.getClipOffset();
@@ -166,18 +171,23 @@ public class UIFilmKeyframes extends UIKeyframes
     @Override
     public Float getAutoKeyframeTick()
     {
-        if (this.editor == null || !BBSSettings.autoKeyframe.get() && !this.editor.isRunning())
+        if (this.editor == null)
         {
             return null;
         }
 
-        return this.getOffset();
+        if (BBSSettings.autoKeyframe.get() || (BBSSettings.liveRecording.get() && this.editor.isRunning()))
+        {
+            return this.getOffset();
+        }
+
+        return null;
     }
 
     @Override
     public boolean stopPlaybackOnValueChange()
     {
-        if (this.editor == null || BBSSettings.autoKeyframe.get() || !this.editor.isRunning())
+        if (this.editor == null || BBSSettings.autoKeyframe.get() || BBSSettings.liveRecording.get() || !this.editor.isRunning())
         {
             return false;
         }
@@ -187,6 +197,12 @@ public class UIFilmKeyframes extends UIKeyframes
         this.editor.setCursor(tick);
 
         return true;
+    }
+
+    @Override
+    public boolean isRunning()
+    {
+        return this.editor != null && this.editor.isRunning();
     }
 
     @Override

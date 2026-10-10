@@ -59,6 +59,18 @@ public class UIReplayPropTransform extends UIPropTransform
     private Replay replay;
     private IEntity entity;
     private float tick;
+    private boolean running;
+
+    public void setRunning(boolean running)
+    {
+        this.running = running;
+    }
+
+    @Override
+    public boolean isRunning()
+    {
+        return this.running;
+    }
 
     /** Angles the head and body were offset from {@code yaw} when the record was loaded,
      *  kept across a turn so the actor rotates as one piece. */
@@ -107,6 +119,7 @@ public class UIReplayPropTransform extends UIPropTransform
          * gizmo target on every frame, so this is the common path, not an edge case. */
         if (this.isEditing())
         {
+            this.tick = tick;
             return;
         }
 
@@ -156,9 +169,19 @@ public class UIReplayPropTransform extends UIPropTransform
      *  will look, not to the raw playhead. */
     private float writeTick()
     {
-        int whole = (int) this.tick;
+        if (this.replay == null)
+        {
+            return this.tick;
+        }
 
-        return this.replay.getTick(whole) + (this.tick - whole);
+        int whole = Math.round(this.tick);
+
+        if (mchorse.bbs_mod.BBSSettings.editorSnapToTicks.get() || this.isRunning())
+        {
+            return this.replay.getTick(whole);
+        }
+
+        return this.replay.getTick((int) this.tick) + (this.tick - (int) this.tick);
     }
 
     @Override

@@ -74,6 +74,7 @@ public class UISettingsLayout
             .add(BBSSettings.previewIconControl, Icons.POSE)
             .add(BBSSettings.previewIconPerspective, Icons.ORBIT)
             .add(BBSSettings.previewIconAutoKeyframe, Icons.KEY)
+            .add(BBSSettings.previewIconLiveRecording, Icons.OUTLINE_SPHERE)
             .add(BBSSettings.previewIconShaders, Icons.SUN)
             .add(BBSSettings.previewIconRecordReplay, Icons.SPHERE)
             .add(BBSSettings.previewIconExport, Icons.VIDEO_CAMERA));

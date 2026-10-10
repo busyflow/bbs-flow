@@ -135,7 +135,7 @@ public class ViewRotateDrag extends DragStrategy
 
         this.lastScreenAngle = current;
 
-        if (delta == 0F)
+        if (delta == 0F && !this.ctx.isRunning())
         {
             return;
         }

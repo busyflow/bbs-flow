@@ -147,6 +147,7 @@ public class BBSSettings {
 	public static ValueInt duration;
 	public static ValueBoolean editorLoop;
 	public static ValueBoolean autoKeyframe;
+	public static ValueBoolean liveRecording;
 	public static ValueBoolean anchorKeepTransform;
 	public static ValueInt editorJump;
 	public static ValueInt editorGuidesColor;
@@ -209,6 +210,7 @@ public class BBSSettings {
 	public static ValueBoolean previewIconControl;
 	public static ValueBoolean previewIconPerspective;
 	public static ValueBoolean previewIconAutoKeyframe;
+	public static ValueBoolean previewIconLiveRecording;
 	public static ValueBoolean previewIconShaders;
 	public static ValueBoolean previewIconRecordReplay;
 	public static ValueBoolean previewIconExport;
@@ -823,6 +825,7 @@ public class BBSSettings {
 		previewIconControl = builder.getBoolean("preview_icon_control", true);
 		previewIconPerspective = builder.getBoolean("preview_icon_perspective", true);
 		previewIconAutoKeyframe = builder.getBoolean("preview_icon_auto_keyframe", true);
+		previewIconLiveRecording = builder.getBoolean("preview_icon_live_recording", true);
 		previewIconShaders = builder.getBoolean("preview_icon_shaders", true);
 		previewIconRecordReplay = builder.getBoolean("preview_icon_record_replay", true);
 		previewIconExport = builder.getBoolean("preview_icon_export", true);
@@ -864,6 +867,7 @@ public class BBSSettings {
 		editorJump = builder.getInt("jump", 5, 1, 1000);
 		editorLoop = builder.getBoolean("loop", false);
 		autoKeyframe = builder.getBoolean("auto_keyframe", false);
+		liveRecording = builder.getBoolean("live_recording", true);
 		anchorKeepTransform = builder.getBoolean("anchor_keep_transform", false);
 		editorSeconds = builder.getBoolean("seconds", false);
 		editorTimelineGrid = builder.getBoolean("timeline_grid", true);

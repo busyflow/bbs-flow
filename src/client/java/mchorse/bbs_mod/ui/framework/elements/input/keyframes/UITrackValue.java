@@ -66,7 +66,7 @@ public class UITrackValue<T>
             }
         }
 
-        if (!targets.contains(this.sheet) && this.sheet.selection.hasAny())
+        if (!targets.contains(this.sheet) && (this.sheet.selection.hasAny() || this.editor.getAutoKeyframeTick() != null))
         {
             targets.add(this.sheet);
         }

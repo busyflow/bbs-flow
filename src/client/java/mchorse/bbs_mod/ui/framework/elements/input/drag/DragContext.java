@@ -55,6 +55,11 @@ public interface DragContext
         return false;
     }
 
+    default boolean isRunning()
+    {
+        return false;
+    }
+
     /** Diagnostic only: which editor owns this gesture, for the drag log. */
     default String targetName()
     {
