@@ -87,12 +87,12 @@ public class ModelVAORenderer
 
         if (shader.fogStart != null)
         {
-            shader.fogStart.set(RenderSystem.getShaderFogStart());
+            shader.fogStart.set(mchorse.bbs_mod.BBSSettings.unlimitedReplayRenderDistance.get() ? 1_000_000F : RenderSystem.getShaderFogStart());
         }
 
         if (shader.fogEnd != null)
         {
-            shader.fogEnd.set(RenderSystem.getShaderFogEnd());
+            shader.fogEnd.set(mchorse.bbs_mod.BBSSettings.unlimitedReplayRenderDistance.get() ? 1_001_000F : RenderSystem.getShaderFogEnd());
         }
 
         if (shader.fogColor != null)

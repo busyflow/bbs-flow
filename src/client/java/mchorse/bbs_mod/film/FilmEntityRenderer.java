@@ -4,6 +4,7 @@ import mchorse.bbs_mod.api.client.events.FilmGizmoEvents;
 import mchorse.bbs_mod.api.client.events.FormPoseEvents;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.camera.data.Point;
 import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.client.renderer.DeathPose;
@@ -138,9 +139,25 @@ public class FilmEntityRenderer
         }
 
         BlockPos pos = BlockPos.ofFloored(position.x, position.y + 0.5D, position.z);
-        int sky = entity.getWorld().getLightLevel(LightType.SKY, pos);
-        int torch = entity.getWorld().getLightLevel(LightType.BLOCK, pos);
-        int light = LightmapTextureManager.pack(torch, sky);
+        int light;
+
+        if (entity.getWorld() != null && entity.getWorld().isChunkLoaded(pos))
+        {
+            int sky = entity.getWorld().getLightLevel(LightType.SKY, pos);
+            int torch = entity.getWorld().getLightLevel(LightType.BLOCK, pos);
+            light = LightmapTextureManager.pack(torch, sky);
+        }
+        else if (BBSSettings.unlimitedReplayRenderDistance.get())
+        {
+            light = LightmapTextureManager.pack(15, 15);
+        }
+        else
+        {
+            int sky = entity.getWorld().getLightLevel(LightType.SKY, pos);
+            int torch = entity.getWorld().getLightLevel(LightType.BLOCK, pos);
+            light = LightmapTextureManager.pack(torch, sky);
+        }
+
         int overlay = OverlayTexture.packUv(OverlayTexture.getU(0F), OverlayTexture.getV(entity.getHurtTimer() > 0));
 
         FormRenderingContext formContext = new FormRenderingContext()
@@ -170,7 +187,28 @@ public class FilmEntityRenderer
          * itself - and zero, hence nothing, for everyone still alive. */
         DeathPose.apply(stack, entity.getDeathTime(), transition);
 
-        FormUtilsClient.render(form, formContext);
+        float prevFogStart = RenderSystem.getShaderFogStart();
+        float prevFogEnd = RenderSystem.getShaderFogEnd();
+        boolean pushFog = BBSSettings.unlimitedReplayRenderDistance.get();
+
+        if (pushFog)
+        {
+            RenderSystem.setShaderFogStart(1_000_000F);
+            RenderSystem.setShaderFogEnd(1_001_000F);
+        }
+
+        try
+        {
+            FormUtilsClient.render(form, formContext);
+        }
+        finally
+        {
+            if (pushFog)
+            {
+                RenderSystem.setShaderFogStart(prevFogStart);
+                RenderSystem.setShaderFogEnd(prevFogEnd);
+            }
+        }
 
         /* A second, post-render span: the gizmo, the axes preview and the anchor gizmo are adjacent and all
          * read the pose the form just rendered with (states applied), so they share one evaluation — the
@@ -205,7 +243,9 @@ public class FilmEntityRenderer
             }
         }
 
-        if (!relative && context.map == null && opacity > 0F && context.shadowRadius > 0F && form.visible.get())
+        boolean chunkLoaded = entity.getWorld() != null && entity.getWorld().isChunkLoaded(pos);
+
+        if (!relative && context.map == null && opacity > 0F && context.shadowRadius > 0F && form.visible.get() && (!BBSSettings.unlimitedReplayRenderDistance.get() || chunkLoaded))
         {
             /* No shadow while the form is hidden (form.visible, keyframable) — the form renders
              * nothing then, so its shadow must vanish too.
