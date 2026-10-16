@@ -26,13 +26,12 @@ import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
 import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.utils.Pair;
-import mchorse.bbs_mod.utils.joml.Matrices;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import mchorse.bbs_mod.utils.keyframes.KeyframeSegment;
 import mchorse.bbs_mod.utils.pose.Pose;
 import mchorse.bbs_mod.utils.pose.PoseTransform;
-import mchorse.bbs_mod.utils.pose.Transform;
+import mchorse.bbs_mod.utils.pose.PoseTurn;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.world.World;
 import org.joml.Matrix4f;
@@ -254,74 +253,6 @@ public class IKBake
     }
 
     /**
-     * A bone's FK state before the solve: its euler channels (radians, whichever unit the
-     * skeleton keeps), its evaluated rotation, and whether the pose was the first layer to
-     * compose that rotation — see {@link #applyDelta} for why that decides the arithmetic.
-     */
-    private record Captured(Vector3f channels, Quaternionf evaluated, boolean additive)
-    {
-        static Captured of(RigBone bone)
-        {
-            Quaternionf orient = bone.getOrient();
-            boolean additive = orient == null || sameRotation(orient, bone.orientFromEuler(bone.getBoneTransform().rotate));
-
-            return new Captured(bone.getChannelRotation(new Vector3f()), bone.evaluatedRotation(), additive);
-        }
-    }
-
-    /**
-     * Turn the track's value so the bone lands on the solved rotation. Which arithmetic does it
-     * depends on how the render composes the pose onto the bone:
-     *
-     * <ul>
-     * <li>a euler pose that is the FIRST layer to compose the bone's orientation is added to the
-     * channels angle by angle (rest + actions + pose is one sum, and the orientation is built from
-     * the sum), so the key gets the euler difference between the solved rotation and the channels,
-     * read on the channels' own branch;</li>
-     * <li>a euler pose over a layer that already composed the orientation (an action's post pass)
-     * multiplies in as a quaternion, so the delta turns the pose's whole rotation — static and
-     * tracks together — and the key gets what changed in it;</li>
-     * <li>a quaternion pose always multiplies, and the track's own value is its last factor.</li>
-     * </ul>
-     *
-     * <p>{@code delta} is the solve's turn in the bone's own frame, {@code conj(evaluated) ·
-     * solved}, so in every case the composed rotation ends up exactly at {@code solved}.</p>
-     */
-    private static void applyDelta(PoseTransform value, PoseTransform total, Captured fk, Quaternionf delta, Quaternionf solved)
-    {
-        if (total != null && total.rotationMode == Transform.RotationMode.QUATERNION)
-        {
-            if (value.rotationMode == Transform.RotationMode.QUATERNION)
-            {
-                value.quat.mul(delta);
-            }
-            else
-            {
-                Quaternionf turned = Matrices.toLocalRotationZYXRadians(value.rotate).mul(delta);
-
-                Matrices.toCompatibleEulerZYXRadians(turned, value.rotate, value.rotate);
-            }
-
-            return;
-        }
-
-        if (fk.additive())
-        {
-            Vector3f target = Matrices.toCompatibleEulerZYXRadians(solved, fk.channels(), new Vector3f());
-
-            value.rotate.add(target.sub(fk.channels()));
-
-            return;
-        }
-
-        Vector3f base = total == null ? new Vector3f() : total.rotate;
-        Quaternionf turned = Matrices.toLocalRotationZYXRadians(base).mul(delta);
-        Vector3f after = Matrices.toCompatibleEulerZYXRadians(turned, base, new Vector3f());
-
-        value.rotate.add(after.sub(base));
-    }
-
-    /**
      * The pose translation that puts the bone where its stretch offset put it — the same
      * displacement, moved from the solve's transient channel into the pose's.
      *
@@ -372,11 +303,6 @@ public class IKBake
     private static float divide(float value, float by)
     {
         return Math.abs(by) < 1.0E-6F ? value : value / by;
-    }
-
-    private static boolean sameRotation(Quaternionf a, Quaternionf b)
-    {
-        return Math.abs(a.dot(b)) >= 1F - 1.0E-6F;
     }
 
     /** The angle of a rotation, radians. */
@@ -509,7 +435,7 @@ public class IKBake
             if (model != null)
             {
                 Pose pose = this.renderer.getPose();
-                Map<String, Captured> before = new HashMap<>();
+                Map<String, PoseTurn.Before> before = new HashMap<>();
 
                 for (String bone : bones)
                 {
@@ -517,7 +443,7 @@ public class IKBake
 
                     if (rig != null)
                     {
-                        before.put(bone, Captured.of(rig));
+                        before.put(bone, PoseTurn.Before.of(rig));
                     }
                 }
 
@@ -527,10 +453,10 @@ public class IKBake
                  * its share has to be brought into its own frame (see stretchTranslate). */
                 Map<String, PivotFrame> frames = null;
 
-                for (Map.Entry<String, Captured> entry : before.entrySet())
+                for (Map.Entry<String, PoseTurn.Before> entry : before.entrySet())
                 {
                     String bone = entry.getKey();
-                    Captured fk = entry.getValue();
+                    PoseTurn.Before fk = entry.getValue();
                     RigBone rig = model.model.getBone(bone);
                     Quaternionf solved = rig.evaluatedRotation();
                     Quaternionf delta = new Quaternionf(fk.evaluated()).conjugate().mul(solved);
@@ -542,7 +468,7 @@ public class IKBake
 
                     PoseTransform value = this.trackValue(bone, ticks);
 
-                    applyDelta(value, pose.get(bone), fk, delta, solved);
+                    PoseTurn.apply(value, pose.get(bone), fk, delta, solved);
 
                     Vector3f offset = rig.getOffset();
 

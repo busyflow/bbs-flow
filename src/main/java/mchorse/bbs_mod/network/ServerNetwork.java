@@ -6,6 +6,7 @@ import mchorse.bbs_mod.actions.ActionPlayer;
 import mchorse.bbs_mod.actions.ActionRecorder;
 import mchorse.bbs_mod.actions.ActionState;
 import mchorse.bbs_mod.actions.PlayerType;
+import mchorse.bbs_mod.blocks.ModelBlock;
 import mchorse.bbs_mod.blocks.entities.ModelBlockEntity;
 import mchorse.bbs_mod.data.DataStorageUtils;
 import mchorse.bbs_mod.data.types.BaseType;
@@ -43,6 +44,7 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
 import java.util.ArrayList;
@@ -93,6 +95,7 @@ public class ServerNetwork
     public static final Identifier SERVER_APPLY_FILM_PLAYER_SETTINGS = new Identifier(BBSMod.MOD_ID, "s14");
     public static final Identifier SERVER_SAVE_STRUCTURE = new Identifier(BBSMod.MOD_ID, "s15");
     public static final Identifier SERVER_CUT_STRUCTURE = new Identifier(BBSMod.MOD_ID, "s16");
+    public static final Identifier SERVER_CONVERT_MODEL_BLOCK = new Identifier(BBSMod.MOD_ID, "s17");
 
     private static ServerPacketCrusher crusher = new ServerPacketCrusher();
 
@@ -119,6 +122,7 @@ public class ServerNetwork
         ServerPlayNetworking.registerGlobalReceiver(SERVER_APPLY_FILM_PLAYER_SETTINGS, (server, player, handler, buf, responder) -> handleApplyFilmPlayerSettings(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_SAVE_STRUCTURE, (server, player, handler, buf, responder) -> handleSaveStructure(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_CUT_STRUCTURE, (server, player, handler, buf, responder) -> handleCutStructure(server, player, buf));
+        ServerPlayNetworking.registerGlobalReceiver(SERVER_CONVERT_MODEL_BLOCK, (server, player, handler, buf, responder) -> handleConvertModelBlock(server, player, buf));
     }
 
     /* Handlers */
@@ -183,6 +187,31 @@ public class ServerNetwork
             reply.writeString(name);
 
             ServerPlayNetworking.send(player, CLIENT_STRUCTURE_SAVED, reply);
+        });
+    }
+
+    /**
+     * Alt + right click with a model block in hand: the block becomes a model block showing that
+     * same block, see {@link ModelBlock#convert}. Creative only and within reach — a builder's tool
+     * that costs nothing, not a way to lift blocks out of a survival world.
+     */
+    private static void handleConvertModelBlock(MinecraftServer server, ServerPlayerEntity player, PacketByteBuf buf)
+    {
+        BlockPos pos = buf.readBlockPos();
+
+        if (!PermissionUtils.arePanelsAllowed(server, player))
+        {
+            return;
+        }
+
+        server.execute(() ->
+        {
+            World world = player.getWorld();
+
+            if (player.isCreative() && player.squaredDistanceTo(Vec3d.ofCenter(pos)) < 64D && world.canPlayerModifyAt(player, pos))
+            {
+                ModelBlock.convert(world, pos);
+            }
         });
     }
 

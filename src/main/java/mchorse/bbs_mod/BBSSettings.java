@@ -63,6 +63,8 @@ public class BBSSettings {
 	public static ValueInt textureCellSize;
 	public static ValueString textureSort;
 	public static ValueLinkList texturePins;
+	public static ValueBoolean textureGrid;
+	public static ValueInt textureGridStep;
 	public static ValueFloat axesScale;
 	public static ValueFloat axesThickness;
 	public static ValueBoolean gizmoKeepScreenSize;
@@ -699,10 +701,15 @@ public class BBSSettings {
 		texturePins = new ValueLinkList("texture_pins", List.of(Link.assets("textures/")));
 		texturePins.invisible();
 		builder.register(texturePins);
+		textureGrid = builder.getBoolean("texture_grid", false);
+		textureGridStep = builder.getInt("texture_grid_step", 8, 1, 256);
 		/* Kept by the browsers themselves (Ctrl+wheel, the sort menu); nothing to tune in the settings screen */
 		formCellSize.invisible();
 		textureCellSize.invisible();
 		textureSort.invisible();
+		/* Switched in the texture editor itself (its grid button, G, the step next to the brush) */
+		textureGrid.invisible();
+		textureGridStep.invisible();
 		/* Which tab the colour picker was left on, written by the picker itself when
 		 * the tab is switched - a remembered position, not a setting to sit in a list.
 		 * The key stays "hsv_color_picker" so an existing settings file keeps its tab. */

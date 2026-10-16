@@ -15,6 +15,9 @@ public class LabelTooltip implements ITooltip
     public int width = 200;
     public Direction direction;
 
+    /** What the tooltip sits beside, in screen space; null for the whole hovered element. */
+    public Area anchor;
+
     public LabelTooltip(IKey label, Direction direction)
     {
         this.label = label;
@@ -55,7 +58,7 @@ public class LabelTooltip implements ITooltip
         int w = strings.size() == 1 ? font.getWidth(strings.get(0)) : this.width;
         int h = (font.getHeight() + 4) * strings.size() - 4;
 
-        TooltipPlacement.place(context, context.tooltip.area, w, h, this.direction, 6, 3, Area.SHARED);
+        TooltipPlacement.place(context, this.anchor == null ? context.tooltip.area : this.anchor, w, h, this.direction, 6, 3, Area.SHARED);
 
         Area.SHARED.offset(3);
         style.renderBackground(context, Area.SHARED);

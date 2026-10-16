@@ -315,6 +315,60 @@ public class Document implements IMapSerializable
     }
 
     /**
+     * Stretch the picture to {@code w}x{@code h}: every layer, its move offset and the animation's
+     * frame size are scaled by the same factors, each pixel taking the colour of the nearest one
+     * (no smoothing — this is pixel art).
+     */
+    public void scale(int w, int h)
+    {
+        int oldW = this.width;
+        int oldH = this.height;
+
+        for (TextureLayer layer : this.layers)
+        {
+            if (layer.pixels == null)
+            {
+                continue;
+            }
+
+            Pixels from = layer.pixels;
+            int lw = Math.max(1, (int) ((long) from.width * w / oldW));
+            int lh = Math.max(1, (int) ((long) from.height * h / oldH));
+            Pixels to = Pixels.fromSize(lw, lh);
+
+            for (int x = 0; x < lw; x++)
+            {
+                for (int y = 0; y < lh; y++)
+                {
+                    to.setColor(x, y, from.getColor((int) ((long) x * from.width / lw), (int) ((long) y * from.height / lh)));
+                }
+            }
+
+            from.delete();
+            layer.pixels = to;
+            layer.offsetX = (int) Math.floorDiv((long) layer.offsetX * w, oldW);
+            layer.offsetY = (int) Math.floorDiv((long) layer.offsetY * h, oldH);
+            layer.updateTexture();
+        }
+
+        if (this.animation != null)
+        {
+            if (this.animation.width > 0)
+            {
+                this.animation.width = Math.max(1, (int) ((long) this.animation.width * w / oldW));
+            }
+
+            if (this.animation.height > 0)
+            {
+                this.animation.height = Math.max(1, (int) ((long) this.animation.height * h / oldH));
+            }
+        }
+
+        this.width = w;
+        this.height = h;
+    }
+
+    /**
      * Composite the colour at a single document pixel by blending every visible
      * layer (respecting its offset and opacity), without allocating a whole
      * flattened canvas. Mirrors {@link Pixels#draw}'s source-over blend, layer by

@@ -76,7 +76,7 @@ public class UIDataTabs extends UITabStrip
             IKey label = this.host.getTabLabel(i);
             int w = UIDataTabElement.measureWidth(font, label);
 
-            w = Math.max(baseMin, Math.min(TAB_MAX_WIDTH, w));
+            w = this.host.isPinnedTab(i) ? UIDataTabElement.PINNED_WIDTH : Math.max(baseMin, Math.min(TAB_MAX_WIDTH, w));
             hasNewTab |= this.host.isNewTab(i);
 
             UIDataTabElement tabElement = this.elements.get(i);

@@ -21,10 +21,12 @@ import mchorse.bbs_mod.cubic.render.CubicRenderer;
 import mchorse.bbs_mod.cubic.model.ModelSetupQueue;
 import mchorse.bbs_mod.cubic.render.CubicVAOBuilderRenderer;
 import mchorse.bbs_mod.cubic.render.CubicVAORenderer;
-import mchorse.bbs_mod.cubic.render.WeldGeometryCache;
+import mchorse.bbs_mod.cubic.render.GeometryCache;
+import mchorse.bbs_mod.cubic.render.WeldMesh;
 import mchorse.bbs_mod.cubic.render.vao.BOBJModelVAO;
 import mchorse.bbs_mod.cubic.render.vao.ModelVAO;
 import mchorse.bbs_mod.cubic.render.vao.ModelVAORenderer;
+import mchorse.bbs_mod.cubic.render.vao.WeldBandVAO;
 import mchorse.bbs_mod.cubic.weld.ModelWeld;
 import mchorse.bbs_mod.cubic.weld.WeldBinding;
 import mchorse.bbs_mod.data.types.MapType;
@@ -63,8 +65,10 @@ import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -160,11 +164,31 @@ public class ModelInstance implements IModelInstance
     /** Every group that takes part in a weld, derived from the bindings once. */
     private Set<ModelGroup> weldedGroups;
 
-    /** The baked CPU half of a welded model, keyed by pose — see {@link WeldGeometryCache}. */
-    private final WeldGeometryCache weldCache = new WeldGeometryCache();
+    /** The welded bands laid out against the bindings, built with them — see {@link WeldMesh}. */
+    private WeldMesh weldMesh;
 
-    /** The frame the seams and the CPU bake are computed in: the model's root, camera-independent. */
+    /** The baked CPU half of a hybrid model (bones with no VAO), keyed by pose — see {@link GeometryCache}. */
+    private final GeometryCache<CpuBake> cpuCache = new GeometryCache<>(CpuBake::new);
+
+    /** The frame the CPU bake is computed in: the model's root, camera-independent. */
     private static final MatrixStack ROOT = new MatrixStack();
+
+    private static class CpuBake extends GeometryCache.Entry
+    {
+        private final VertexBuffer vbo = new VertexBuffer(VertexBuffer.Usage.DYNAMIC);
+
+        /** Which groups the bake tessellated — the VAO walk must skip exactly these. */
+        private Set<ModelGroup> cpuGroups;
+
+        /** Whether the bake emitted any geometry at all (an empty upload can't be drawn). */
+        private boolean hasGeometry;
+
+        @Override
+        protected void close()
+        {
+            this.vbo.close();
+        }
+    }
 
     /** Whether the VAO bake skipped some groups (shape-keyed meshes) — those render immediate via the hybrid path. */
     private boolean partialVaos;
@@ -272,16 +296,45 @@ public class ModelInstance implements IModelInstance
         return this.weldBindings;
     }
 
-    /**
-     * Re-resolve welds after the config's weld list was edited: drop the cached bindings (rebuilt on the
-     * next render) and refresh the config's derived caches so the new welds take effect.
-     */
-    public void invalidateWelds()
+    /** The welded bands of this model, laid out once with the bindings; null when it has no welds. */
+    public WeldMesh getWeldMesh()
+    {
+        if (this.weldMesh == null && this.model instanceof Model model && !this.getWeldBindings().isEmpty())
+        {
+            this.weldMesh = new WeldMesh(model, this.weldBindings);
+        }
+
+        return this.weldMesh;
+    }
+
+    /** Drop the resolved welds and their bands; both rebuild from the current cubes and config on next use. */
+    private void resetWelds()
     {
         this.weldBindings = null;
         this.weldedGroups = null;
-        this.weldCache.invalidate();
+
+        if (this.weldMesh != null)
+        {
+            /* Freed at the start of the next frame: the translucent queue may still hold this frame's band draws. */
+            ModelSetupQueue.add(this.weldMesh::delete);
+            this.weldMesh = null;
+        }
+
+        this.cpuCache.invalidate();
+    }
+
+    /**
+     * Re-resolve welds after the config's weld list was edited: drop the cached bindings (rebuilt on the
+     * next render) and refresh the config's derived caches so the new welds take effect. The bands are
+     * cut out of the welded bones' VAOs, so the bones welded before and after re-bake too.
+     */
+    public void invalidateWelds()
+    {
+        Set<ModelGroup> welded = this.weldedGroups;
+
+        this.resetWelds();
         this.config.rebuild();
+        this.queueRebake(welded == null ? Collections.emptySet() : welded, true);
     }
 
     /**
@@ -408,7 +461,7 @@ public class ModelInstance implements IModelInstance
 
             if (bake)
             {
-                ModelSetupQueue.add(() -> CubicRenderer.processRenderModel(new CubicVAOBuilderRenderer(this.vaos), null, new MatrixStack(), cubicModel));
+                ModelSetupQueue.add(() -> CubicRenderer.processRenderModel(new CubicVAOBuilderRenderer(this.vaos, this.getWeldMesh()), null, new MatrixStack(), cubicModel));
             }
         }
     }
@@ -423,19 +476,50 @@ public class ModelInstance implements IModelInstance
      *
      * <p>Nothing to do for a model with no VAOs: it draws the cubes' quads straight through the
      * CPU path, and a model still waiting on its first bake will bake the changed numbers anyway.</p>
+     *
+     * <p>A welded bone's band is cut out of its VAO and laid out from its cubes' numbers, so changing
+     * one re-resolves the welds and re-bakes every welded bone against the new bands.</p>
      */
     public void rebakeGroups(Collection<ModelGroup> groups)
+    {
+        this.queueRebake(groups, false);
+    }
+
+    /** @param weldsChanged the welds were re-resolved: the bones welded now re-bake too. */
+    private void queueRebake(Collection<ModelGroup> groups, boolean weldsChanged)
     {
         if (this.vaos.isEmpty() || !(this.model instanceof Model cubicModel))
         {
             return;
         }
 
-        List<ModelGroup> rebaked = new ArrayList<>(groups);
+        Set<ModelGroup> rebaked = new LinkedHashSet<>(groups);
 
         ModelSetupQueue.add(() ->
         {
-            CubicVAOBuilderRenderer builder = new CubicVAOBuilderRenderer(this.vaos);
+            /* Deleted since (a full re-setup is queued behind this one and bakes everything). */
+            if (this.vaos.isEmpty())
+            {
+                return;
+            }
+
+            boolean welds = weldsChanged;
+
+            if (this.weldedGroups != null && !Collections.disjoint(this.weldedGroups, rebaked))
+            {
+                rebaked.addAll(this.weldedGroups);
+                this.resetWelds();
+                welds = true;
+            }
+
+            WeldMesh band = this.getWeldMesh();
+
+            if (welds && band != null)
+            {
+                rebaked.addAll(band.weldedGroups);
+            }
+
+            CubicVAOBuilderRenderer builder = new CubicVAOBuilderRenderer(this.vaos, band);
             MatrixStack stack = new MatrixStack();
 
             for (ModelGroup group : rebaked)
@@ -495,7 +579,13 @@ public class ModelInstance implements IModelInstance
         }
 
         this.vaos.clear();
-        this.weldCache.delete();
+        this.cpuCache.delete();
+
+        if (this.weldMesh != null)
+        {
+            this.weldMesh.delete();
+            this.weldMesh = null;
+        }
     }
 
     /* Rendering */
@@ -607,135 +697,93 @@ public class ModelInstance implements IModelInstance
     }
 
     /**
-     * First weld pass: capture the rigid world corners of every welded face with no drawing, then build the seams.
-     * Runs a dedicated capture-only renderer that only touches welded cubes (and only their welded face's corners),
-     * so it's a light matrix walk over the tree rather than a full per-vertex pass.
+     * Hybrid render: bones with baked VAOs ride the GPU, and so does the welded band, posed once per pose
+     * and drawn with each bone (see {@link WeldMesh}); only bones with no VAO (shape-keyed meshes, or none
+     * baked yet) tessellate on the CPU. A model with no VAOs at all draws its band in that CPU bake.
      */
-    private void captureWelds(List<WeldBinding> bindings, MatrixStack stack, Model model, int light, int overlay, StencilMap stencilMap, ShapeKeys keys)
+    private void renderHybrid(MatrixStack stack, ShaderProgram shader, Color color, int light, int overlay, StencilMap stencilMap, ShapeKeys keys, Function<String, Link> textureResolver, Model model, WeldMesh weldMesh)
     {
-        for (WeldBinding binding : bindings)
-        {
-            for (WeldBinding.Layer layer : binding.layers)
-            {
-                layer.resetCapture();
-            }
-        }
-
-        CubicCubeRenderer capture = new CubicCubeRenderer(light, overlay, stencilMap, keys);
-
-        capture.setWelds(bindings);
-        capture.setCaptureOnly(true);
-        CubicRenderer.processRenderModel(capture, null, stack, model);
-
-        for (WeldBinding binding : bindings)
-        {
-            for (WeldBinding.Layer layer : binding.layers)
-            {
-                layer.computeSeam();
-            }
-        }
-    }
-
-    /**
-     * Hybrid render: bones with baked VAOs ride the GPU; only actively-bending welded bones and groups
-     * with no VAO (shape-keyed meshes, or none baked yet) go through the immediate CPU path, where their
-     * cubes deform against the seam or morph. A light capture pass fills the seams first — for picking
-     * too, so the stencil matches the deformed geometry.
-     */
-    private void renderHybrid(MatrixStack stack, ShaderProgram shader, Color color, int light, int overlay, StencilMap stencilMap, ShapeKeys keys, Function<String, Link> textureResolver, Model model, List<WeldBinding> bindings)
-    {
-        Set<ModelGroup> weldedGroups = this.weldedGroups;
-
-        /* The welded cubes draw from a CPU bake, so — outside picking and the Iris pipeline, which run their own
-         * shader state — they go through the BBS model shader; the VAO bones use the same shader so both halves of
-         * the model match. */
-        boolean explicitWeld = stencilMap == null && !(BBSRendering.isIrisShadersEnabled() && BBSRendering.isRenderingWorld());
-        ShaderProgram drawShader = explicitWeld ? BBSShaders.getModel() : shader;
+        /* The CPU bake draws through the BBS model shader outside picking and the Iris pipeline, which run
+         * their own shader state; the VAO bones and the band use the same shader so all of it matches. */
+        boolean explicitShader = stencilMap == null && !(BBSRendering.isIrisShadersEnabled() && BBSRendering.isRenderingWorld());
+        ShaderProgram drawShader = explicitShader ? BBSShaders.getModel() : shader;
         Color cpuOverlay = this.getCpuOverlay(stencilMap, overlay);
-
-        /* The bake is a function of the pose and the draw's own inputs, computed in the ROOT frame: the same
-         * buffer serves every pass of the frame and every frame nothing moved in. A miss redoes what used to
-         * happen every pass — capture the seams, decide which bones bend, tessellate them. */
         boolean cacheable = RenderFrame.isEnabled();
-        long key = cacheable ? this.weldKey(model, keys, light, overlay, color, cpuOverlay != null, stencilMap) : 0L;
-        WeldGeometryCache.Entry entry = cacheable ? this.weldCache.find(key) : null;
-        Set<ModelGroup> cpuGroups;
+        long epoch = RenderFrame.getEpoch();
+
+        boolean gpuBand = weldMesh != null && !this.vaos.isEmpty();
+        WeldBandVAO.Entry band = gpuBand ? weldMesh.getVAO().update(model, cacheable) : null;
+        WeldMesh cpuBand = weldMesh != null && !gpuBand ? weldMesh : null;
+
+        /* The CPU bake is a function of the pose and the draw's own inputs, computed in the ROOT frame: the
+         * same buffer serves every pass of the frame and every frame nothing moved in. */
+        Set<ModelGroup> cpuGroups = this.collectCpuGroups(model, weldMesh);
+        CpuBake entry = null;
         BufferBuilder builder = null;
 
-        if (entry == null)
+        if (!cpuGroups.isEmpty() || cpuBand != null)
         {
-            BBSProfiler.begin(BBSProfiler.Timer.WELDS);
+            long key = cacheable ? this.cpuKey(model, keys, light, overlay, color, cpuOverlay != null, stencilMap) : 0L;
 
-            /* Capture the seams for the visible draw AND for picking: the stencil must match the deformed
-             * geometry, or hovering a bent welded bone highlights its un-sealed rest silhouette at the joint. */
-            if (!bindings.isEmpty())
-            {
-                this.captureWelds(bindings, ROOT, model, light, overlay, stencilMap, keys);
-            }
+            entry = cacheable ? this.cpuCache.find(key, epoch) : null;
 
-            cpuGroups = this.collectCpuGroups(model, bindings, weldedGroups);
-
-            if (!cpuGroups.isEmpty())
+            if (entry == null)
             {
                 CubicVAORenderer bake = new CubicVAORenderer(drawShader, this, light, overlay, stencilMap, keys, textureResolver);
 
                 bake.setCpuOverlayActive(cpuOverlay != null);
                 bake.setColor(color.r, color.g, color.b, color.a);
-                bake.setWelds(bindings);
-                bake.setWeldedGroups(weldedGroups);
                 bake.setCpuGroups(cpuGroups);
-                bake.setHybridPasses(false, true);
+                bake.setBakePass(true);
+                bake.setBand(weldMesh);
 
                 builder = Tessellator.getInstance().getBuffer();
                 builder.begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR_TEXTURE_OVERLAY_LIGHT_NORMAL);
                 CubicRenderer.processRenderModel(bake, builder, ROOT, model);
-                bake.finish(builder);
-            }
 
-            if (cacheable)
-            {
-                entry = this.weldCache.acquire(RenderFrame.getEpoch());
-
-                if (entry != null)
+                if (cpuBand != null)
                 {
-                    entry.key = key;
-                    entry.valid = true;
-                    entry.cpuGroups = cpuGroups;
-                    entry.hasGeometry = builder != null;
+                    BBSProfiler.begin(BBSProfiler.Timer.WELDS);
+                    cpuBand.deform(model);
+                    bake.renderWeldBand(builder, cpuBand);
+                    BBSProfiler.end(BBSProfiler.Timer.WELDS);
+                }
 
-                    if (builder != null)
-                    {
-                        entry.vbo.bind();
-                        entry.vbo.upload(builder.end());
-                        VertexBuffer.unbind();
-                        builder = null;
-                    }
+                if (cacheable)
+                {
+                    entry = this.cpuCache.acquire(key, epoch);
+                    entry.cpuGroups = cpuGroups;
+                    entry.hasGeometry = true;
+
+                    entry.vbo.bind();
+                    entry.vbo.upload(builder.end());
+                    VertexBuffer.unbind();
+                    builder = null;
                 }
             }
-
-            BBSProfiler.end(BBSProfiler.Timer.WELDS);
-        }
-        else
-        {
-            cpuGroups = entry.cpuGroups;
+            else
+            {
+                cpuGroups = entry.cpuGroups;
+            }
         }
 
-        /* The VAO bones ride the GPU every pass, in the caller's frame; the CPU set is the bake's, so the two
-         * halves always agree on which bones are which. */
+        /* The VAO bones and the band ride the GPU every pass, in the caller's frame; the CPU set is the
+         * bake's, so the two halves always agree on which bones are which. */
         CubicVAORenderer renderProcessor = new CubicVAORenderer(drawShader, this, light, overlay, stencilMap, keys, textureResolver);
 
         renderProcessor.setCpuOverlayActive(cpuOverlay != null);
         renderProcessor.setColor(color.r, color.g, color.b, color.a);
-        renderProcessor.setWelds(bindings);
-        renderProcessor.setWeldedGroups(weldedGroups);
         renderProcessor.setCpuGroups(cpuGroups);
-        renderProcessor.setHybridPasses(true, false);
+
+        if (band != null)
+        {
+            renderProcessor.setPosedBand(band, ModelVAORenderer.captureModelView(stack), new Matrix3f(stack.peek().getNormalMatrix()));
+        }
 
         RenderSystem.setShader(() -> drawShader);
 
         /* The CPU path doesn't switch textures per material — it draws with whatever's bound. The VAO bones rebind
-         * per material as they draw, so remember the caller's default texture and restore it for the CPU draw
-         * (matches the old all-CPU path, which drew the welded cubes with that same default). */
+         * per material as they draw, so remember the caller's default texture and restore it for the CPU draw. */
         int defaultTexture = RenderSystem.getShaderTexture(0);
         Texture defaultTextureObject = BBSModClient.getTextures().getLastBound();
 
@@ -785,7 +833,7 @@ public class ModelInstance implements IModelInstance
      * and the deformation come from), the draw's light/overlay/colour, the shape keys, and the picking mode
      * (which bakes stencil ids into the light attribute).
      */
-    private long weldKey(Model model, ShapeKeys keys, int light, int overlay, Color color, boolean cpuOverlayActive, StencilMap stencilMap)
+    private long cpuKey(Model model, ShapeKeys keys, int light, int overlay, Color color, boolean cpuOverlayActive, StencilMap stencilMap)
     {
         long hash = 1125899906842597L;
 
@@ -819,19 +867,13 @@ public class ModelInstance implements IModelInstance
     }
 
     /**
-     * Draw immediate-path geometry (its vertices carry the full camera-space transform baked in)
-     * with two-pass translucency when needed: the opaque texels draw now and write depth, the
-     * semi-transparent ones replay from a retained vertex buffer when the frame's translucent
-     * queue flushes. Single-pass draws keep the old direct path.
-     */
-    /**
      * Draw the CPU bake — the cached entry's buffer, or a throwaway one built from {@code builder} when the
-     * cache is off or full. Two-pass translucency when needed: the opaque texels draw now and write depth,
+     * cache is off. Two-pass translucency when needed: the opaque texels draw now and write depth,
      * the semi-transparent ones replay from the buffer when the frame's translucent queue flushes; a cached
      * buffer is only lent to the queue (it must not be rebuilt until the flush — see the cache), a throwaway
      * one is handed over and freed by it.
      */
-    private void drawImmediate(BufferBuilder builder, WeldGeometryCache.Entry cached, ShaderProgram shader, Matrix4f modelView, Matrix3f normalMat, StencilMap stencilMap, Texture texture, float alpha)
+    private void drawImmediate(BufferBuilder builder, CpuBake cached, ShaderProgram shader, Matrix4f modelView, Matrix3f normalMat, StencilMap stencilMap, Texture texture, float alpha)
     {
         boolean split = FormTranslucentQueue.needsSplit(shader, stencilMap, texture, alpha);
         boolean whole = !split && FormTranslucentQueue.needsWholeDefer(shader, stencilMap, alpha);
@@ -876,7 +918,7 @@ public class ModelInstance implements IModelInstance
 
         if (!owned)
         {
-            cached.lentEpoch = RenderFrame.getEpoch();
+            cached.lend(RenderFrame.getEpoch());
         }
 
         Vector3f origin = modelView.transformPosition(new Vector3f());
@@ -912,21 +954,21 @@ public class ModelInstance implements IModelInstance
         return combined == null ? null : combined.copy();
     }
 
-    /** The groups the immediate path tessellates: a visible bending welded bone, or a visible bone with geometry but no VAO. */
-    private Set<ModelGroup> collectCpuGroups(Model model, List<WeldBinding> bindings, Set<ModelGroup> weldedGroups)
+    /** The groups the immediate path tessellates: a visible bone with geometry outside the welded band but no VAO. */
+    private Set<ModelGroup> collectCpuGroups(Model model, WeldMesh weldMesh)
     {
         Set<ModelGroup> groups = null;
 
         for (ModelGroup group : model.getAllGroups())
         {
-            if (!group.isVisible() || (group.cubes.isEmpty() && group.meshes.isEmpty()))
+            if (!group.isVisible() || (group.cubes.isEmpty() && group.meshes.isEmpty()) || (weldMesh != null && weldMesh.isBandOnly(group)))
             {
                 continue;
             }
 
             Map<String, ModelVAO> groupVaos = this.vaos.get(group);
 
-            if ((weldedGroups.contains(group) && WeldBinding.hasActiveSeam(bindings, group)) || groupVaos == null || groupVaos.isEmpty())
+            if (groupVaos == null || groupVaos.isEmpty())
             {
                 if (groups == null)
                 {
@@ -946,13 +988,13 @@ public class ModelInstance implements IModelInstance
 
         if (this.model instanceof Model model)
         {
-            List<WeldBinding> bindings = this.getWeldBindings();
+            WeldMesh weldMesh = this.getWeldMesh();
 
             /* Welds and partially-baked (shape-keyed) models mix VAO and immediate rendering; a partial
              * model whose VAOs aren't baked yet falls through to the plain CPU path below. */
-            if (!bindings.isEmpty() || (this.partialVaos && !this.vaos.isEmpty()))
+            if (weldMesh != null || (this.partialVaos && !this.vaos.isEmpty()))
             {
-                this.renderHybrid(stack, shader, color, light, overlay, stencilMap, keys, textureResolver, model, bindings);
+                this.renderHybrid(stack, shader, color, light, overlay, stencilMap, keys, textureResolver, model, weldMesh);
             }
             else if (this.isVAORendered())
             {

@@ -24,6 +24,7 @@ import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import org.joml.Vector3d;
 import mchorse.bbs_mod.ui.framework.elements.context.UISimpleContextMenu;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
+import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
 import mchorse.bbs_mod.ui.utils.bones.UIBonePickerContextMenu;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
@@ -43,6 +44,7 @@ public class UIAnchorKeyframeFactory extends UIKeyframeFactory<Anchor>
 
     private UIToggle keepTransform;
     private UIIcon detach;
+    private UISliderTrackpad physics;
     public UIPropTransform transform;
 
     /**
@@ -122,9 +124,18 @@ public class UIAnchorKeyframeFactory extends UIKeyframeFactory<Anchor>
         this.detach.wh(16, 16);
         this.detach.tooltip(UIKeys.GENERIC_KEYFRAMES_ANCHOR_DETACH_TOOLTIP);
 
-        this.scroll.add(new UIAnchorBinding(
+        this.physics = new UISliderTrackpad((v) -> this.track.edit((anchor) -> anchor.physics = v.floatValue() / 100F));
+        this.physics.integer().limit(0, 100).setValue(track.getValue().physics * 100F);
+        this.physics.tooltip(UIKeys.GENERIC_KEYFRAMES_ANCHOR_PHYSICS_TOOLTIP);
+
+        UIAnchorBinding binding = new UIAnchorBinding(
             () -> this.track.getValue(), this::retarget, change -> this.track.edit(change), this.transform,
-            editor instanceof UIFilmKeyframes ? UI.row(this.keepTransform, this.detach) : this.keepTransform));
+            editor instanceof UIFilmKeyframes ? UI.row(this.keepTransform, this.detach) : this.keepTransform);
+
+        /* Only the replay's own anchor has a body that rides its target; the solver bindings sharing the
+         * binding's rows pin a point and have no physics to speak of. */
+        binding.addBefore(this.transform, UI.labelRow(UIKeys.GENERIC_KEYFRAMES_ANCHOR_PHYSICS, this.physics));
+        this.scroll.add(binding);
     }
 
     private void detach()
@@ -248,7 +259,10 @@ public class UIAnchorKeyframeFactory extends UIKeyframeFactory<Anchor>
     @Override
     public void update()
     {
-        if (!this.transform.isUserEditing()) this.transform.setTransform(this.getDisplayValue().transform);
+        Anchor anchor = this.getDisplayValue();
+
+        if (!this.transform.isUserEditing()) this.transform.setTransform(anchor.transform);
+        if (!this.physics.isDragging()) this.physics.setValue(anchor.physics * 100F);
     }
 
     public static class UIAnchorTransforms extends UIKeyframePropTransform

@@ -72,4 +72,15 @@ public class Hotbar
     {
         return of(this::get);
     }
+
+    /**
+     * The cells as count and item, without their NBT: the same text for equal rows in different
+     * copies of a film, which is what code fingerprinting keyframe values by their text needs
+     * (NBT can hold runtime state like a gun's ticking).
+     */
+    @Override
+    public String toString()
+    {
+        return "Hotbar" + Arrays.toString(this.stacks);
+    }
 }

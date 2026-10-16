@@ -23,6 +23,7 @@ import mchorse.bbs_mod.fonts.FontManager;
 import mchorse.bbs_mod.video.VideoManager;
 import mchorse.bbs_mod.camera.controller.CameraController;
 import mchorse.bbs_mod.client.BBSRendering;
+import mchorse.bbs_mod.client.ModelBlockConversion;
 import mchorse.bbs_mod.client.renderer.LivePlayerItemUse;
 import mchorse.bbs_mod.client.renderer.ModelBlockEntityRenderer;
 import mchorse.bbs_mod.client.renderer.ThirdPersonItemUse;
@@ -711,6 +712,7 @@ public class BBSModClient implements ClientModInitializer
         keyZoom = this.createKeyMouse("zoom", 2);
 
         StructureWand.register();
+        ModelBlockConversion.register();
 
         WorldRenderEvents.BEFORE_ENTITIES.register((context) -> BBSRendering.beginEntityPass());
 

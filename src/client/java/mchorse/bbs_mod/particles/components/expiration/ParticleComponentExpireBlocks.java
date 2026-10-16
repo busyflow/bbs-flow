@@ -46,6 +46,6 @@ public abstract class ParticleComponentExpireBlocks extends ParticleComponentBas
 
         Vector3d position = particle.getGlobalPosition(emitter);
 
-        return emitter.world.getBlockState(new BlockPos((int) position.x, (int) position.y, (int) position.z));
+        return emitter.world.getBlockState(BlockPos.ofFloored(position.x, position.y, position.z));
     }
 }

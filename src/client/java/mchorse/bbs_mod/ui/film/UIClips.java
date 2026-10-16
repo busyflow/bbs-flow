@@ -1,11 +1,17 @@
 package mchorse.bbs_mod.ui.film;
 
+import mchorse.bbs_mod.actions.types.ActionClip;
 import mchorse.bbs_mod.api.client.events.TimelineEvents;
 
+import mchorse.bbs_mod.BBSMod;
+import mchorse.bbs_mod.BBSModClient;
+import mchorse.bbs_mod.BBSResources;
 import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.audio.SoundBuffer;
 import mchorse.bbs_mod.camera.clips.CameraClip;
 import mchorse.bbs_mod.camera.clips.ClipFactoryData;
 import mchorse.bbs_mod.camera.clips.converters.IClipConverter;
+import mchorse.bbs_mod.camera.clips.misc.AudioClip;
 import mchorse.bbs_mod.camera.clips.overwrite.KeyframeClip;
 import mchorse.bbs_mod.camera.utils.TimeUtils;
 import mchorse.bbs_mod.data.types.BaseType;
@@ -17,6 +23,7 @@ import mchorse.bbs_mod.film.markers.FilmMarkers;
 import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.graphics.window.Window;
+import mchorse.bbs_mod.importers.ImporterUtils;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.ui.Keys;
@@ -34,6 +41,7 @@ import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.framework.elements.utils.Batcher2D;
 import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCanvas;
 import mchorse.bbs_mod.ui.utils.Area;
+import mchorse.bbs_mod.ui.utils.IFileDropTarget;
 import mchorse.bbs_mod.ui.utils.Scroll;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.context.ColorfulContextAction;
@@ -43,17 +51,21 @@ import mchorse.bbs_mod.ui.utils.context.MenuVerb;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.presets.UICopyPasteController;
 import mchorse.bbs_mod.ui.utils.renderers.TimelineRulerRenderer;
+import mchorse.bbs_mod.utils.FFMpegUtils;
 import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.clips.Clip;
 import mchorse.bbs_mod.utils.clips.ClipFactory;
 import mchorse.bbs_mod.utils.clips.Clips;
+import mchorse.bbs_mod.utils.clips.Envelope;
 import mchorse.bbs_mod.utils.profiler.BBSProfiler;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.utils.presets.PresetManager;
+import org.joml.Vector2f;
 import org.joml.Vector3i;
 import org.lwjgl.glfw.GLFW;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -64,15 +76,22 @@ import java.util.TreeSet;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-public class UIClips extends UITimelineCanvas
+public class UIClips extends UITimelineCanvas implements IFileDropTarget
 {
     /* Constants */
     public static final IKey KEYS_CATEGORY = UIKeys.CAMERA_EDITOR_KEYS_CLIPS_TITLE;
+
+    /** The sounds a drop onto the timeline turns into audio clips: what the importers convert. */
+    private static final String[] AUDIO_EXTENSIONS = {".wav", ".ogg", ".mp3", ".flac", ".aiff"};
+    private static final Link AUDIO_CLIP = Link.bbs("audio");
 
     private static final int MARGIN = 10;
     private static final int LAYER_HEIGHT_MIN = 12;
     private static final int LAYER_HEIGHT_MAX = 48;
     private static final int SNAP_DISTANCE = 10;
+    private static final int FADE_HANDLE_SIZE = 3;
+    private static final int FADE_HANDLE_REACH = 5;
+    private static final int FADE_HANDLES_MIN_WIDTH = 16;
 
     private static final Area CLIP_AREA = new Area();
 
@@ -116,6 +135,8 @@ public class UIClips extends UITimelineCanvas
     private List<Clip> otherClips = Collections.emptyList();
     private Set<Integer> snappingPoints = new TreeSet<>();
     private List<Vector3i> grabbedData = new ArrayList<>();
+    /** Fade in/out of each grabbed clip at grab time, zero for a clip whose envelope is off. */
+    private List<Vector2f> grabbedFades = new ArrayList<>();
 
     private UICopyPasteController copyPasteController;
 
@@ -399,6 +420,75 @@ public class UIClips extends UITimelineCanvas
 
         this.clips.addClip(clip);
         this.pickClip(clip);
+    }
+
+    /* Dropped files */
+
+    /**
+     * Sounds dragged in from outside the game and dropped onto the timeline become audio clips
+     * right there: converted into the audio folder the way the importers do it, starting at the
+     * tick under the cursor and as long as the sound. A row that is taken there passes the clip up
+     * to the nearest free one, as a paste does, so it keeps both its start and its length; several
+     * sounds dropped together stack up from the same tick.
+     */
+    @Override
+    public boolean dropFiles(UIContext context, List<File> files)
+    {
+        if (this.clips == null || this.hasEmbeddedView() || !this.factory.getKeys().contains(AUDIO_CLIP)
+            || !this.canBeSeen() || !this.area.isInside(context) || UIOverlay.has(context)
+            || !ImporterUtils.checkFileExtension(files, AUDIO_EXTENSIONS))
+        {
+            return false;
+        }
+
+        if (!FFMpegUtils.checkFFMPEG())
+        {
+            context.notifyError(UIKeys.IMPORTER_FFMPEG_NOTIFICATION);
+
+            return true;
+        }
+
+        int tick = Math.max(0, this.fromGraphTick(context.mouseX));
+        int layer = Math.max(0, this.fromLayerY(context.mouseY));
+        List<Clip> added = new ArrayList<>();
+
+        for (File file : files)
+        {
+            File wav = ImporterUtils.toMonoWAV(file, BBSMod.getAudioFolder());
+            Link link = wav == null ? null : Link.assets("audio/" + wav.getName());
+            SoundBuffer sound = link == null ? null : BBSModClient.getSounds().get(link, true);
+
+            if (sound == null || !(this.factory.create(AUDIO_CLIP) instanceof AudioClip clip))
+            {
+                context.notifyError(UIKeys.IMPORTER_AUDIO_CLIP_ERROR.format(file.getName()));
+
+                continue;
+            }
+
+            clip.audio.set(link);
+            clip.tick.set(tick);
+            clip.duration.set(Math.max(1, (int) (sound.getDuration() * 20)));
+            clip.layer.set(layer);
+            clip.layer.set(this.clips.findFreeLayer(clip));
+
+            this.clips.addClip(clip);
+            added.add(clip);
+        }
+
+        if (!added.isEmpty())
+        {
+            this.clearSelection();
+
+            for (Clip clip : added)
+            {
+                this.addSelected(clip);
+            }
+
+            this.pickLastSelectedClip();
+            BBSResources.markAssetsChanged();
+        }
+
+        return true;
     }
 
     private MapType copyClips()
@@ -1332,7 +1422,11 @@ public class UIClips extends UITimelineCanvas
 
                 for (Clip selectedClip : this.getClipsFromSelection())
                 {
+                    Envelope envelope = selectedClip.envelope;
+                    boolean fades = envelope.enabled.get();
+
                     this.grabbedData.add(new Vector3i(selectedClip.tick.get(), selectedClip.layer.get(), selectedClip.duration.get()));
+                    this.grabbedFades.add(new Vector2f(fades ? envelope.fadeIn.get() : 0F, fades ? envelope.fadeOut.get() : 0F));
                 }
 
                 return true;
@@ -1411,8 +1505,8 @@ public class UIClips extends UITimelineCanvas
         }
         else
         {
-            this.navigating = true;
             this.setMouse(mouseX, mouseY);
+            this.startNavigating();
 
             return true;
         }
@@ -1527,6 +1621,7 @@ public class UIClips extends UITimelineCanvas
         this.otherClips = Collections.emptyList();
         this.snappingPoints.clear();
         this.grabbedData.clear();
+        this.grabbedFades.clear();
 
         return super.subMouseReleased(context);
     }
@@ -1631,41 +1726,59 @@ public class UIClips extends UITimelineCanvas
         int dx = this.fromGraphTick(mouseX) - this.fromGraphTick(this.initialX);
         int dy = this.fromLayerY(mouseY) - this.fromLayerY(this.initialY);
 
-        if (this.grabMode != 0 && Window.isShiftPressed())
+        if (this.grabMode == 0) this.moveClips(others, dx, dy);
+        else if (this.grabMode == 1 || this.grabMode == 2)
         {
-            this.dragEnvelope(this.grabMode == 1, mouseX);
+            /* Grabbed clips stop at each other too, not only at the rest */
+            List<Clip> neighbours = Window.isAltPressed() ? Collections.emptyList() : this.clips.get();
+
+            if (this.grabMode == 1) this.dragLeftEdge(neighbours, dx);
+            else this.dragRightEdge(neighbours, dx);
         }
-        else if (this.grabMode == 0) this.moveClips(others, dx, dy);
-        else if (this.grabMode == 1) this.dragLeftEdge(others, dx, dy);
-        else if (this.grabMode == 2) this.dragRightEdge(others, dx, dy);
+        else if (this.grabMode == 3 || this.grabMode == 4) this.dragFade(this.grabMode == 3, dx);
 
         this.delegate.fillData();
     }
 
     /**
-     * While dragging a clip's edge with shift held, adjust the envelope's fade
-     * instead of the clip length — the left handle drives fade in, the right handle
-     * fade out. The clip's own bounds stay put.
+     * Drag a fade handle. The handle of the clip under the mouse snaps, and every
+     * grabbed clip gets the same change of that fade. A clip whose envelope was off
+     * starts from zero fades, so pulling one side never brings in the other.
      */
-    private void dragEnvelope(boolean left, int mouseX)
+    private void dragFade(boolean fadeIn, int dx)
     {
-        Clip clip = this.grabbedClips.get(this.grabbedClips.size() - 1);
-        Vector3i data = this.grabbedData.get(this.grabbedData.size() - 1);
-        int tick = data.x();
-        int duration = data.z();
-        int mouse = this.fromGraphTick(mouseX);
+        Vector3i grabbed = this.grabbedData.get(this.grabbedData.size() - 1);
+        Vector2f grabbedFades = this.grabbedFades.get(this.grabbedFades.size() - 1);
+        int handle = fadeIn
+            ? grabbed.x() + (int) grabbedFades.x
+            : grabbed.x() + grabbed.z() - (int) grabbedFades.y;
+        int delta = this.snapEdge(handle + dx) - handle;
 
-        /* Pin the clip to its original bounds — an earlier frame may have resized it. */
-        this.setClipData(clip, tick, data.y(), duration);
-        clip.envelope.enabled.set(true);
+        for (int i = 0; i < this.grabbedClips.size(); i++)
+        {
+            Clip clip = this.grabbedClips.get(i);
 
-        if (left)
-        {
-            clip.envelope.fadeIn.set((float) MathUtils.clamp(mouse - tick, 0, duration));
-        }
-        else
-        {
-            clip.envelope.fadeOut.set((float) MathUtils.clamp(tick + duration - mouse, 0, duration));
+            if (!this.hasFadeHandles(clip))
+            {
+                continue;
+            }
+
+            Envelope envelope = clip.envelope;
+            Vector2f fades = this.grabbedFades.get(i);
+            int duration = this.grabbedData.get(i).z();
+
+            envelope.enabled.set(true);
+
+            if (fadeIn)
+            {
+                envelope.fadeIn.set(Math.max(0F, Math.min(fades.x + delta, duration - fades.y)));
+                envelope.fadeOut.set(fades.y);
+            }
+            else
+            {
+                envelope.fadeIn.set(fades.x);
+                envelope.fadeOut.set(Math.max(0F, Math.min(fades.y - delta, duration - fades.x)));
+            }
         }
     }
 
@@ -1744,37 +1857,59 @@ public class UIClips extends UITimelineCanvas
         return edge;
     }
 
-    private void dragLeftEdge(List<Clip> others, int dx, int dy)
+    /**
+     * Move the left edges of all grabbed clips by the same amount, snapped by the
+     * clip under the mouse. Each clip stops at its own left neighbour.
+     */
+    private void dragLeftEdge(List<Clip> neighbours, int dx)
     {
-        Vector3i data = grabbedData.get(grabbedData.size() - 1);
-        Clip clip = grabbedClips.get(grabbedClips.size() - 1);
-        int tick = data.x();
-        int right = tick + data.z();
-        int minLeft = others.stream()
-            .filter((o) -> this.sameLayer(o, clip) && o.tick.get() + o.duration.get() <= tick)
-            .mapToInt((o) -> o.tick.get() + o.duration.get())
-            .max()
-            .orElse(0);
+        Vector3i grabbed = this.grabbedData.get(this.grabbedData.size() - 1);
+        int delta = this.snapEdge(grabbed.x() + dx) - grabbed.x();
 
-        int newTick = MathUtils.clamp(this.snapEdge(tick + dx), minLeft, right - 1);
+        for (int i = 0; i < this.grabbedClips.size(); i++)
+        {
+            Clip clip = this.grabbedClips.get(i);
+            Vector3i data = this.grabbedData.get(i);
+            int tick = data.x();
+            int right = tick + data.z();
+            int minLeft = neighbours.stream()
+                .filter((o) -> o != clip && this.sameLayer(o, clip) && o.tick.get() + o.duration.get() <= tick)
+                .mapToInt((o) -> o.tick.get() + o.duration.get())
+                .max()
+                .orElse(0);
 
-        this.setClipData(clip, newTick, data.y(), right - newTick);
+            int newTick = MathUtils.clamp(tick + delta, minLeft, right - 1);
+
+            this.setClipData(clip, newTick, data.y(), right - newTick);
+        }
     }
 
-    private void dragRightEdge(List<Clip> others, int dx, int dy)
+    /**
+     * Move the right edges of all grabbed clips by the same amount, snapped by the
+     * clip under the mouse. Each clip stops at its own right neighbour.
+     */
+    private void dragRightEdge(List<Clip> neighbours, int dx)
     {
-        Vector3i data = grabbedData.get(grabbedData.size() - 1);
-        Clip clip = grabbedClips.get(grabbedClips.size() - 1);
-        int tick = data.x();
-        int maxRight = others.stream()
-            .filter((o) -> this.sameLayer(o, clip) && o.tick.get() >= tick + data.z())
-            .mapToInt((o) -> o.tick.get())
-            .min()
-            .orElse(Integer.MAX_VALUE);
+        Vector3i grabbed = this.grabbedData.get(this.grabbedData.size() - 1);
+        int grabbedEnd = grabbed.x() + grabbed.z();
+        int delta = this.snapEdge(grabbedEnd + dx) - grabbedEnd;
 
-        int newEnd = MathUtils.clamp(this.snapEdge(tick + data.z() + dx), tick + 1, maxRight);
+        for (int i = 0; i < this.grabbedClips.size(); i++)
+        {
+            Clip clip = this.grabbedClips.get(i);
+            Vector3i data = this.grabbedData.get(i);
+            int tick = data.x();
+            int end = tick + data.z();
+            int maxRight = neighbours.stream()
+                .filter((o) -> o != clip && this.sameLayer(o, clip) && o.tick.get() >= end)
+                .mapToInt((o) -> o.tick.get())
+                .min()
+                .orElse(Integer.MAX_VALUE);
 
-        this.setClipData(clip, tick, data.y(), newEnd - tick);
+            int newEnd = MathUtils.clamp(end + delta, tick + 1, maxRight);
+
+            this.setClipData(clip, tick, data.y(), newEnd - tick);
+        }
     }
 
     /**
@@ -1899,9 +2034,13 @@ public class UIClips extends UITimelineCanvas
     {
         if (this.navigating)
         {
-            this.dragTimeBy(mouseX - this.lastX);
-            this.vertical.scrollBy(this.lastY - mouseY);
-            this.vertical.clamp();
+            this.navigateTime(mouseX - this.lastX);
+
+            if (!this.zoomNavigating)
+            {
+                this.vertical.scrollBy(this.lastY - mouseY);
+                this.vertical.clamp();
+            }
 
             this.lastX = mouseX;
             this.lastY = mouseY;
@@ -1997,6 +2136,14 @@ public class UIClips extends UITimelineCanvas
             int clipHandle = this.getClipHandle(clip, context, h);
             int color = this.grabMode != 0 ? Colors.WHITE : Colors.A50;
 
+            boolean fading = selected && (this.grabMode == 3 || this.grabMode == 4);
+
+            if ((clipHandle != -1 || fading) && this.hasFadeHandles(clip))
+            {
+                this.renderFadeHandle(context, clip, true, clipHandle == 3 || (selected && this.grabMode == 3));
+                this.renderFadeHandle(context, clip, false, clipHandle == 4 || (selected && this.grabMode == 4));
+            }
+
             if (clipHandle == 1 || (selected && this.grabMode == 1))
             {
                 context.batcher.icon(Icons.CLIP_HANLDE_LEFT, color, clipArea.x, clipArea.y + 10, 0F, 0.5F);
@@ -2054,6 +2201,13 @@ public class UIClips extends UITimelineCanvas
                 return 0;
             }
 
+            int fade = this.getFadeHandle(clip, context.mouseX, context.mouseY);
+
+            if (fade != 0)
+            {
+                return fade;
+            }
+
             if (context.mouseX - clipArea.x < separation)
             {
                 return 1;
@@ -2067,6 +2221,71 @@ public class UIClips extends UITimelineCanvas
         }
 
         return -1;
+    }
+
+    /**
+     * Fade handles live in the top strip of a clip, above the resize edges: 3 is the
+     * fade in handle, 4 is the fade out one, 0 means neither is under the mouse.
+     */
+    private int getFadeHandle(Clip clip, int mouseX, int mouseY)
+    {
+        int top = this.toLayerY(clip.layer.get());
+
+        if (!this.hasFadeHandles(clip) || mouseY >= top + Math.min(this.getLayerHeight() / 2, FADE_HANDLE_SIZE + 4))
+        {
+            return 0;
+        }
+
+        int in = Math.abs(mouseX - this.getFadeHandleX(clip, true));
+        int out = Math.abs(mouseX - this.getFadeHandleX(clip, false));
+
+        if (Math.min(in, out) > FADE_HANDLE_REACH)
+        {
+            return 0;
+        }
+
+        /* Handles that meet go apart by the side of the clip the mouse is on */
+        int middle = this.toGraphX(clip.tick.get() + clip.duration.get() / 2F);
+
+        return in < out || (in == out && mouseX < middle) ? 3 : 4;
+    }
+
+    /**
+     * Fade handles stand where the fade ends (fade in) or begins (fade out), in the
+     * corners while there is no fade, and always fully inside the clip.
+     */
+    private int getFadeHandleX(Clip clip, boolean fadeIn)
+    {
+        Envelope envelope = clip.envelope;
+        float fade = envelope.enabled.get() ? (fadeIn ? envelope.fadeIn.get() : envelope.fadeOut.get()) : 0F;
+        int tick = clip.tick.get();
+        int end = tick + clip.duration.get();
+        int x = fadeIn ? this.toGraphX(tick + fade) : this.toGraphX(end - fade);
+        int half = FADE_HANDLE_SIZE / 2 + 1;
+
+        return MathUtils.clamp(x, this.toGraphX(tick) + half, this.toGraphX(end) - half - 1);
+    }
+
+    /**
+     * Fades only exist where a clip's envelope does something and isn't keyframed,
+     * and the clip has to be wide enough to hold both handles.
+     */
+    private boolean hasFadeHandles(Clip clip)
+    {
+        int tick = clip.tick.get();
+        int width = this.toGraphX(tick + clip.duration.get()) - this.toGraphX(tick);
+
+        return width >= FADE_HANDLES_MIN_WIDTH && !(clip instanceof ActionClip) && !clip.envelope.keyframes.get();
+    }
+
+    private void renderFadeHandle(UIContext context, Clip clip, boolean fadeIn, boolean active)
+    {
+        int x = this.getFadeHandleX(clip, fadeIn) - FADE_HANDLE_SIZE / 2;
+        /* The clip box is inset by a pixel from its row, the handle sits just inside it */
+        int y = this.toLayerY(clip.layer.get()) + 2;
+        int color = active ? BBSSettings.primaryColor(Colors.A100) : Colors.WHITE;
+
+        context.batcher.box(x, y, x + FADE_HANDLE_SIZE, y + FADE_HANDLE_SIZE, color);
     }
 
     private void renderAddPreview(UIContext context, int h)

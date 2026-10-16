@@ -9,6 +9,7 @@ import mchorse.bbs_mod.forms.renderers.mob.MobRig;
 import mchorse.bbs_mod.forms.forms.MobForm;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
+import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeSheet;
@@ -18,6 +19,7 @@ import mchorse.bbs_mod.ui.utils.pose.UIPoseEditor;
 import mchorse.bbs_mod.utils.CollectionUtils;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UITrackValue;
 import mchorse.bbs_mod.utils.pose.Pose;
+import mchorse.bbs_mod.utils.pose.PoseFixInPlace;
 import mchorse.bbs_mod.utils.pose.PoseTransform;
 import mchorse.bbs_mod.utils.pose.Transform;
 
@@ -224,6 +226,20 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
             apply(this.track, (pose) -> pose.flip(this.flippedParts));
             this.groups.list.setCurrent(current);
             this.pickBones(this.groups.list.getCurrent());
+        }
+
+        @Override
+        protected BaseValue getPoseProperty()
+        {
+            return this.track.sheet.property;
+        }
+
+        /** Onto every selected key, like the other fields: the corrections were measured at the playhead. */
+        @Override
+        protected void applyFixInPlace(Map<String, PoseFixInPlace.Correction> corrections)
+        {
+            applyBones(this.track, new ArrayList<>(corrections.keySet()), (bone, poseT) -> corrections.get(bone).apply(poseT));
+            this.refreshPose(this.track.getValue());
         }
 
         @Override

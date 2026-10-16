@@ -1,6 +1,5 @@
 package mchorse.bbs_mod.utils.iris;
 
-import joptsimple.internal.Strings;
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.forms.renderers.utils.FramebufferDebug;
@@ -8,20 +7,12 @@ import mchorse.bbs_mod.graphics.texture.Texture;
 import mchorse.bbs_mod.graphics.texture.TextureManager;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.utils.CollectionUtils;
-import mchorse.bbs_mod.utils.DataPath;
 import net.irisshaders.iris.Iris;
 import net.irisshaders.iris.api.v0.IrisApi;
 import net.irisshaders.iris.gl.uniform.UniformUpdateFrequency;
 import net.irisshaders.iris.pipeline.ShaderRenderingPipeline;
 import net.irisshaders.iris.pipeline.WorldRenderingPipeline;
 import net.irisshaders.iris.shadows.ShadowRenderer;
-import net.irisshaders.iris.shaderpack.LanguageMap;
-import net.irisshaders.iris.shaderpack.ShaderPack;
-import net.irisshaders.iris.shaderpack.option.menu.OptionMenuContainer;
-import net.irisshaders.iris.shaderpack.option.menu.OptionMenuElement;
-import net.irisshaders.iris.shaderpack.option.menu.OptionMenuElementScreen;
-import net.irisshaders.iris.shaderpack.option.menu.OptionMenuLinkElement;
-import net.irisshaders.iris.shaderpack.option.menu.OptionMenuOptionElement;
 import net.irisshaders.iris.shaderpack.properties.ShaderProperties;
 import net.irisshaders.iris.texture.TextureTracker;
 import net.irisshaders.iris.texture.pbr.PBRTextureManager;
@@ -36,7 +27,6 @@ import net.irisshaders.iris.vertices.NormalHelper;
 import net.irisshaders.iris.vertices.views.TriView;
 import net.minecraft.client.render.BufferBuilder;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -51,99 +41,22 @@ public class IrisUtils
     private static ShaderProperties properties;
     private static int offscreenDepth;
 
+    /** Scratch for {@link #computeTangent}: render thread only. */
+    private static final SuperTriangle TANGENT_TRIANGLE = new SuperTriangle();
+
     public static void setShaderProperties(ShaderProperties shaderProperties)
     {
         properties = shaderProperties;
     }
 
+    public static ShaderProperties getShaderProperties()
+    {
+        return properties;
+    }
+
     public static List<String> getSliderProperties()
     {
         return properties == null ? Collections.emptyList() : properties.getSliderOptions();
-    }
-
-    public static Map<String, String> getShadersLanguageMap(String language)
-    {
-        if (Iris.getCurrentPack().isPresent())
-        {
-            Map<String, String> map = new HashMap<>();
-            ShaderPack shaderPack = Iris.getCurrentPack().get();
-            LanguageMap languageMap = shaderPack.getLanguageMap();
-
-            Map<String, String> target = languageMap.getTranslations(language);
-            Map<String, String> fallback = languageMap.getTranslations("en_us");
-            final String prefix = "option.";
-
-            Map<String, DataPath> pathMap = new HashMap<>();
-
-            collectPaths(pathMap, shaderPack.getMenuContainer(), shaderPack.getMenuContainer().mainScreen, Collections.emptyList());
-            fillInPaths(map, fallback, pathMap, prefix);
-            fillInPaths(map, target, pathMap, prefix);
-
-            return map;
-        }
-
-        return Collections.emptyMap();
-    }
-
-    private static void fillInPaths(Map<String, String> map, Map<String, String> language, Map<String, DataPath> pathMap, String prefix)
-    {
-        if (language == null)
-        {
-            return;
-        }
-
-        for (Map.Entry<String, String> entry : language.entrySet())
-        {
-            if (entry.getKey().startsWith(prefix))
-            {
-                String optionId = entry.getKey().substring(prefix.length());
-                DataPath path = pathMap.get(optionId);
-                String value = entry.getValue();
-
-                if (path != null)
-                {
-                    List<String> translations = new ArrayList<>();
-
-                    for (int i = 0, c = path.strings.size(); i < c; i++)
-                    {
-                        String string = path.strings.get(i);
-
-                        if (i == c - 1) translations.add(value);
-                        else translations.add(language.getOrDefault("screen." + string, string));
-                    }
-
-                    value = Strings.join(translations, " > ");
-                }
-
-                map.put(entry.getKey(), value);
-            }
-        }
-    }
-
-    private static void collectPaths(Map<String, DataPath> pathMap, OptionMenuContainer container, OptionMenuElementScreen mainScreen, List<String> prefix)
-    {
-        for (OptionMenuElement element : mainScreen.elements)
-        {
-            if (element instanceof OptionMenuOptionElement option)
-            {
-                ArrayList<String> strings = new ArrayList<>(prefix);
-
-                strings.add(option.optionId);
-                pathMap.put(option.optionId, new DataPath(strings));
-            }
-            else if (element instanceof OptionMenuLinkElement link)
-            {
-                OptionMenuElementScreen screen = container.subScreens.get(link.targetScreenId);
-
-                if (screen != null)
-                {
-                    ArrayList<String> strings = new ArrayList<>(prefix);
-
-                    strings.add(link.targetScreenId);
-                    collectPaths(pathMap, container, screen, strings);
-                }
-            }
-        }
     }
 
     public static void setup()
@@ -396,6 +309,15 @@ public class IrisUtils
         return t;
     }
 
+    /** Iris' tangent for a triangle with the given normal, packed as {@link NormI8} like its vertex formats carry it. */
+    public static int computeTangent(float nx, float ny, float nz,
+        float x0, float y0, float z0, float u0, float v0,
+        float x1, float y1, float z1, float u1, float v1,
+        float x2, float y2, float z2, float u2, float v2)
+    {
+        return NormalHelper.computeTangent(nx, ny, nz, TANGENT_TRIANGLE.set(x0, y0, z0, u0, v0, x1, y1, z1, u1, v1, x2, y2, z2, u2, v2));
+    }
+
     public static void addUniforms(List<CachedUniform> list, Map<String, ShaderCurves.ShaderVariable> variableMap)
     {
         list.add(new FloatCachedUniform(ShaderSunRotation.UNIFORM, UniformUpdateFrequency.PER_FRAME, BBSRendering::getSunHorizontalRotation));
@@ -404,7 +326,7 @@ public class IrisUtils
         {
             if (value.integer)
             {
-                list.add(new IntCachedUniform(value.uniformName, UniformUpdateFrequency.PER_FRAME, () -> (int) value.getValue()));
+                list.add(new IntCachedUniform(value.uniformName, UniformUpdateFrequency.PER_FRAME, value::getIntValue));
             }
             else
             {

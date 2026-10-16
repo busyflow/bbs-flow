@@ -40,6 +40,30 @@ public enum ModelBlockSound implements StringIdentifiable
         return STONE;
     }
 
+    /**
+     * The nearest of these to a vanilla block's own sounds, told by the name of its place sound
+     * ("block.cherry_wood.place" is wood): vanilla has dozens of groups, this has seven.
+     */
+    public static ModelBlockSound of(BlockSoundGroup group)
+    {
+        if (group == BlockSoundGroup.INTENTIONALLY_EMPTY)
+        {
+            return NONE;
+        }
+
+        String path = group.getPlaceSound().getId().getPath();
+
+        for (ModelBlockSound sound : values())
+        {
+            if (sound != NONE && path.contains(sound.id))
+            {
+                return sound;
+            }
+        }
+
+        return STONE;
+    }
+
     @Override
     public String asString()
     {

@@ -15,6 +15,7 @@ import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
 import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.UIConstants;
+import mchorse.bbs_mod.ui.utils.bones.BoneRoles;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.pose.ModelConstraintsManager;
 
@@ -149,6 +150,19 @@ public class UIModelConstraintsFormPanel extends UIBoneListFormPanel
 
         edit.accept(constraint);
         bone.constraints.set(constraint);
+    }
+
+    /** A constrained bone simply reads at full strength — constraints are all this tab sets. */
+    @Override
+    protected void describeBones(BoneRoles roles)
+    {
+        this.forEachFormBone((bone) ->
+        {
+            if (!bone.constraints.get().isDefault())
+            {
+                roles.touch(bone.getId());
+            }
+        });
     }
 
     @Override

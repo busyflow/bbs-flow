@@ -3,6 +3,7 @@ package mchorse.bbs_mod.ui.forms.editors.panels;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.cubic.IModel;
 import mchorse.bbs_mod.cubic.physics.BonePhysicsIO;
+import mchorse.bbs_mod.cubic.physics.ModelPhysicsRuntime;
 import mchorse.bbs_mod.cubic.physics.PhysicsControl;
 import mchorse.bbs_mod.cubic.physics.WindControl;
 import mchorse.bbs_mod.data.types.MapType;
@@ -17,6 +18,8 @@ import mchorse.bbs_mod.ui.framework.elements.UISection;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
 import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.UITrackpad;
+import mchorse.bbs_mod.ui.utils.bones.BoneRole;
+import mchorse.bbs_mod.ui.utils.bones.BoneRoles;
 import mchorse.bbs_mod.ui.utils.bones.UIBonePicker;
 import mchorse.bbs_mod.ui.utils.bones.UIBonePickerContextMenu;
 import mchorse.bbs_mod.ui.utils.UI;
@@ -317,6 +320,36 @@ public class UIModelPhysicsFormPanel extends UIBoneListFormPanel
 
         edit.accept(wind);
         this.form.wind.set(wind);
+    }
+
+    /**
+     * Every physics chain along the tree: it is set up on its first bone, the bones down to
+     * its end swing with it, and the bone its end is attached to is its target. A chain
+     * switched off by its track goes gray.
+     */
+    @Override
+    protected void describeBones(BoneRoles roles)
+    {
+        IModel model = this.modelInstance == null ? null : this.modelInstance.model;
+
+        if (model == null)
+        {
+            return;
+        }
+
+        this.forEachFormBone((bone) ->
+        {
+            if (!bone.hasPhysicsChain())
+            {
+                return;
+            }
+
+            boolean on = bone.physics.get().enabled;
+
+            roles.chain(ModelPhysicsRuntime.chainBones(model, bone.getId(), bone.physicsEnd.get()), on ? BoneRole.LINK : BoneRole.LINK.off());
+            roles.mark(bone.getId(), 0, on ? BoneRole.CHAIN : BoneRole.CHAIN.off());
+            roles.mark(bone.physicsTargetBone.get(), 1, on ? BoneRole.TARGET : BoneRole.TARGET.off());
+        });
     }
 
     @Override

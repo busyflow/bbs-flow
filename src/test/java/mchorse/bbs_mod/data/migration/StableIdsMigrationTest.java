@@ -53,6 +53,10 @@ public class StableIdsMigrationTest
         check(tracks.getList("tracks").getMap(0).getString("form").equals(ids.get("0/0")), "track list path");
         check(FormStableIds.rewriteTrackKey("pose", ids).equals("pose"), "root property unchanged");
         check(FormStableIds.rewriteTrackKey("99/pose", ids).equals("99/pose"), "orphan retained");
+        ids.put("", "wrong");
+        check(FormStableIds.rewriteTrackKey("", ids).equals(""), "empty key is not an index");
+        check(FormStableIds.rewriteTrackKey("-/pose", ids).equals("-/pose"), "dash is not an index");
+        ids.remove("");
     }
 
     private static void references()

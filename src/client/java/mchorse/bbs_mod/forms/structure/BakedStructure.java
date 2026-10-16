@@ -24,6 +24,7 @@ import net.minecraft.client.texture.Sprite;
 import net.minecraft.client.texture.SpriteAtlasTexture;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.fluid.FluidState;
+import net.minecraft.util.Util;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.random.Random;
@@ -35,21 +36,27 @@ import org.joml.Vector4f;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Pre-tesselated structure geometry: all blocks + fluids are run through the vanilla renderer
- * ONCE (smooth AO and biome tint get baked into vertex colors), the resulting vertex data is
- * kept per render layer and replayed every frame with just a matrix transform — the same idea
- * as Create's SuperByteBuffer, minus the dependency.
+ * ONCE (smooth AO and biome tint get baked into vertex colors). The opaque layers then live on
+ * the GPU ({@link StructureMesh}), one draw call each per frame whatever the size of the
+ * structure. The translucent layers stay here and are replayed into the provider every frame:
+ * glass and water have to be sorted back to front against everything else, and a static buffer
+ * can't be.
  *
- * <p>A bake is valid for one (structure, biome) pair — the renderer rebakes when its
- * {@link StructureRenderWorld} instance changes — and for one resource generation:
- * {@link #invalidateAll()} is hooked to Fabric's render-state invalidation (resource pack
- * switch, F3+A), because baked sprite UVs go stale when atlases rebuild.</p>
+ * <p>Bakes are shared, one per (structure, biome) pair however many forms show it, and kept by
+ * {@link #get} until nobody drew one for {@link #EXPIRE_MS}: a form has no end of life to free
+ * GPU memory on, so the cache does it. All of them are dropped when resources reload
+ * ({@link #invalidateAll()}, hooked to Fabric's render-state invalidation: baked sprite UVs go
+ * stale when atlases rebuild) and when {@link StructureManager} drops its own cache.</p>
  */
 public class BakedStructure
 {
@@ -72,51 +79,130 @@ public class BakedStructure
      */
     public static final RenderLayer OVERLAY_LAYER = RenderLayer.getEntityCutoutNoCull(SpriteAtlasTexture.BLOCK_ATLAS_TEXTURE, false);
 
-    private static int globalGeneration;
+    /** How long a bake nobody draws stays on the GPU. */
+    private static final long EXPIRE_MS = 60_000L;
+
+    private static final Map<Key, BakedStructure> CACHE = new HashMap<>();
+
+    private static int generation;
+    private static int cacheGeneration = -1;
+    private static int cacheManagerGeneration = -1;
+    private static long lastSweep;
 
     private static final Direction[] DIRECTIONS = Direction.values();
 
     /** Scratch builder reused across bakes (grows once and stays). */
     private static BufferBuilder scratch;
 
-    private final List<BakedLayer> layers = new ArrayList<>();
+    /** The opaque layers on the GPU; null when the structure has none. */
+    private final StructureMesh mesh;
+
+    /** The translucent layers, replayed (and so sorted) every frame. */
+    private final List<BakedLayer> translucent;
 
     /** Sprites referenced by the baked geometry — marked active for Sodium every frame. */
-    private final Set<Sprite> sprites = new HashSet<>();
+    private final Set<Sprite> sprites;
 
-    private final StructureRenderWorld world;
-    private final int generation;
+    private long lastUsed;
 
-    private record BakedLayer(RenderLayer layer, ByteBuffer data, int vertexCount) {}
+    record BakedLayer(RenderLayer layer, ByteBuffer data, int vertexCount) {}
 
-    private BakedStructure(StructureRenderWorld world)
+    /** Structure data by identity: parts of addons carry their own, the manager hands out one per id. */
+    private record Key(StructureRenderData data, String biome) {}
+
+    private BakedStructure(StructureMesh mesh, List<BakedLayer> translucent, Set<Sprite> sprites)
     {
-        this.world = world;
-        this.generation = globalGeneration;
+        this.mesh = mesh;
+        this.translucent = translucent;
+        this.sprites = sprites;
     }
 
     public static void invalidateAll()
     {
-        globalGeneration += 1;
+        generation += 1;
     }
 
-    public boolean isValidFor(StructureRenderWorld world)
+    /** The bake of this structure in this biome, made now if nobody has it. Render thread only. */
+    public static BakedStructure get(StructureRenderData data, String biome)
     {
-        return this.world == world && this.generation == globalGeneration;
+        int managerGeneration = StructureManager.getGeneration();
+
+        if (generation != cacheGeneration || managerGeneration != cacheManagerGeneration)
+        {
+            cacheGeneration = generation;
+            cacheManagerGeneration = managerGeneration;
+
+            for (BakedStructure baked : CACHE.values())
+            {
+                baked.delete();
+            }
+
+            CACHE.clear();
+        }
+
+        long now = Util.getMeasuringTimeMs();
+
+        sweep(now);
+
+        Key key = new Key(data, biome);
+        BakedStructure baked = CACHE.get(key);
+
+        if (baked == null)
+        {
+            baked = bake(data, new StructureRenderWorld(data, biome));
+            CACHE.put(key, baked);
+        }
+
+        baked.lastUsed = now;
+
+        return baked;
     }
 
-    public static BakedStructure bake(StructureRenderData data, StructureRenderWorld world)
+    /** Free the bakes nobody drew for a while (checked once a second). */
+    private static void sweep(long now)
     {
-        BakedStructure result = new BakedStructure(world);
+        if (now - lastSweep < 1000L)
+        {
+            return;
+        }
 
+        lastSweep = now;
+
+        Iterator<BakedStructure> it = CACHE.values().iterator();
+
+        while (it.hasNext())
+        {
+            BakedStructure baked = it.next();
+
+            if (now - baked.lastUsed > EXPIRE_MS)
+            {
+                baked.delete();
+                it.remove();
+            }
+        }
+    }
+
+    private void delete()
+    {
+        if (this.mesh != null)
+        {
+            this.mesh.delete();
+        }
+    }
+
+    private static BakedStructure bake(StructureRenderData data, StructureRenderWorld world)
+    {
         BlockRenderManager manager = MinecraftClient.getInstance().getBlockRenderManager();
         Random random = Random.create();
         MatrixStack matrices = new MatrixStack();
         TransformingVertexConsumer fluidConsumer = new TransformingVertexConsumer(new Matrix4f(), new Matrix3f());
+        Set<Sprite> sprites = new HashSet<>();
+        List<BakedLayer> opaque = new ArrayList<>();
+        List<BakedLayer> translucent = new ArrayList<>();
 
         for (Map.Entry<BlockPos, BlockState> e : data.getBlocks().entrySet())
         {
-            result.collectSprites(manager, world, e.getKey(), e.getValue(), random);
+            collectSprites(sprites, manager, world, e.getKey(), e.getValue(), random);
         }
 
         for (RenderLayer layer : RenderLayer.getBlockLayers())
@@ -161,20 +247,23 @@ public class BakedStructure
             ByteBuffer copy = baked.data();
             int vertexCount = baked.vertexCount();
 
-            /* Re-impose vanilla's opaque-block invariant on non-translucent layers (see forceOpaque). */
-            if (!isTranslucent(layer))
+            if (isTranslucent(layer))
             {
-                forceOpaque(copy, vertexCount);
+                translucent.add(new BakedLayer(layer, copy, vertexCount));
             }
-
-            result.layers.add(new BakedLayer(layer, copy, vertexCount));
+            else
+            {
+                /* Re-impose vanilla's opaque-block invariant (see forceOpaque) */
+                forceOpaque(copy, vertexCount);
+                opaque.add(new BakedLayer(layer, copy, vertexCount));
+            }
         }
 
-        return result;
+        return new BakedStructure(opaque.isEmpty() ? null : StructureMesh.upload(opaque), translucent, sprites);
     }
 
     /** Remember which sprites the block/fluid at this position uses (for Sodium animation). */
-    private void collectSprites(BlockRenderManager manager, StructureRenderWorld world, BlockPos pos, BlockState state, Random random)
+    private static void collectSprites(Set<Sprite> sprites, BlockRenderManager manager, StructureRenderWorld world, BlockPos pos, BlockState state, Random random)
     {
         if (state.getRenderType() == BlockRenderType.MODEL)
         {
@@ -186,13 +275,13 @@ public class BakedStructure
             {
                 for (BakedQuad quad : model.getQuads(state, direction, random))
                 {
-                    this.sprites.add(quad.getSprite());
+                    sprites.add(quad.getSprite());
                 }
             }
 
             for (BakedQuad quad : model.getQuads(state, null, random))
             {
-                this.sprites.add(quad.getSprite());
+                sprites.add(quad.getSprite());
             }
         }
 
@@ -208,7 +297,7 @@ public class BakedStructure
                 {
                     if (sprite != null)
                     {
-                        this.sprites.add(sprite);
+                        sprites.add(sprite);
                     }
                 }
             }
@@ -219,10 +308,10 @@ public class BakedStructure
      *
      * <p>Vanilla's {@code BlockModelRenderer} always writes alpha 1.0 there, but with Continuity
      * installed the bake is serviced by an FRAPI renderer (Indium), and under Iris with separate-AO
-     * that path stuffs the AO coefficient into the alpha byte instead of opacity. Our blend-enabled
-     * entity-layer replay would otherwise read that as transparency and the whole structure turns
-     * see-through. The form/film tint alpha is applied separately at replay, so resetting the baked
-     * alpha here is safe (opaque layers carry no meaningful per-vertex alpha anyway).</p> */
+     * that path stuffs the AO coefficient into the alpha byte instead of opacity. A faded draw,
+     * which blends, would otherwise read that as transparency and the whole structure turns
+     * see-through. The form/film tint alpha is applied separately at draw time, so resetting the
+     * baked alpha here is safe (opaque layers carry no meaningful per-vertex alpha anyway).</p> */
     private static void forceOpaque(ByteBuffer copy, int count)
     {
         for (int i = 0; i < count; i++)
@@ -238,101 +327,76 @@ public class BakedStructure
     }
 
     /**
-     * Map a terrain block layer to the matching BBS-provider entity layer. Both targets are keyed
-     * in {@code FormUtilsClient}'s buffer map, so the provider flushes them in insertion order —
-     * {@code getEntityCutout} (opaque) before {@code getEntityTranslucentCull} (translucent). This
-     * is the route BBS's own block form takes, and the ordering is what makes semi-transparent
-     * blocks/fluids composite over the opaque geometry behind them instead of hiding it.
+     * Whether the structure's opaque geometry is drawn through an entity layer instead of the
+     * terrain ones (see {@link #render}). Asked of what is shading this very draw rather than of
+     * whether a pack is loaded: in the form editor's preview or inside a framebuffer form the pack
+     * stops shading, and the plain entity programs there would re-shade the structure.
      *
-     * <p>{@code getItemEntityTranslucentCull} is deliberately avoided: it is NOT in the provider's
-     * map, so it falls back to the shared buffer that {@code Immediate.draw()} flushes first —
-     * which would draw translucent before opaque and bring the bug back.</p>
-     */
-    /**
-     * Whether the structure's own geometry is routed through entity layers instead of the terrain
-     * ones (see {@link #render}). The color overlay follows from it: an entity layer's shader
-     * mixes the bound overlay into the fragment in place, so {@link #renderOverlay} would double
-     * it there, while the terrain layers have no overlay channel at all and the pass is the only
-     * way to get one.
+     * <p>The color overlay follows from it: an entity layer's shader mixes the bound overlay into
+     * the fragment in place, so {@link #renderOverlay} would double it there, while the terrain
+     * layers have no overlay channel at all and the pass is the only way to get one.</p>
      */
     public static boolean usesEntityLayers()
     {
-        return BBSRendering.isIrisShadersEnabled();
-    }
-
-    private static RenderLayer getEntityLayer(RenderLayer blockLayer)
-    {
-        if (isTranslucent(blockLayer))
-        {
-            return TexturedRenderLayers.getEntityTranslucentCull();
-        }
-
-        return TexturedRenderLayers.getEntityCutout();
+        return BBSRendering.isIrisWorldShadersEnabled();
     }
 
     /**
-     * Replay the baked vertices into the provider's layer buffers, transforming positions and
-     * normals by the given matrices and multiplying colors by {@code tint} (ARGB; the form/film
-     * color — applied here instead of a wrapping consumer, which would also have to survive the
-     * substitute wrapper the block entities use).
+     * Draw the structure, its geometry transformed by the given matrices and its colors multiplied
+     * by {@code tint} (ARGB; the form/film color).
+     *
+     * <p>Transparency only needs the right draw ORDER against the shared depth buffer: opaque must
+     * land (writing depth) before translucent draws over it. The opaque layers draw right away from
+     * the GPU, through the terrain programs — they apply no directional diffuse, so the smooth AO /
+     * face shade baked into the vertex colors shows as-is (entity layers would re-shade and darken
+     * the whole structure). The translucent ones go to BBS's KEYED entity translucent-cull layer,
+     * which the provider draws later, so glass/water/ice composite over the blocks behind them.
+     * Under a shaderpack Iris owns the terrain pipeline and relights everything itself, so the
+     * opaque layers go through the entity cutout program instead (no double diffuse there).</p>
      *
      * <p>Light: the sky component comes from {@code contextLight} (the form's world/entity
      * light, already modulated by the {@code lighting} form property), the block component is
      * the max of context and baked light — so the structure darkens in caves/at night like any
      * other form, while baked emitters (glowstone, lamps) keep glowing. UI previews pass
      * {@code MAX_LIGHT_COORDINATE} which makes everything full-bright.</p>
+     *
+     * @param hook runs once a layer has applied its own state, right before it draws: the caller's
+     *        per-layer setup (fade blending, color overlay, picking program). The GPU layers call it
+     *        directly; the replayed ones get it from the provider, so the caller hands the same one
+     *        to {@link CustomVertexConsumerProvider#hijackVertexFormat} as well. May be null.
      */
-    public void render(MatrixStack.Entry entry, CustomVertexConsumerProvider consumers, int contextLight, int tint)
+    public void render(MatrixStack.Entry entry, CustomVertexConsumerProvider consumers, int contextLight, int tint, Consumer<RenderLayer> hook)
     {
         /* Sodium only animates sprites it saw this frame — baked geometry bypasses it */
         SodiumSpriteHook.markActive(this.sprites);
 
-        Matrix4f pose = entry.getPositionMatrix();
-        Matrix3f normalMatrix = entry.getNormalMatrix();
-        int contextBlock = contextLight & 0xFFFF;
-        int contextSky = (contextLight >> 16) & 0xFFFF;
-        boolean shaders = usesEntityLayers();
-
-        /* Transparency only needs the right draw ORDER against the shared depth buffer: opaque must
-         * be flushed (writing depth) before translucent draws over it. We exploit that while also
-         * keeping the right SHADING:
-         *
-         * - opaque layers go to the terrain block layers. The vanilla terrain shader applies no
-         *   directional diffuse, so the smooth AO / face-shade already baked into the vertex colors
-         *   shows as-is (entity layers would re-shade and darken the whole structure). The provider
-         *   flushes each terrain layer as it switches, so their depth lands before the translucent
-         *   pass.
-         * - translucent goes to BBS's KEYED entity translucent-cull layer, which the provider draws
-         *   last (after every terrain layer) — so glass/water/ice composite over the opaque blocks
-         *   behind them instead of hiding them.
-         *
-         * Under a shaderpack Iris owns the terrain pipeline and relights everything itself, so the
-         * whole structure is fed through entity layers instead (no double-diffuse there). */
-        for (BakedLayer baked : this.layers)
+        if (this.mesh != null)
         {
-            RenderLayer target;
-
-            if (shaders)
+            if (usesEntityLayers())
             {
-                target = getEntityLayer(baked.layer());
-            }
-            else if (isTranslucent(baked.layer()))
-            {
-                target = TexturedRenderLayers.getEntityTranslucentCull();
+                this.mesh.draw(TexturedRenderLayers.getEntityCutout(), entry, contextLight, tint, hook);
             }
             else
             {
-                target = baked.layer();
+                this.mesh.drawLayers(entry, contextLight, tint, hook);
             }
+        }
 
-            replay(consumers.getBuffer(target), baked, pose, normalMatrix, contextBlock, contextSky, tint);
+        if (!this.translucent.isEmpty())
+        {
+            VertexConsumer out = consumers.getBuffer(TexturedRenderLayers.getEntityTranslucentCull());
+
+            for (BakedLayer baked : this.translucent)
+            {
+                replay(out, baked, entry, contextLight, tint);
+            }
         }
     }
 
     /**
-     * The color overlay pass: the same geometry replayed once more into {@link #OVERLAY_LAYER},
+     * The color overlay pass: the same geometry drawn once more through {@link #OVERLAY_LAYER},
      * where the fragment takes its color entirely from the overlay texture the caller bound (at
-     * full strength) and {@code strength} rides in the vertex alpha — so the pass composites into
+     * full strength) and {@code strength} rides in the alpha — so the pass composites into
      * {@code mix(structure, overlay, strength)} over what {@link #render} just drew.
      *
      * <p>A second pass is what the overlay costs here: the terrain shaders have no overlay
@@ -341,8 +405,10 @@ public class BakedStructure
      * re-shading — the overlay texture overwrites the fragment's RGB, so the entity layer's
      * directional diffuse never reaches it. Only alpha survives, which is why the baked per-vertex
      * alpha (real opacity on the translucent layer) still scales the strength.</p>
+     *
+     * @param hook see {@link #render}
      */
-    public void renderOverlay(MatrixStack.Entry entry, CustomVertexConsumerProvider consumers, int contextLight, float strength)
+    public void renderOverlay(MatrixStack.Entry entry, CustomVertexConsumerProvider consumers, int contextLight, float strength, Consumer<RenderLayer> hook)
     {
         int alpha = (int) (MathUtils.clamp(strength, 0F, 1F) * 255F);
 
@@ -353,24 +419,32 @@ public class BakedStructure
 
         SodiumSpriteHook.markActive(this.sprites);
 
-        VertexConsumer out = consumers.getBuffer(OVERLAY_LAYER);
-        Matrix4f pose = entry.getPositionMatrix();
-        Matrix3f normalMatrix = entry.getNormalMatrix();
-        int contextBlock = contextLight & 0xFFFF;
-        int contextSky = (contextLight >> 16) & 0xFFFF;
-
         /* White RGB: this pass carries the strength and nothing else — the color arrives through
          * the bound overlay texture, which the layer's shader writes over the fragment */
         int tint = (alpha << 24) | 0xFFFFFF;
 
-        for (BakedLayer baked : this.layers)
+        if (this.mesh != null)
         {
-            replay(out, baked, pose, normalMatrix, contextBlock, contextSky, tint);
+            this.mesh.draw(OVERLAY_LAYER, entry, contextLight, tint, hook);
+        }
+
+        if (!this.translucent.isEmpty())
+        {
+            VertexConsumer out = consumers.getBuffer(OVERLAY_LAYER);
+
+            for (BakedLayer baked : this.translucent)
+            {
+                replay(out, baked, entry, contextLight, tint);
+            }
         }
     }
 
-    private static void replay(VertexConsumer out, BakedLayer baked, Matrix4f pose, Matrix3f normalMatrix, int contextBlock, int contextSky, int tint)
+    private static void replay(VertexConsumer out, BakedLayer baked, MatrixStack.Entry entry, int contextLight, int tint)
     {
+        Matrix4f pose = entry.getPositionMatrix();
+        Matrix3f normalMatrix = entry.getNormalMatrix();
+        int contextBlock = contextLight & 0xFFFF;
+        int contextSky = (contextLight >> 16) & 0xFFFF;
         Vector4f position = new Vector4f();
         Vector3f normal = new Vector3f();
         ByteBuffer buf = baked.data();
@@ -446,11 +520,9 @@ public class BakedStructure
      * stride, extra attributes appended), so the vanilla attributes are extracted by their real
      * offsets; returns null if the format misses any of them.
      *
-     * <p>The copy lives on the heap. It used to be off-heap for the raw replay path, which
-     * bulk-copied it into the builder's own direct buffer; that path is gone and every remaining
-     * reader is an absolute {@code get}, which a heap buffer serves just as well. Off-heap would
-     * now only buy a second memory budget to exhaust and a {@code Cleaner} to wait on — a bake
-     * replaced on every biome change or resource reload is much better left to the GC.</p>
+     * <p>The copy lives on the heap: the opaque layers only pass through it on their way to the
+     * GPU, and the translucent ones are read with absolute {@code get}s, which a heap buffer
+     * serves just as well as an off-heap one, without a second memory budget to exhaust.</p>
      */
     private static ByteBuffer normalize(ByteBuffer source, VertexFormat format, int count)
     {
@@ -515,5 +587,4 @@ public class BakedStructure
             .normal(nx, ny, nz)
             .next();
     }
-
 }

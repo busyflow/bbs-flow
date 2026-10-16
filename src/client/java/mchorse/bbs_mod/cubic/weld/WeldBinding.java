@@ -28,9 +28,9 @@ import java.util.List;
  * raw size) and every pair seals independently. A single shared seam would drag the base layer out to the
  * jacket's size and puff the joint.
  *
- * <p>Because the parent draws before the child, the rigid world poses of both faces can't be known in one
- * traversal — the renderer runs a capture pass first (the renderer fills {@link Layer#resetCapture} state),
- * then {@link Layer#computeSeam}, then the draw pass snaps to {@link Layer#seam}.
+ * <p>Both faces' rigid world poses are needed before the seam can be built, so the renderer first walks the
+ * pose and captures them ({@link Layer#captureSource}, {@link Layer#captureTarget}), then
+ * {@link Layer#computeSeam}, and only then deforms the bands toward {@link Layer#seam}.
  */
 public class WeldBinding
 {
@@ -126,33 +126,6 @@ public class WeldBinding
         }
 
         return layers.isEmpty() ? null : new WeldBinding(sourceGroup, targetGroup, layers);
-    }
-
-    /**
-     * Whether any of the group's welds actually moves its geometry this frame — a seam identical to the
-     * rigid pose renders the same as the baked VAO, so the group can stay on it instead of tessellating on
-     * the CPU. A seam differs from rigid whenever the joint bends OR the two welded faces don't already
-     * coincide at rest (mismatched or overlapping cubes), so a rest-pose gap seals here too, not only bends.
-     */
-    public static boolean hasActiveSeam(List<WeldBinding> welds, ModelGroup group)
-    {
-        for (WeldBinding weld : welds)
-        {
-            if (weld.sourceGroup != group && weld.targetGroup != group)
-            {
-                continue;
-            }
-
-            for (Layer layer : weld.layers)
-            {
-                if (layer.seamReady && !layer.identity)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
     }
 
     /** The group's cubes that carry the welded face, in model order; {@link #pairByRestFit} pairs them up. */
@@ -440,10 +413,6 @@ public class WeldBinding
      */
     public static class Layer
     {
-        /* Max world-space slack (squared) between a welded corner and its seam still counted as "already there":
-         * ~1e-3 blocks (0.016 texel), far above matrix-chain float noise yet far below any visible joint gap. */
-        private static final float IDENTITY_EPS_SQ = 1.0e-6F;
-
         public final ModelCube sourceCube;
         public final ModelCube targetCube;
 
@@ -508,10 +477,6 @@ public class WeldBinding
         public boolean targetCaptured;
         public boolean seamReady;
 
-        /* The seam leaves both welded faces exactly where the rigid pose already puts them (no bend AND no
-         * rest gap between the faces), so snapping to it is a no-op and the group may ride its baked VAO. */
-        public boolean identity;
-
         private Layer(ModelCube sourceCube, CubeFace sourceFace, Matrix4f sourceGroupRest, Vector3f[] sourceRestWorld, ModelCube targetCube, CubeFace targetFace, Matrix4f targetGroupRest, Vector3f[] targetRestWorld, ModelWeld weld, float targetShare)
         {
             this.sourceCube = sourceCube;
@@ -542,6 +507,35 @@ public class WeldBinding
             this.sourceCaptured = false;
             this.targetCaptured = false;
             this.seamReady = false;
+        }
+
+        /**
+         * Record the target face's rigid world corners plus the shear axis (the face normal by the FULL cube
+         * matrix — the cube's modeling rotation is a legit part of the face direction) and the bend axis (the
+         * same normal by the BONE matrix only, so a cube's static rotate can't masquerade as a fold).
+         */
+        public void captureTarget(Matrix4f bone, Matrix4f cube)
+        {
+            for (int i = 0; i < this.targetCorners.length; i++)
+            {
+                cube.transformPosition(this.targetCorners[i], this.capturedTargetWorld[i]);
+            }
+
+            cube.transformDirection(this.capturedTargetNormalWorld.set(this.targetFaceNormal)).normalize();
+            bone.transformDirection(this.capturedTargetBoneAxis.set(this.targetFaceNormal)).normalize();
+            this.targetCaptured = true;
+        }
+
+        /** Record the source face's rigid world corners and its bone axis — see {@link #captureTarget}. */
+        public void captureSource(Matrix4f bone, Matrix4f cube)
+        {
+            for (int i = 0; i < this.sourceCorners.length; i++)
+            {
+                cube.transformPosition(this.sourceCorners[i], this.capturedSourceWorld[i]);
+            }
+
+            bone.transformDirection(this.capturedSourceBoneAxis.set(this.sourceFaceNormal)).normalize();
+            this.sourceCaptured = true;
         }
 
         /**
@@ -591,10 +585,6 @@ public class WeldBinding
             }
 
             this.applyTwist();
-
-            /* Ride the VAO only when the seam moves nothing — no bend AND the faces already meet at rest. A
-             * rest-pose gap makes this false, so the weld seals it now instead of snapping it shut on first bend. */
-            this.identity = this.seamMatchesRigid();
             this.seamReady = true;
         }
 
@@ -680,33 +670,6 @@ public class WeldBinding
             if (angle < -Math.PI) angle += twoPi;
 
             return angle;
-        }
-
-        /**
-         * Whether the finished seam leaves BOTH welded faces exactly where their rigid pose already puts them:
-         * the target corners unmoved and every source corner already sitting on the seam it maps to. Only then
-         * is snapping a true no-op — a bent joint moves the target, and a rest gap (mismatched or overlapping
-         * cubes) leaves the source off-seam — so anything else must render through the seam, not the VAO.
-         */
-        private boolean seamMatchesRigid()
-        {
-            for (int k = 0; k < this.seam.length; k++)
-            {
-                if (this.seam[k].distanceSquared(this.capturedTargetWorld[k]) > IDENTITY_EPS_SQ)
-                {
-                    return false;
-                }
-            }
-
-            for (int r = 0; r < this.sourceToTarget.length; r++)
-            {
-                if (this.capturedSourceWorld[r].distanceSquared(this.seam[this.sourceToTarget[r]]) > IDENTITY_EPS_SQ)
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
 
         /**

@@ -22,12 +22,10 @@ import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.UIShakeControlFields;
-import mchorse.bbs_mod.ui.utils.bones.UIBoneTreeList;
+import mchorse.bbs_mod.ui.utils.bones.BoneRoles;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.pose.ModelShakeManager;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -38,9 +36,6 @@ import java.util.function.Consumer;
  */
 public class UIModelShakeFormPanel extends UIBoneListFormPanel
 {
-    /** The shake track's own green — the camera shake clip's. */
-    private static final int MARKER_SHAKE = Colors.A100 | 0x159e64;
-
     public UIToggle enabled;
     public UISliderTrackpad strength;
     public UISliderTrackpad frequency;
@@ -63,13 +58,10 @@ public class UIModelShakeFormPanel extends UIBoneListFormPanel
     /** Shown when IK or Spline IK owns the bone's rotation: the solve would take the shake out of it. */
     private UILabel driven;
 
-    private final Map<String, UIBoneTreeList.Marker[]> boneMarkers = new HashMap<>();
-
     public UIModelShakeFormPanel(UIForm editor)
     {
         super(editor);
 
-        this.bones.markers(this.boneMarkers::get, UIKeys.FORMS_EDITORS_MODEL_SHAKE_BONES_TOOLTIP);
         this.bonePresets(ModelShakeManager.INSTANCE, "_CopyModelShake",
             UIKeys.FORMS_EDITORS_MODEL_SHAKE_CONTEXT_COPY,
             UIKeys.FORMS_EDITORS_MODEL_SHAKE_CONTEXT_PASTE,
@@ -227,8 +219,6 @@ public class UIModelShakeFormPanel extends UIBoneListFormPanel
             return;
         }
 
-        this.updateMarkers();
-
         FormBone bone = this.selectedFormBone();
         BoneShake shake = bone == null ? BoneShake.DEFAULT : bone.shake.get();
         boolean on = shake.enabled;
@@ -256,23 +246,17 @@ public class UIModelShakeFormPanel extends UIBoneListFormPanel
         this.options.resize();
     }
 
-    /** A dot on every shaking bone, so the rig's shake reads off the list itself. */
-    private void updateMarkers()
+    /** A shaking bone simply reads at full strength — shake is the only thing this tab sets. */
+    @Override
+    protected void describeBones(BoneRoles roles)
     {
-        this.boneMarkers.clear();
-
-        if (this.form == null)
+        this.forEachFormBone((bone) ->
         {
-            return;
-        }
-
-        for (BaseValue value : this.form.bones.getAll())
-        {
-            if (value instanceof FormBone bone && bone.hasShake())
+            if (bone.hasShake())
             {
-                this.boneMarkers.put(bone.getId(), new UIBoneTreeList.Marker[] {new UIBoneTreeList.Marker(MARKER_SHAKE, false)});
+                roles.touch(bone.getId());
             }
-        }
+        });
     }
 
     /** A preset is every shaking bone's shake with its strength, keyed by the bone. */

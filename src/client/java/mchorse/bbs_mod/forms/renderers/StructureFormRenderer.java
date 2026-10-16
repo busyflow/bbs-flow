@@ -43,15 +43,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 
 /**
  * Renders a {@link StructureForm}: every block of the structure goes through the vanilla
  * block/fluid renderer against a {@link StructureRenderWorld} (smooth AO + biome tint baked
  * at tesselation time, textures from the active resource pack).
  *
- * <p>Normal rendering replays a {@link BakedStructure} (tesselated once per
- * structure/biome/resource generation). The naive per-frame path is kept only for editor
- * picking, where the hijacked picker shader is applied per draw.</p>
+ * <p>The geometry is a {@link BakedStructure}, tesselated once per structure/biome/resource
+ * generation and shared by every form showing that structure; the per-layer setup a draw needs
+ * (fading, color overlay, the picking program) is handed to it as a hook.</p>
  */
 public class StructureFormRenderer extends FormRenderer<StructureForm>
 {
@@ -59,12 +60,9 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
     private static final Color OVERLAY = new Color();
 
     private String lastStructure;
-    private String lastBiome;
     private int lastGeneration = -1;
 
     private StructureRenderData data;
-    private StructureRenderWorld world;
-    private BakedStructure baked;
 
     private List<BlockEntity> blockEntities;
     private final Set<BlockPos> erroredBlockEntities = new HashSet<>();
@@ -74,12 +72,13 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
 
     private final Vector3f offset = new Vector3f();
     private Vector3f partOffset;
+    private String partBiome;
 
     protected StructureFormRenderer(StructureForm form, StructureRenderData data, String biome, Vector3f offset)
     {
         super(form);
         this.data = Objects.requireNonNull(data);
-        this.world = new StructureRenderWorld(data, biome);
+        this.partBiome = biome;
         this.partOffset = new Vector3f(offset);
     }
 
@@ -88,14 +87,13 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
         super(form);
     }
 
-    /** Reload structure/biome when the form properties change, or the manager dropped its cache. */
+    /** Reload the structure when the form property changes, or the manager dropped its cache. */
     private void ensureData()
     {
         if (this.partOffset != null) return;
 
         int generation = StructureManager.getGeneration();
         String structure = this.form.structure.get();
-        String biome = this.form.biome.get();
 
         /* A new generation means a world switch or a re-scan from the picker: every piece of state
          * below was derived from data (and a client world) that no longer applies */
@@ -111,18 +109,13 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
         {
             /* The manager can only answer once a world is present — retry until it does */
             this.data = StructureManager.get(structure);
-
-            if (this.data == null)
-            {
-                return;
-            }
         }
+    }
 
-        if (this.world == null || !Objects.equals(biome, this.lastBiome))
-        {
-            this.lastBiome = biome;
-            this.world = new StructureRenderWorld(this.data, biome);
-        }
+    /** The shared bake of what this renderer shows, in the biome it shows it in. */
+    private BakedStructure getBaked()
+    {
+        return BakedStructure.get(this.data, this.partOffset != null ? this.partBiome : this.form.biome.get());
     }
 
     /**
@@ -188,19 +181,9 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
     private void reset()
     {
         this.data = null;
-        this.world = null;
-        this.baked = null;
         this.blockEntities = null;
         this.structureWorld = null;
         this.erroredBlockEntities.clear();
-    }
-
-    private void ensureBaked()
-    {
-        if (this.baked == null || !this.baked.isValidFor(this.world))
-        {
-            this.baked = BakedStructure.bake(this.data, this.world);
-        }
     }
 
     /**
@@ -309,7 +292,7 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
     {
         this.ensureData();
 
-        if (this.world == null)
+        if (this.data == null)
         {
             /* No structure picked (or not loadable) — render a structure block as the
              * placeholder, the same way the block form renders its preview */
@@ -328,12 +311,14 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
         Color overlay = this.form.overlayColor.get();
         boolean overlayActive = OverlayBlend.isActive(overlay);
         int previousOverlayTexture = 0;
+        Consumer<RenderLayer> hook = null;
 
         if (overlayActive)
         {
             previousOverlayTexture = FormOverlay.bind(overlay);
+            hook = (layer) -> setupOverlay(layer, overlay);
 
-            CustomVertexConsumerProvider.hijackVertexFormat((layer) -> setupOverlay(layer, overlay));
+            CustomVertexConsumerProvider.hijackVertexFormat(hook);
         }
 
         matrices.push();
@@ -349,17 +334,16 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
             matrices.peek().getNormalMatrix().getScale(Vectors.EMPTY_3F);
             matrices.peek().getNormalMatrix().scale(1F / Vectors.EMPTY_3F.x, -1F / Vectors.EMPTY_3F.y, 1F / Vectors.EMPTY_3F.z);
 
-            this.ensureBaked();
-
+            BakedStructure baked = this.getBaked();
             Color set = Color.white();
             FormColorBlend.blend(set, this.form.color.get());
 
             consumers.setUI(true);
-            this.baked.render(matrices.peek(), consumers, LightmapTextureManager.MAX_LIGHT_COORDINATE, set.getARGBColor());
+            baked.render(matrices.peek(), consumers, LightmapTextureManager.MAX_LIGHT_COORDINATE, set.getARGBColor(), hook);
 
             if (overlayActive && !BakedStructure.usesEntityLayers())
             {
-                this.baked.renderOverlay(matrices.peek(), consumers, LightmapTextureManager.MAX_LIGHT_COORDINATE, overlay.a * set.a);
+                baked.renderOverlay(matrices.peek(), consumers, LightmapTextureManager.MAX_LIGHT_COORDINATE, overlay.a * set.a, hook);
             }
 
             consumers.setSubstitute(BBSRendering.getColorConsumer(set));
@@ -433,7 +417,7 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
             return;
         }
 
-        if (this.world == null)
+        if (this.data == null)
         {
             return;
         }
@@ -466,17 +450,18 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
             COLOR.set(context.color);
             FormColorBlend.blend(COLOR, this.form.color.get());
 
-            this.ensureBaked();
+            BakedStructure baked = this.getBaked();
 
             if (context.isPicking())
             {
-                CustomVertexConsumerProvider.hijackVertexFormat((layer) ->
+                Consumer<RenderLayer> hook = (layer) ->
                 {
                     this.setupTarget(context, BBSShaders.getPickerModelsProgram());
                     RenderSystem.setShader(BBSShaders::getPickerModelsProgram);
-                });
+                };
 
-                this.baked.render(context.stack.peek(), consumers, context.light, 0xFFFFFFFF);
+                CustomVertexConsumerProvider.hijackVertexFormat(hook);
+                baked.render(context.stack.peek(), consumers, context.light, 0xFFFFFFFF, hook);
             }
             else
             {
@@ -486,8 +471,7 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
                  * and reveal the back faces behind them ("tearing" at grazing angles). Translucent
                  * blocks (glass/water) still blend through their own entity translucent-cull layer. */
                 boolean faded = COLOR.a < 1F;
-
-                CustomVertexConsumerProvider.hijackVertexFormat((layer) ->
+                Consumer<RenderLayer> hook = (layer) ->
                 {
                     if (faded)
                     {
@@ -498,13 +482,14 @@ public class StructureFormRenderer extends FormRenderer<StructureForm>
                     {
                         setupOverlay(layer, overlay);
                     }
-                });
+                };
 
-                this.baked.render(context.stack.peek(), consumers, context.light, COLOR.getARGBColor());
+                CustomVertexConsumerProvider.hijackVertexFormat(hook);
+                baked.render(context.stack.peek(), consumers, context.light, COLOR.getARGBColor(), hook);
 
                 if (overlayActive && !BakedStructure.usesEntityLayers())
                 {
-                    this.baked.renderOverlay(context.stack.peek(), consumers, context.light, overlay.a * COLOR.a);
+                    baked.renderOverlay(context.stack.peek(), consumers, context.light, overlay.a * COLOR.a, hook);
                 }
 
                 /* Block entities still go through the consumer interface — tint them via substitute */

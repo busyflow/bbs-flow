@@ -295,7 +295,6 @@
     "bbs.ui.camera.panels.edit_keyframes": "編輯關鍵幀",
     "bbs.ui.camera.panels.enabled": "啟用",
     "bbs.ui.camera.panels.envelopes.end_d": "淡出",
-    "bbs.ui.camera.panels.envelopes.modes.normal": "普通",
     "bbs.ui.camera.panels.envelopes.post": "後",
     "bbs.ui.camera.panels.envelopes.pre": "前",
     "bbs.ui.camera.panels.envelopes.start_d": "淡入",

@@ -37,6 +37,8 @@ import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
 import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.l10n.L10n;
 import mchorse.bbs_mod.resources.Link;
+import mchorse.bbs_mod.settings.values.base.BaseValue;
+import mchorse.bbs_mod.settings.values.base.BaseValueBasic;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.film.UIClipsPanel;
@@ -60,6 +62,7 @@ import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCategoryBar;
 import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
 import mchorse.bbs_mod.ui.utils.BoneSelection;
 import mchorse.bbs_mod.ui.utils.IBoneSelectionHost;
+import mchorse.bbs_mod.ui.utils.ILivePoseHost;
 import mchorse.bbs_mod.ui.utils.Area;
 import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.Scale;
@@ -95,7 +98,7 @@ import java.util.Set;
 import mchorse.bbs_mod.ui.utils.GizmoInteraction;
 import mchorse.bbs_mod.ui.utils.SplineEditorUtils;
 
-public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
+public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, ILivePoseHost
 {
     private final BoneSelection boneSelection = new BoneSelection();
 
@@ -161,6 +164,14 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
      */
     private final Map<String, FoldState<String>> expandedTracksByReplay = new HashMap<>();
     private final Map<String, TimelineBodyPartSelection> selectedPartsByReplay = new HashMap<>();
+    /**
+     * Each replay's own time zoom. A rebuild for the same replay keeps the view as it is, but
+     * switching to another replay brings back the view it was left with (or fits its keys the
+     * first time) instead of dragging the previous replay's zoom along.
+     */
+    private final Map<String, Scale> timeViewByReplay = new HashMap<>();
+    /** The replay the current keyframe timeline was built for. */
+    private String timelineReplayId;
     private TimelineBodyPartSelection partSelection = new TimelineBodyPartSelection();
     private boolean allBodyPartsSetting;
     private final Map<String, List<String>> recentTrackSearches = new HashMap<>();
@@ -438,6 +449,9 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
         this.useActionViewportForNewKeyframes = false;
         this.expandedTracksByReplay.clear();
         this.selectedPartsByReplay.clear();
+        this.timeViewByReplay.clear();
+        /* The timeline still shows the old film's replay; its view doesn't belong in the new film's map. */
+        this.timelineReplayId = null;
         this.replaysList.setBodyPartsReplay(null, this.partSelection);
         this.film = film;
         this.filmPanel.getController().orbit.reset();
@@ -573,12 +587,16 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
         this.replaysList.resize();
 
         UIKeyframes lastEditor = this.keyframeEditor != null ? this.keyframeEditor.view : null;
+        String lastReplayId = this.timelineReplayId;
 
         if (this.keyframeEditor != null)
         {
+            this.rememberTimeView(lastReplayId, lastEditor);
             this.keyframeEditor.removeFromParent();
             this.keyframeEditor = null;
         }
+
+        this.timelineReplayId = null;
 
         if (this.replay == null)
         {
@@ -779,6 +797,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
             }
 
             this.add(this.keyframeEditor);
+            this.timelineReplayId = this.replay.getId();
             /* Category bar + actions toggle on top so they overlay the track names column. */
             this.bringBarToFront();
             this.updateTimelineModeVisibility();
@@ -786,9 +805,9 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
 
         this.resize();
 
-        if (this.keyframeEditor != null && lastEditor == null)
+        if (this.keyframeEditor != null && (lastEditor == null || !this.timelineReplayId.equals(lastReplayId)))
         {
-            this.keyframeEditor.view.resetView();
+            this.restoreTimeView(this.keyframeEditor.view, lastEditor != null);
         }
 
         if (this.keyframeEditor != null && (this.actionsMode || this.useActionViewportForNewKeyframes))
@@ -1008,6 +1027,48 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
         this.updateTimelineModeVisibility();
     }
 
+    private void rememberTimeView(String replayId, UIKeyframes editor)
+    {
+        if (replayId == null) return;
+
+        Scale view = this.timeViewByReplay.computeIfAbsent(replayId, (k) -> new Scale(null));
+
+        editor.getXAxis().updateZoom();
+        view.copy(editor.getXAxis());
+    }
+
+    /**
+     * Bring back the current replay's own time zoom, or fit its keys if it has none yet. A replay
+     * without keys (a freshly added one) keeps the view copied from the previous replay, so the
+     * playhead stays where the user was working instead of jumping to the film's start.
+     */
+    private void restoreTimeView(UIKeyframes editor, boolean hasPreviousView)
+    {
+        Scale view = this.timeViewByReplay.get(this.timelineReplayId);
+
+        if (view == null)
+        {
+            if (!hasPreviousView || hasKeyframes(editor.getOperationSheets()))
+            {
+                editor.resetView();
+            }
+        }
+        else
+        {
+            editor.getXAxis().copy(view);
+        }
+    }
+
+    private static boolean hasKeyframes(List<UIKeyframeSheet> sheets)
+    {
+        for (UIKeyframeSheet sheet : sheets)
+        {
+            if (!sheet.channel.isEmpty()) return true;
+        }
+
+        return false;
+    }
+
     private void copyTimeViewport(UITimelineCanvas source, UITimelineCanvas target)
     {
         source.getXAxis().updateZoom();
@@ -1106,6 +1167,30 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost
     public BoneSelection getBoneSelection()
     {
         return this.boneSelection;
+    }
+
+    /**
+     * The film renders the replay's entity, whose form is a copy of the replay's: the property is
+     * found there by its path, with the tracks laid over it at the playhead so it holds the frame
+     * on screen.
+     */
+    @Override
+    public LivePose getLivePose(BaseValue property)
+    {
+        Replay replay = this.getReplay();
+        IEntity entity = this.filmPanel.getController().getCurrentEntity();
+        Form root = entity == null ? null : entity.getForm();
+
+        if (replay == null || root == null || property == null)
+        {
+            return null;
+        }
+
+        replay.properties.applyProperties(root, this.filmPanel.getCursor());
+
+        BaseValueBasic live = FormUtils.getProperty(root, FormUtils.getPropertyPath(property));
+
+        return live == null ? null : new LivePose(live, entity, 0F);
     }
 
     private void pickFormBone(Form form, String bone, boolean insert)

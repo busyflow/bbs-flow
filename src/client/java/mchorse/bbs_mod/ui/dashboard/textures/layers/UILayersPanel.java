@@ -10,40 +10,46 @@ import mchorse.bbs_mod.ui.dashboard.textures.UITexturePainter;
 import mchorse.bbs_mod.ui.dashboard.textures.data.TextureLayer;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.UIScrollView;
+import mchorse.bbs_mod.ui.framework.elements.UISection;
 import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
 import mchorse.bbs_mod.ui.framework.elements.input.UITexturePicker;
 import mchorse.bbs_mod.ui.utils.context.MenuVerb;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
-import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.utils.StringUtils;
 import mchorse.bbs_mod.utils.resources.Pixels;
 
-public class UILayersPanel extends UIElement
+/**
+ * The layers as a section of the options column, the last one: it sits on the column's bottom edge
+ * and folds down onto it. Its list is as tall as the layers, up to the room the column gives it.
+ */
+public class UILayersPanel extends UISection
 {
-    /** Gap between the layer list and the controls row under it. Exactly one control row tall —
-     *  the old layout subtracted two rows while only one exists, and this keeps that spacing. */
-    private static final int CONTROLS_GAP = UIConstants.CONTROL_HEIGHT;
+    /* The list's spacing and its rows, to tell how tall the layers are */
+    private static final int LIST_SPACING = 5;
+    private static final int ROW_HEIGHT = 20;
+
+    /** What a section adds around its fields: the padding both ways, the title row and the gap under it. */
+    private static final int SECTION_CHROME = 4 * 2 + 10 + UIConstants.MARGIN;
 
     private UITexturePainter painter;
+    private UIElement body;
     private UIScrollView list;
     private UIIcon addLayer;
     private UISliderTrackpad opacity;
-    
+
     public UITextureEditor currentEditor;
 
     public UILayersPanel(UITexturePainter painter)
     {
+        super(UIKeys.TEXTURES_LAYERS);
+
         this.painter = painter;
 
-        this.list = UI.scrollView(5, 5);
+        this.list = UI.scrollView(LIST_SPACING, 0);
         this.list.scroll.cancelScrolling();
-
-        UILabel label = UI.label(UIKeys.TEXTURES_LAYERS).background();
-        label.relative(this).w(1F).h(20);
-        label.labelAnchor(0.5F, 0.5F);
 
         this.addLayer = new UIIcon(Icons.ADD, (b) -> this.openAddLayerMenu());
         this.addLayer.tooltip(UIKeys.TEXTURES_LAYERS_ADD);
@@ -67,15 +73,37 @@ public class UILayersPanel extends UIElement
         this.opacity.limit(0, 100).integer().setValue(100);
         this.opacity.tooltip(UIKeys.TEXTURES_LAYERS_OPACITY);
 
+        /* The section's fields are a column; the list and its controls row need a box of a known
+         * height to share, which fit() gives them */
+        this.body = new UIElement();
+
         UIElement controls = UI.row(this.addLayer, this.opacity);
-        controls.relative(this).x(UIConstants.MARGIN).y(1F, -UIConstants.CONTROL_HEIGHT - 5).w(1F, -UIConstants.MARGIN * 2).h(UIConstants.CONTROL_HEIGHT);
+        controls.relative(this.body).y(1F, -UIConstants.CONTROL_HEIGHT).w(1F).h(UIConstants.CONTROL_HEIGHT);
 
-        /* The list runs from under the title down to the controls row: it is told where that row
-         * begins rather than restating how tall it is. Added after the row, because hTo reads the
-         * target's area from this pass only if the target was laid out first. */
-        this.list.relative(this).y(20).w(1F).hTo(controls.area, 0F, -CONTROLS_GAP);
+        /* The list runs from the top down to the controls row: it is told where that row begins
+         * rather than restating how tall it is. Added after the row, because hTo reads the target's
+         * area from this pass only if the target was laid out first. */
+        this.list.relative(this.body).w(1F).hTo(controls.area, 0F, -UIConstants.MARGIN);
 
-        this.add(label, controls, this.list);
+        this.body.add(controls, this.list);
+        this.fields.add(this.body);
+    }
+
+    /**
+     * Size the list for the room the column gives the whole section, {@code max}: as tall as the
+     * layers, but no taller once there are more of them than fit, when the list scrolls instead.
+     */
+    public void fit(int max)
+    {
+        Document document = this.document();
+        int rows = Math.max(1, document == null ? 0 : document.layers.size());
+
+        this.body.h(Math.min(this.bodyHeight(rows), Math.max(max - SECTION_CHROME, this.bodyHeight(1))));
+    }
+
+    private int bodyHeight(int rows)
+    {
+        return rows * ROW_HEIGHT + (rows - 1) * LIST_SPACING + UIConstants.MARGIN + UIConstants.CONTROL_HEIGHT;
     }
 
     public void setEditor(UITextureEditor editor)
@@ -205,6 +233,7 @@ public class UILayersPanel extends UIElement
             }
         }
 
-        this.list.resize();
+        /* Another layer makes the section taller, so the column has to lay out again */
+        this.resizeParent();
     }
 }

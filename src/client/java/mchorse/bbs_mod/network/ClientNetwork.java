@@ -548,6 +548,15 @@ public class ClientNetwork
 
     /** Ask the server to write the wand's region out. The reply drops the structure cache. */
     /** Save the region and empty it out of the world, for the film cut. */
+    public static void sendConvertModelBlock(BlockPos pos)
+    {
+        PacketByteBuf buf = PacketByteBufs.create();
+
+        buf.writeBlockPos(pos);
+
+        ClientPlayNetworking.send(ServerNetwork.SERVER_CONVERT_MODEL_BLOCK, buf);
+    }
+
     public static void sendCutStructure(String name, BlockPos from, BlockPos to)
     {
         PacketByteBuf buf = PacketByteBufs.create();

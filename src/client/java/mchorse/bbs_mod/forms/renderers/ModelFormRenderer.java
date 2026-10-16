@@ -112,6 +112,9 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
     private ModelInstance lastModel;
     private boolean renderingArm;
 
+    /** The IK and physics overlays, read off the rig with the model and drawn after the body parts — see {@link ModelIKDebug#prepare}. */
+    private final List<Runnable> overlays = new ArrayList<>();
+
     private IEntity entity = new StubEntity();
 
     /* The shake's clock off the film: the entity's age, held while a transform gesture runs and
@@ -588,12 +591,8 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
 
         if (stencilMap == null && !this.renderingArm && this.form != null)
         {
-            ModelIKDebug.render(newStack, model.model, this.form, "");
-        }
-
-        if (stencilMap == null && !this.renderingArm && this.form != null)
-        {
-            ModelPhysicsDebug.render(newStack, model.model, this.form, target.getAge(), "");
+            this.addOverlay(ModelIKDebug.prepare(newStack, model.model, this.form, ""));
+            this.addOverlay(ModelPhysicsDebug.prepare(newStack, model.model, this.form, target.getAge(), ""));
         }
 
         gameRenderer.getLightmapTextureManager().disable();
@@ -1136,18 +1135,24 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
 
         model.fillStencilMap(context.stencilMap, this.form);
 
-        context.stack.push();
-        this.applySplineMotion(context.stack);
         if (this.form != null)
         {
-            ModelIKDebug.renderStencil(context.stack, model.model, this.form, context.stencilMap, this.form);
-        }
+            /* Its own stack: the markers draw after the body parts, when the context's has moved on. */
+            MatrixStack stack = new MatrixStack();
 
-        if (this.form != null)
-        {
-            ModelPhysicsDebug.renderStencil(context.stack, model.model, this.form, context.stencilMap, this.form);
+            MatrixStackUtils.multiply(stack, context.stack.peek().getPositionMatrix());
+            this.applySplineMotion(stack);
+            this.addOverlay(ModelIKDebug.prepareStencil(stack, model.model, this.form, context.stencilMap, this.form));
+            this.addOverlay(ModelPhysicsDebug.prepareStencil(stack, model.model, this.form, context.stencilMap, this.form));
         }
-        context.stack.pop();
+    }
+
+    private void addOverlay(Runnable overlay)
+    {
+        if (overlay != null)
+        {
+            this.overlays.add(overlay);
+        }
     }
 
     private void captureMatrices(ModelInstance model)
@@ -1217,6 +1222,14 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         {
             context.world.pop();
         }
+
+        /* Last, so the parts can't paint over the debug drawn through the model. */
+        for (Runnable overlay : this.overlays)
+        {
+            overlay.run();
+        }
+
+        this.overlays.clear();
     }
 
     @Override

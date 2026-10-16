@@ -24,6 +24,7 @@ import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.iris.IrisShaderPacks;
+import mchorse.bbs_mod.utils.iris.ShaderOptions;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import java.io.File;
@@ -215,16 +216,12 @@ public class UIUtilityOverlayPanel extends UIOverlayPanel
     private void selectShader(String name)
     {
         if (!this.iris || name.equals(IrisShaderPacks.current())) return;
-        try
+        UIContext context = this.getContext();
+        ShaderOptions.reload(() -> IrisShaderPacks.select(name), () ->
         {
-            IrisShaderPacks.select(name);
-        }
-        catch (Exception e)
-        {
-            e.printStackTrace();
-            UIOverlay.addOverlay(this.getContext(), new UIMessageOverlayPanel(UIKeys.GENERAL_ERROR, UIKeys.UTILITY_SHADER_ERROR));
-        }
-        this.shaders.setCurrent(IrisShaderPacks.current());
+            this.shaders.setCurrent(IrisShaderPacks.current());
+            UIOverlay.addOverlay(context, new UIMessageOverlayPanel(UIKeys.GENERAL_ERROR, UIKeys.UTILITY_SHADER_ERROR));
+        });
     }
 
     @Override

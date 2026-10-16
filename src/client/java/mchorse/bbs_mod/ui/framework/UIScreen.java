@@ -6,9 +6,12 @@ import mchorse.bbs_mod.client.PixelArt;
 import mchorse.bbs_mod.importers.IImportPathProvider;
 import mchorse.bbs_mod.importers.ImporterContext;
 import mchorse.bbs_mod.importers.Importers;
+import mchorse.bbs_mod.importers.ModelImporter;
 import mchorse.bbs_mod.importers.types.IImporter;
+import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.utils.IFileDropListener;
+import mchorse.bbs_mod.ui.utils.IFileDropTarget;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.utils.FFMpegUtils;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
@@ -252,9 +255,62 @@ public class UIScreen extends Screen implements IFileDropListener
     {
         if (this.menu != null)
         {
+            List<File> files = new ArrayList<>();
+
+            for (String path : paths)
+            {
+                File file = new File(path);
+
+                if (file.exists())
+                {
+                    files.add(file);
+                }
+            }
+
+            if (files.isEmpty())
+            {
+                return;
+            }
+
+            UIContext ui = this.menu.context;
+            var window = this.client.getWindow();
+
+            /* The cursor is put on the drop point right before the drop arrives, but the menu
+             * only reads the mouse while it renders */
+            ui.setMouse(
+                (int) (this.client.mouse.getX() * window.getScaledWidth() / window.getWidth()),
+                (int) (this.client.mouse.getY() * window.getScaledHeight() / window.getHeight())
+            );
+
+            for (IFileDropTarget target : this.menu.getRoot().getChildren(IFileDropTarget.class))
+            {
+                if (target.dropFiles(ui, files))
+                {
+                    return;
+                }
+            }
+
+            List<String> models = ModelImporter.importFiles(files);
+
+            if (models != null)
+            {
+                if (models.isEmpty())
+                {
+                    ui.notifyError(UIKeys.IMPORTER_MODEL_ERROR);
+                }
+                else
+                {
+                    IKey message = models.size() == 1 ? UIKeys.IMPORTER_MODEL_NOTIFICATION : UIKeys.IMPORTER_MODELS_NOTIFICATION;
+
+                    ui.notifySuccess(message.format(String.join(", ", models)));
+                }
+
+                return;
+            }
+
             if (!FFMpegUtils.checkFFMPEG())
             {
-                this.menu.context.notifyError(UIKeys.IMPORTER_FFMPEG_NOTIFICATION);
+                ui.notifyError(UIKeys.IMPORTER_FFMPEG_NOTIFICATION);
 
                 return;
             }
@@ -271,18 +327,6 @@ public class UIScreen extends Screen implements IFileDropListener
                     open = false;
 
                     break;
-                }
-            }
-
-            List<File> files = new ArrayList<>();
-
-            for (String path : paths)
-            {
-                File file = new File(path);
-
-                if (file.exists())
-                {
-                    files.add(file);
                 }
             }
 

@@ -311,7 +311,7 @@ public class UITextureBrowser extends UIElement implements IFolderTreeHost
         this.infoHandle.relative(this.info).x(0).y(0.5F).w(6).h(40).anchor(0.5F, 0.5F);
 
         this.bar.relative(this).xy(0, 0).w(1F).h(BAR_HEIGHT);
-        this.bar.add(this.back, this.treeToggle, this.multiToggle, this.search, this.everywhere, this.sort, this.newTexture, picker.close);
+        this.bar.add(this.back, this.treeToggle, this.multiToggle, this.search, this.everywhere, this.sort, this.newTexture);
         /* The grid goes before the tree: it clears the drag's target as its frame begins, and
          * the tree reports a folder of its own while painting after it */
         this.add(this.bar, this.crumbs, this.text, this.grid, this.left, this.info, picker.editor, this.leftHandle, this.infoHandle, this.clearClipboard);
@@ -1243,7 +1243,7 @@ public class UITextureBrowser extends UIElement implements IFolderTreeHost
             }
         });
 
-        panel.text.filename();
+        panel.text.validator(UITextbox.SPACED_FILENAME_PREDICATE);
         panel.text.setText(name);
         panel.text.textbox.selectFilename();
 
@@ -1480,7 +1480,7 @@ public class UITextureBrowser extends UIElement implements IFolderTreeHost
 
             return true;
         }
-        else if (context.isPressed(GLFW.GLFW_KEY_F2))
+        else if (context.isPressed(Keys.TEXTURE_PICKER_RENAME))
         {
             List<Link> subjects = this.modifiableSubjects();
 

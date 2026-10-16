@@ -203,7 +203,8 @@ final class ModelPhysicsCache
         return new Compiled(out);
     }
 
-    private static List<String> buildChainIds(IModel model, String endId, String rootId)
+    /** The chain's bones from its root down to its end, or none when the end isn't below the root. */
+    static List<String> buildChainIds(IModel model, String endId, String rootId)
     {
         List<String> list = new ArrayList<>();
         String group = endId;

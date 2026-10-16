@@ -1,12 +1,13 @@
 package mchorse.bbs_mod.utils;
 
 import mchorse.bbs_mod.BBSMod;
-import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.client.BBSRendering;
-import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.sound.PositionedSoundInstance;
+import net.minecraft.sound.SoundEvent;
+import net.minecraft.sound.SoundEvents;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL12;
 import org.lwjgl.opengl.GL30;
@@ -29,7 +30,17 @@ import java.util.concurrent.TimeUnit;
 
 public class VideoRecorder
 {
-    private static final Link RENDER_COMPLETE_SOUND = Link.assets("sounds/render_complete.ogg");
+    /** Vanilla sounds, one of which is picked at random when an export is done */
+    private static final List<SoundEvent> FINISH_SOUNDS = List.of(
+        SoundEvents.BLOCK_NOTE_BLOCK_PLING.value(),
+        SoundEvents.UI_CARTOGRAPHY_TABLE_TAKE_RESULT,
+        SoundEvents.UI_LOOM_TAKE_RESULT,
+        SoundEvents.UI_STONECUTTER_TAKE_RESULT,
+        SoundEvents.BLOCK_BELL_USE,
+        SoundEvents.UI_TOAST_CHALLENGE_COMPLETE,
+        SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP,
+        SoundEvents.ENTITY_ITEM_PICKUP
+    );
 
     private Process process;
     private WritableByteChannel channel;
@@ -301,10 +312,9 @@ public class VideoRecorder
     {
         if (BBSSettings.videoPlaySoundAfterExport.get())
         {
-            if (BBSModClient.getSounds().play(RENDER_COMPLETE_SOUND) == null)
-            {
-                UIUtils.playClick(0.5F);
-            }
+            SoundEvent sound = FINISH_SOUNDS.get((int) (Math.random() * FINISH_SOUNDS.size()));
+
+            MinecraftClient.getInstance().getSoundManager().play(PositionedSoundInstance.master(sound, 1F, 1F));
         }
 
         if (BBSSettings.videoOpenFolderAfterExport.get())

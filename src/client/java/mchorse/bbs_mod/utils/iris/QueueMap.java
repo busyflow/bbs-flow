@@ -49,16 +49,9 @@ public class QueueMap<K, V> implements Map<K, V>
     @Override
     public @Nullable V put(K key, V value)
     {
-        ShaderCurves.ShaderVariable variable = ShaderCurves.variableMap.get(key);
-
-        if (variable != null && value instanceof String string)
+        if (key instanceof String name && value instanceof String string)
         {
-            try
-            {
-                variable.defaultValue = Float.parseFloat(string);
-            }
-            catch (Exception e)
-            {}
+            ShaderCurves.setDefault(name, string);
         }
 
         return this.map.put(key, value);
@@ -75,16 +68,9 @@ public class QueueMap<K, V> implements Map<K, V>
     {
         for (K k : m.keySet())
         {
-            ShaderCurves.ShaderVariable variable = ShaderCurves.variableMap.get(k);
-
-            if (variable != null && m.get(k) instanceof String string)
+            if (k instanceof String name && m.get(k) instanceof String string)
             {
-                try
-                {
-                    variable.defaultValue = Float.parseFloat(string);
-                }
-                catch (Exception e)
-                {}
+                ShaderCurves.setDefault(name, string);
             }
         }
 

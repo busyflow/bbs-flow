@@ -117,6 +117,35 @@ tasks.named('check') {
 	dependsOn tasks.named('migrationTest'), tasks.named('anchorInterpolationTest')
 }
 
+tasks.register('glslDynamicOptionsTest', JavaExec) {
+	group = 'verification'
+	description = 'Checks turning shader pack options and their #if blocks into uniforms and runtime code.'
+	dependsOn tasks.named('testClasses')
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'mchorse.bbs_mod.utils.glsl.GlslDynamicOptionsTest'
+}
+
+tasks.named('check') {
+	dependsOn tasks.named('glslDynamicOptionsTest')
+}
+
+/* Manual runs on real shader packs: --args="<pack zip or folder> ..." */
+tasks.register('glslPackHarness', JavaExec) {
+	group = 'verification'
+	description = 'Transforms every program of the given shader packs and checks the result still parses.'
+	dependsOn tasks.named('testClasses')
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'mchorse.bbs_mod.utils.glsl.GlslPackHarness'
+}
+
+tasks.register('glslCompileHarness', JavaExec) {
+	group = 'verification'
+	description = 'Builds every program of the given shader packs with the GPU driver, as is and transformed.'
+	dependsOn tasks.named('testClasses')
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'mchorse.bbs_mod.utils.glsl.GlslCompileHarness'
+}
+
 tasks.register('splineIKSolverTest', JavaExec) {
 	group = 'verification'
 	description = 'Checks spline arc lengths, segment lengths, frames and deterministic evaluation.'

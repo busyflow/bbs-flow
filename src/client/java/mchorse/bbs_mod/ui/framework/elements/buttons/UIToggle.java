@@ -90,6 +90,12 @@ public class UIToggle extends UIClickable<UIToggle> implements ITextColoring
     /** Neutral, a touch below the brightest thing the interface draws. */
     private static final int KNOB_COLOR = 0xffc4c4c4;
 
+    /** The knob's color, lifted a little under the mouse. Sliders paint their handle with it too. */
+    public static int knobColor(boolean hover)
+    {
+        return hover ? Colors.lerp(KNOB_COLOR, Colors.WHITE, 0.2F) : KNOB_COLOR;
+    }
+
     @Override
     protected void renderSkin(UIContext context)
     {
@@ -116,9 +122,7 @@ public class UIToggle extends UIClickable<UIToggle> implements ITextColoring
 
         context.batcher.box(trackLeft, trackTop, trackRight, trackBottom, trackFill);
 
-        int knobColor = this.hover ? Colors.lerp(KNOB_COLOR, Colors.WHITE, 0.2F) : KNOB_COLOR;
-
-        context.batcher.surfaceBox(knobLeft, knobTop, knobLeft + KNOB, knobTop + KNOB, knobColor, true, false);
+        context.batcher.surfaceBox(knobLeft, knobTop, knobLeft + KNOB, knobTop + KNOB, knobColor(this.hover), true, false);
 
         if (!this.isEnabled())
         {

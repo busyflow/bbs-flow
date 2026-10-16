@@ -36,6 +36,7 @@ import mchorse.bbs_mod.graphics.texture.Texture;
 import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
+import mchorse.bbs_mod.settings.values.base.BaseValueBasic;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.film.ICursor;
@@ -74,6 +75,7 @@ import mchorse.bbs_mod.ui.framework.elements.utils.UIRenderable;
 import mchorse.bbs_mod.ui.framework.elements.utils.UISplitter;
 import mchorse.bbs_mod.ui.utils.BoneSelection;
 import mchorse.bbs_mod.ui.utils.IBoneSelectionHost;
+import mchorse.bbs_mod.ui.utils.ILivePoseHost;
 import mchorse.bbs_mod.ui.utils.Gizmo;
 import mchorse.bbs_mod.ui.utils.SplineOverlay;
 import mchorse.bbs_mod.ui.utils.SplineEditorUtils;
@@ -104,7 +106,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBoneSelectionHost
+public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBoneSelectionHost, ILivePoseHost
 {
     private final BoneSelection boneSelection = new BoneSelection();
     public final ShapeControllerOverlay shapeControllerOverlay = new ShapeControllerOverlay();
@@ -808,6 +810,22 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
     public BoneSelection getBoneSelection()
     {
         return this.boneSelection;
+    }
+
+    /**
+     * The preview renders the edited form itself, so a property is its own live value, under the
+     * preview's entity — with the open state's tracks laid over it, as the frame has them.
+     */
+    @Override
+    public LivePose getLivePose(BaseValue property)
+    {
+        UIContext context = this.getContext();
+
+        this.applyStateForSampling(this.getSamplingTick());
+
+        return property instanceof BaseValueBasic value
+            ? new LivePose(value, this.renderer.getTargetEntity(), context == null ? 0F : context.getTransition())
+            : null;
     }
 
     private void pickFormBone(Form form, String bone)

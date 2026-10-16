@@ -5,7 +5,6 @@ import mchorse.bbs_mod.importers.ImporterContext;
 import mchorse.bbs_mod.importers.ImporterUtils;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
-import mchorse.bbs_mod.utils.FFMpegUtils;
 
 import java.io.File;
 
@@ -34,11 +33,7 @@ public class WAVImporter implements IImporter
     {
         for (File file : context.files)
         {
-            String name = file.getName();
-            File destination = context.getDestination(this);
-
-            /* Force the audio to be mono */
-            FFMpegUtils.execute(destination, "-y", "-i", file.getAbsolutePath(), "-ac", "1", ImporterUtils.getName(destination, name));
+            ImporterUtils.toMonoWAV(file, context.getDestination(this));
         }
     }
 }

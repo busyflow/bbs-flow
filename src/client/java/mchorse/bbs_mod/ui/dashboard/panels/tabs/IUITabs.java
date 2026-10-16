@@ -27,6 +27,12 @@ public interface IUITabs
 
     boolean isNewTab(int index);
 
+    /** A tab that is the home of the strip rather than a document: shown as its icon alone, the label goes to the tooltip. */
+    default boolean isPinnedTab(int index)
+    {
+        return false;
+    }
+
     boolean canCloseTab(int index);
 
     void addTab();

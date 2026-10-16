@@ -65,24 +65,37 @@ public final class ModelPhysicsDebug
     {
     }
 
-    public static void render(MatrixStack stack, IModel model, ModelForm form, int age, String selectedRoot)
+    /**
+     * Reads the settled chains off the rig now and returns their drawing, to run once the
+     * form's body parts are down — drawn right away, the parts painted over it even through
+     * the model. The rig is shared by every form of the same model, so a body part of that
+     * model re-poses it: the frames are read here, never at draw time. Null when there is
+     * nothing to draw.
+     */
+    public static Runnable prepare(MatrixStack stack, IModel model, ModelForm form, int age, String selectedRoot)
     {
         ValuePhysicsDebug config = BBSSettings.physicsDebug;
 
         if (!config.enabled.get() || model == null || form == null)
         {
-            return;
+            return null;
         }
 
         ModelPhysicsCache.Compiled compiled = ModelPhysicsCache.compile(model, form);
 
         if (compiled == null || compiled.chains() == null || compiled.chains().isEmpty())
         {
-            return;
+            return null;
         }
 
         Map<String, PivotFrame> frames = collectFrames(model, compiled);
 
+        return () -> render(stack, model, form, age, selectedRoot, compiled, frames, config);
+    }
+
+    private static void render(MatrixStack stack, IModel model, ModelForm form, int age, String selectedRoot,
+        ModelPhysicsCache.Compiled compiled, Map<String, PivotFrame> frames, ValuePhysicsDebug config)
+    {
         if (config.xray.get())
         {
             RenderSystem.disableDepthTest();
@@ -157,28 +170,35 @@ public final class ModelPhysicsDebug
     /**
      * Mirrors the attach bones into the picking pass: a pickable marker at each
      * one, registered under that bone. Must run after the model's bones are
-     * registered so the marker ids fall right after them — the marker encodes
-     * {@code stencilMap.objectIndex} as its colour and {@code addPicking} then
-     * claims that same id. The matrix matches the visual overlay's.
+     * registered — the marker encodes {@code stencilMap.objectIndex} as its
+     * colour and {@code addPicking} then claims that same id. The matrix matches
+     * the visual overlay's, and so does the timing: read now, drawn after the body
+     * parts (see {@link #prepare}), so a marker shown over a part is clickable there.
      */
-    public static void renderStencil(MatrixStack stack, IModel model, ModelForm modelForm, StencilMap stencilMap, Form form)
+    public static Runnable prepareStencil(MatrixStack stack, IModel model, ModelForm modelForm, StencilMap stencilMap, Form form)
     {
         ValuePhysicsDebug config = BBSSettings.physicsDebug;
 
         if (!config.enabled.get() || !config.attach.visible.get() || model == null || modelForm == null || stencilMap == null)
         {
-            return;
+            return null;
         }
 
         ModelPhysicsCache.Compiled compiled = ModelPhysicsCache.compile(model, modelForm);
 
         if (compiled == null || compiled.chains() == null || compiled.chains().isEmpty())
         {
-            return;
+            return null;
         }
 
         Map<String, PivotFrame> frames = collectFrames(model, compiled);
 
+        return () -> renderStencil(stack, model, modelForm, stencilMap, form, compiled, frames, config);
+    }
+
+    private static void renderStencil(MatrixStack stack, IModel model, ModelForm modelForm, StencilMap stencilMap, Form form,
+        ModelPhysicsCache.Compiled compiled, Map<String, PivotFrame> frames, ValuePhysicsDebug config)
+    {
         if (config.xray.get())
         {
             RenderSystem.disableDepthTest();
@@ -438,7 +458,7 @@ public final class ModelPhysicsDebug
 
         for (Vector3f end : tips)
         {
-            DebugOverlay.marker(dots, stack, ValueDebugElement.SHAPE_SPHERE, end, unit * 0.05F, color, a);
+            DebugOverlay.marker(dots, stack, ValueDebugElement.SHAPE_SPHERE, end, unit * 0.025F, color, a);
         }
 
         BufferRenderer.drawWithGlobalProgram(dots.end());

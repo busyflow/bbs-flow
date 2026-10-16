@@ -7,6 +7,7 @@ import org.lwjgl.glfw.GLFW;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.ui.framework.UIContext;
+import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
 import mchorse.bbs_mod.ui.framework.elements.utils.FontRenderer;
 import mchorse.bbs_mod.ui.utils.Area;
 import mchorse.bbs_mod.utils.MathUtils;
@@ -524,7 +525,9 @@ public class UISliderTrackpad extends UINumericInput<UISliderTrackpad>
                 context.batcher.box(this.area.x, this.area.y, fillX, this.area.ey(), fillColor);
                 context.batcher.box(fillX - 1, this.area.y, fillX + 1, this.area.ey(), Colors.setA(primary, MARKER_ALPHA));
 
-                context.batcher.box(this.handleArea.x, this.handleArea.y, this.handleArea.ex(), this.handleArea.ey(), Colors.WHITE);
+                int handleColor = UIToggle.knobColor(this.dragging || this.area.isInside(context));
+
+                context.batcher.box(this.handleArea.x, this.handleArea.y, this.handleArea.ex(), this.handleArea.ey(), handleColor);
             }
 
             FontRenderer font = context.batcher.getFont();

@@ -33,7 +33,8 @@ import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
 import mchorse.bbs_mod.ui.utils.SplineEditorUtils;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.UIConstants;
-import mchorse.bbs_mod.ui.utils.bones.UIBoneTreeList;
+import mchorse.bbs_mod.ui.utils.bones.BoneRole;
+import mchorse.bbs_mod.ui.utils.bones.BoneRoles;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.pose.ModelSplineManager;
 import org.joml.Matrix4f;
@@ -41,8 +42,6 @@ import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import mchorse.bbs_mod.utils.pose.Transform;
@@ -59,7 +58,6 @@ public class UIModelSplineFormPanel extends UIBoneListFormPanel implements Splin
     private final UISection advanced;
     private final UITrackpad chainLength;
     private final UILabel chainPreview;
-    private final Map<String, UIBoneTreeList.Marker[]> boneMarkers = new HashMap<>();
     private final UIToggle enabled;
     private final UIToggle fit;
     private final UIToggle moveModel;
@@ -78,8 +76,6 @@ public class UIModelSplineFormPanel extends UIBoneListFormPanel implements Splin
     public UIModelSplineFormPanel(UIForm editor)
     {
         super(editor);
-        this.bones.tooltip(key("tip"));
-        this.bones.markers(this.boneMarkers::get, key("chain_markers"));
         this.bonePresets(ModelSplineManager.INSTANCE, "_CopyModelSpline",
             key("context.copy"), key("context.paste"), key("context.reset"), key("context.save"), key("context.name"),
             this::toPresetData, this::applyPresetData);
@@ -169,18 +165,16 @@ public class UIModelSplineFormPanel extends UIBoneListFormPanel implements Splin
         this.updateFields();
     }
 
-    private void updateChainMarkers()
+    /** Every spline's chain along the tree, and its end bone — where the spline is set up. */
+    @Override
+    protected void describeBones(BoneRoles roles)
     {
-        this.boneMarkers.clear();
         if (this.form == null) return;
         for (SplineIK spline : this.form.splines.getAllTyped())
         {
-            for (String bone : ModelSplineRuntime.getChain(this.form, spline))
-                this.boneMarkers.put(bone, new UIBoneTreeList.Marker[] {new UIBoneTreeList.Marker(0xFF5599FF, true)});
+            roles.chain(ModelSplineRuntime.getChain(this.form, spline), BoneRole.LINK);
+            roles.mark(spline.tip.get(), 0, BoneRole.CHAIN);
         }
-        for (SplineIK spline : this.form.splines.getAllTyped())
-            this.boneMarkers.put(spline.tip.get(), new UIBoneTreeList.Marker[] {
-                new UIBoneTreeList.Marker(0xFF5599FF, false)});
     }
 
     @Override
@@ -291,7 +285,6 @@ public class UIModelSplineFormPanel extends UIBoneListFormPanel implements Splin
             this.status.setVisible(showStatus);
         }
         this.pointEditor.refresh();
-        this.updateChainMarkers();
         this.options.resize();
     }
 

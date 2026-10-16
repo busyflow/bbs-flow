@@ -82,7 +82,8 @@ public class UITexturePainter extends UIElement
     private UITextureEditor editor;
 
     private static final int TOOL_BAR_W = 20;
-    private static final float DEFAULT_OPTIONS_WIDTH = 0.2F;
+    /** The form editor's panel share, so the two side panels open alike. */
+    private static final float DEFAULT_OPTIONS_WIDTH = 0.1F;
     private static final float DEFAULT_PREVIEW_WIDTH = 0.3F;
     private static final int MIN_OPTIONS_WIDTH = 140;
     private static final int MAX_BRUSH_SIZE = 1024;
@@ -102,12 +103,14 @@ public class UITexturePainter extends UIElement
     private UIElement colorPickersRow;
 
     public UIIcon saveIcon;
-    public UIIcon resizeIcon;
-    public UIIcon extractIcon;
-    public UIIcon macrosIcon;
+    public UIIcon menuIcon;
     public UIIcon animationIcon;
     public UIIcon materialIcon;
-    private UIElement materialOptions;
+    public UIIcon gridIcon;
+    private UITrackpad gridStep;
+    private UIElement gridStepRow;
+    private UIElement materialPresets;
+    private UIElement materialOverlayRow;
     private UISliderTrackpad materialOverlay;
 
     private TexturePaintTool activeTool = TexturePaintTool.BRUSH;
@@ -160,6 +163,9 @@ public class UITexturePainter extends UIElement
     private UIToggle alphaLockToggle;
     private UIElement eraserOpacityRow;
     private UISliderTrackpad eraserOpacity;
+
+    /* The settings of the tool in hand, titled after it; gone for the tools with nothing to set */
+    private UISection toolSection;
 
     /* The animation's own settings, there only for an animated texture */
     private UISection animationSection;
@@ -229,22 +235,30 @@ public class UITexturePainter extends UIElement
         });
         this.saveIcon.tooltip(UIKeys.TEXTURES_SAVE_TOOLTIP);
 
-        this.resizeIcon = new UIIcon(Icons.FULLSCREEN, (b) -> this.withEditor(UITextureEditor::openResizeOverlay));
-        this.resizeIcon.tooltip(UIKeys.TEXTURES_RESIZE);
-        this.extractIcon = new UIIcon(Icons.UPLOAD, (b) -> this.withEditor(UITextureEditor::openExtractOverlay));
-        this.extractIcon.tooltip(UIKeys.TEXTURES_EXTRACT_FRAMES_TITLE);
         this.modelPreviewIcon = new UIIcon(Icons.POSE, (b) -> this.toggleModelPreview());
         this.modelPreviewIcon.tooltip(UIKeys.TEXTURES_PREVIEW_MODEL);
         this.animationIcon = new UIIcon(Icons.FILM, (b) -> this.withEditor(this::toggleAnimation));
         this.animationIcon.tooltip(UIKeys.TEXTURES_FRAMES_TOGGLE);
         this.materialIcon = new UIIcon(Icons.MATERIAL, (b) -> this.toggleMaterial());
         this.materialIcon.tooltip(UIKeys.TEXTURES_MATERIAL);
-        this.macrosIcon = new UIIcon(Icons.WRENCH, (b) -> this.openMacrosMenu());
-        this.macrosIcon.tooltip(UIKeys.TEXTURES_MACROS_TOOLTIP);
+        this.gridIcon = new UIIcon(Icons.GALLERY, (b) -> this.toggleGrid());
+        this.gridIcon.tooltip(UIKeys.TEXTURES_GRID);
+        this.menuIcon = new UIIcon(Icons.GEAR, (b) -> this.openMenu());
+        this.menuIcon.tooltip(UIKeys.TEXTURES_OPTIONS);
     }
 
-    /** The one-shot operations as a list under the bar button: the selection, or the whole frame without one, on the active layer. */
-    private void openMacrosMenu()
+    /** The grid is a way of looking, the same in every texture and every painter, so it lives in the settings. */
+    private void toggleGrid()
+    {
+        BBSSettings.textureGrid.set(!BBSSettings.textureGrid.get());
+    }
+
+    /**
+     * Everything the bar has no button for, as a list under the gear the way the film editor does
+     * it: what is done to the whole texture, then the one-shot operations on the selection (or the
+     * whole frame without one) of the active layer, clearing last.
+     */
+    private void openMenu()
     {
         if (this.editor == null)
         {
@@ -253,9 +267,11 @@ public class UITexturePainter extends UIElement
 
         this.getContext().replaceContextMenu((menu) ->
         {
-            menu.action(Icons.ERASER, UIKeys.TEXTURES_MACROS_CLEAR, () -> this.withEditor((editor) -> editor.applyMacroToWindow(PixelMacro.CLEAR)));
+            menu.action(Icons.FULLSCREEN, UIKeys.TEXTURES_RESIZE, () -> this.withEditor(UITextureEditor::openResizeOverlay));
+            menu.action(Icons.UPLOAD, UIKeys.TEXTURES_EXTRACT_FRAMES_TITLE, () -> this.withEditor(UITextureEditor::openExtractOverlay));
             menu.action(Icons.FLIP_HORIZONTAL, UIKeys.TEXTURES_MACROS_FLIP_H, () -> this.withEditor((editor) -> editor.applyMacroToWindow(PixelMacro.FLIP_HORIZONTAL)));
             menu.action(Icons.FLIP_VERTICAL, UIKeys.TEXTURES_MACROS_FLIP_V, () -> this.withEditor((editor) -> editor.applyMacroToWindow(PixelMacro.FLIP_VERTICAL)));
+            menu.action(Icons.ERASER, UIKeys.TEXTURES_MACROS_CLEAR, () -> this.withEditor((editor) -> editor.applyMacroToWindow(PixelMacro.CLEAR)));
         });
     }
 
@@ -268,23 +284,21 @@ public class UITexturePainter extends UIElement
         this.actionBar = bar;
 
         bar.action(this.materialIcon, () -> this.editor != null && this.editor.isMaterial())
-            .action(this.resizeIcon)
-            .action(this.extractIcon)
-            .action(this.macrosIcon)
             .action(this.animationIcon, this::isAnimated)
             .action(this.modelPreviewIcon, this.modelPreviewHost::isVisible)
-            .common(this.saveIcon);
+            .action(this.gridIcon, BBSSettings.textureGrid::get)
+            .common(this.saveIcon)
+            .menu(this.menuIcon);
     }
 
     public void setActionsVisible(boolean visible)
     {
         this.saveIcon.setVisible(visible);
-        this.resizeIcon.setVisible(visible);
-        this.extractIcon.setVisible(visible);
-        this.macrosIcon.setVisible(visible);
+        this.menuIcon.setVisible(visible);
         this.animationIcon.setVisible(visible);
         this.modelPreviewIcon.setVisible(visible);
         this.materialIcon.setVisible(visible);
+        this.gridIcon.setVisible(visible);
 
         if (this.actionBar != null)
         {
@@ -340,7 +354,19 @@ public class UITexturePainter extends UIElement
 
     private void buildOptions()
     {
-        this.optionsHost = new UIElement();
+        /* The layers are as tall as they need, up to half the column, which is only known once the
+         * column itself is laid out — so they are measured right then, before the children */
+        this.optionsHost = new UIElement()
+        {
+            @Override
+            protected void afterResizeApplied()
+            {
+                if (UITexturePainter.this.layersPanel != null)
+                {
+                    UITexturePainter.this.layersPanel.fit(this.area.h / 2);
+                }
+            }
+        };
 
         this.optionsDraggable = UISplitter.fraction("texture_painter.options", DEFAULT_OPTIONS_WIDTH, 0F, 0.5F);
         this.optionsDraggable.measure(this.optionsHost, this.content).fromEnd().onChange(() ->
@@ -354,14 +380,22 @@ public class UITexturePainter extends UIElement
             .w(this.optionsDraggable.getValue())
             .minW(MIN_OPTIONS_WIDTH).h(1F);
 
-        this.options = UI.scrollView(UIConstants.MARGIN, UIConstants.SCROLL_PADDING);
-        this.options.scroll.cancelScrolling();
-        this.options.relative(this.optionsHost).w(1F).h(0.5F);
+        /* Its height is the section's own, so only where it sits is said here — inset like the
+         * sections of the scroll view above, so the edges of all of them line up (the way the
+         * replay list holds its body parts section) */
+        int inset = UIConstants.SCROLL_PADDING;
 
         this.layersPanel = new UILayersPanel(this);
-        this.layersPanel.relative(this.optionsHost).y(0.5F).w(1F).h(0.5F);
+        this.layersPanel.remember(SECTION_FOLDS, "layers", true);
+        this.layersPanel.relative(this.optionsHost).x(inset).y(1F, -inset).w(1F, -inset * 2).anchorY(1F);
 
-        this.optionsHost.add(this.options, this.layersPanel);
+        /* The options take what the layers leave above them; added after the layers, because hTo
+         * reads the target's area from this pass only if the target was laid out first */
+        this.options = UI.scrollView(UIConstants.MARGIN, UIConstants.SCROLL_PADDING);
+        this.options.scroll.cancelScrolling();
+        this.options.relative(this.optionsHost).w(1F).hTo(this.layersPanel.area, 0F);
+
+        this.optionsHost.add(this.layersPanel, this.options);
 
         this.optionsDraggable.relative(this.optionsHost).x(0F).y(0.5F).w(6).h(40).anchor(0.5F, 0.5F);
 
@@ -376,11 +410,9 @@ public class UITexturePainter extends UIElement
         this.colorPickersRow = UI.row(UIConstants.MARGIN, this.primary, this.secondary);
         this.colorPickersRow.row().preferred(0).height(UIConstants.CONTROL_HEIGHT);
 
-        this.materialOptions = new UIElement();
-        this.materialOptions.column(UIConstants.MARGIN).stretch().vertical();
-        this.materialOverlay = new UISliderTrackpad((v) -> this.withEditor((editor) -> editor.setMaterialOverlay(v.floatValue() / 100F)));
-        this.materialOverlay.integer().limit(0, 100).setValue(50);
-        UIElement materialPresets = UI.row(UIConstants.MARGIN,
+        /* A material map is painted in these colours, so they sit with the colours; the map's
+         * overlay is a way of looking at it, so it goes with the view */
+        this.materialPresets = UI.row(UIConstants.MARGIN,
             this.materialPreset(0xFF000000, UIKeys.TEXTURES_MATERIAL_NONE),
             this.materialPreset(0xFF0000FF, UIKeys.TEXTURES_MATERIAL_EMISSION),
             this.materialPreset(0xFFFF0000, UIKeys.TEXTURES_MATERIAL_SMOOTHNESS),
@@ -388,19 +420,25 @@ public class UITexturePainter extends UIElement
             this.materialPreset(0xFFFFFF00, UIKeys.TEXTURES_MATERIAL_SMOOTH_METAL),
             this.materialPreset(0xFFFF00FF, UIKeys.TEXTURES_MATERIAL_SMOOTH_EMISSION)
         );
-        materialPresets.row().preferred(0).height(UIConstants.CONTROL_HEIGHT);
-        this.materialOptions.add(
-            materialPresets,
-            UI.labelRow(UIKeys.TEXTURES_MATERIAL_OVERLAY, this.materialOverlay)
-        );
-        this.materialOptions.setVisible(false);
+        this.materialPresets.row().preferred(0).height(UIConstants.CONTROL_HEIGHT);
+        this.materialPresets.setVisible(false);
+        this.materialOverlay = new UISliderTrackpad((v) -> this.withEditor((editor) -> editor.setMaterialOverlay(v.floatValue() / 100F)));
+        this.materialOverlay.integer().limit(0, 100).setValue(50);
+        this.materialOverlayRow = UI.labelRow(UIKeys.TEXTURES_MATERIAL_OVERLAY, this.materialOverlay);
+        this.materialOverlayRow.setVisible(false);
 
         this.alphaLockToggle = new UIToggle(UIKeys.TEXTURES_ALPHA_LOCK, false, (b) -> {});
         this.alphaLockToggle.h(UIConstants.CONTROL_HEIGHT);
+        this.alphaLockToggle.tooltip(UIKeys.TEXTURES_ALPHA_LOCK_TOOLTIP);
 
         this.brightness = new UISliderTrackpad();
         this.brightness.limit(0, 1).setValue(0.7);
         this.brightness.tooltip(UIKeys.TEXTURES_VIEWER_BRIGHTNESS);
+
+        this.gridStep = new UITrackpad((v) -> BBSSettings.textureGridStep.set(v.intValue()));
+        this.gridStep.integer().limit(1, 256, true);
+        this.gridStep.tooltip(UIKeys.TEXTURES_GRID_STEP_TOOLTIP);
+        this.gridStepRow = UI.labelRow(UIKeys.TEXTURES_GRID_STEP, this.gridStep);
 
         this.brushSize = new UITrackpad((v) -> this.setBrushSize(v.intValue()));
         this.brushSize.integer().limit(1, MAX_BRUSH_SIZE, true).setValue(1);
@@ -441,18 +479,28 @@ public class UITexturePainter extends UIElement
         );
         this.animationSection.setVisible(false);
 
-        this.options.add(
-            this.materialOptions,
-            this.colorPickersRow,
-            this.alphaLockToggle,
-            UI.labelRow(UIKeys.TEXTURES_VIEWER_BRIGHTNESS, this.brightness),
+        /* Colour first and always, with no section to fold it away: every stroke starts there. The
+         * tool in hand comes next, then the texture's animation, and the way the canvas looks last
+         * and folded — it is set once and forgotten. The layers sit on the column's bottom edge. */
+        this.toolSection = new UISection().remember(SECTION_FOLDS, "tool", true);
+        this.toolSection.fields.add(
             this.brushSizeRow,
             this.brushSoftnessRow,
             this.roundBrushToggle,
             this.brushBuildUpToggle,
             this.eraserOpacityRow,
-            this.animationSection
+            this.alphaLockToggle
         );
+
+        UISection viewSection = new UISection(UIKeys.TEXTURES_SECTION_VIEW).remember(SECTION_FOLDS, "view", false);
+
+        viewSection.fields.add(
+            UI.labelRow(UIKeys.TEXTURES_BACKGROUND, this.brightness),
+            this.gridStepRow,
+            this.materialOverlayRow
+        );
+
+        this.options.add(this.colorPickersRow, this.materialPresets, this.toolSection, this.animationSection, viewSection);
     }
 
     private UIButton materialPreset(int color, IKey label)
@@ -596,6 +644,7 @@ public class UITexturePainter extends UIElement
         this.keys().register(Keys.PIXEL_TOOL_SELECTION, () -> this.userSelectTool(TexturePaintTool.SELECTION)).inside().category(category);
         this.keys().register(Keys.PIXEL_BRUSH_DEC, () -> this.adjustBrushSize(-1)).inside().category(category);
         this.keys().register(Keys.PIXEL_BRUSH_INC, () -> this.adjustBrushSize(1)).inside().category(category);
+        this.keys().register(Keys.PIXEL_GRID, this::toggleGrid).inside().active(() -> this.editor != null).category(category);
         /* The plain steps are strict, so they step aside for their Shift and Alt+Shift variants */
         this.keys().register(Keys.PIXEL_FRAME_PREV, () -> this.framesPanel.step(-1)).inside().strict().active(this::isAnimated).category(category);
         this.keys().register(Keys.PIXEL_FRAME_NEXT, () -> this.framesPanel.step(1)).inside().strict().active(this::isAnimated).category(category);
@@ -874,14 +923,24 @@ public class UITexturePainter extends UIElement
 
     private void refreshToolUi()
     {
-        boolean strokeTool = this.activeTool == TexturePaintTool.BRUSH || this.activeTool == TexturePaintTool.ERASER;
-        boolean eraserTool = this.activeTool == TexturePaintTool.ERASER;
+        /* Alt's eyedropper and the right button's eraser are only borrowed: the panel stays on the
+         * tool they hand back to, rather than jumping about for the length of a click */
+        TexturePaintTool tool = this.toolBeforeAltPipette != null ? this.toolBeforeAltPipette
+            : this.toolBeforeSecondaryEraser != null ? this.toolBeforeSecondaryEraser : this.activeTool;
+        boolean brush = tool == TexturePaintTool.BRUSH;
+        boolean eraser = tool == TexturePaintTool.ERASER;
+        boolean fill = tool == TexturePaintTool.FILL;
 
-        this.brushSizeRow.setVisible(strokeTool);
-        this.brushSoftnessRow.setVisible(strokeTool);
-        this.roundBrushToggle.setVisible(strokeTool);
-        this.brushBuildUpToggle.setVisible(strokeTool);
-        this.eraserOpacityRow.setVisible(eraserTool);
+        this.brushSizeRow.setVisible(brush || eraser);
+        this.brushSoftnessRow.setVisible(brush || eraser);
+        this.roundBrushToggle.setVisible(brush || eraser);
+        this.brushBuildUpToggle.setVisible(brush || eraser);
+        this.eraserOpacityRow.setVisible(eraser);
+        this.alphaLockToggle.setVisible(brush || fill);
+
+        /* Selecting, moving and picking a colour have nothing to set */
+        this.toolSection.setVisible(brush || eraser || fill);
+        this.toolSection.title(brush ? UIKeys.TEXTURES_TOOLS_BRUSH : eraser ? UIKeys.TEXTURES_TOOLS_ERASER : UIKeys.TEXTURES_TOOLS_FILL);
 
         this.optionsHost.resize();
     }
@@ -924,6 +983,7 @@ public class UITexturePainter extends UIElement
         editor.colorSupplier(() -> this.primary.picker.color);
         editor.pickColorConsumer((color) -> this.primary.setColor(color.getARGBColor()));
         editor.backgroundSupplier(() -> (float) this.brightness.getValue());
+        editor.gridSupplier(BBSSettings.textureGrid::get, BBSSettings.textureGridStep::get);
         editor.toolSupplier(this::getActiveTexturePaintTool);
         editor.strokeShapeSupplier(this::getActiveTextureStrokeShape);
         editor.strokeBuildUpSupplier(this::isBrushBuildUpEnabled);
@@ -980,11 +1040,14 @@ public class UITexturePainter extends UIElement
         }
 
         this.framesPanel.setEditor(editor);
-        this.materialOptions.setVisible(editor != null && editor.isMaterial());
+        this.materialPresets.setVisible(editor != null && editor.isMaterial());
+        this.materialOverlayRow.setVisible(editor != null && editor.isMaterial());
         if (editor != null)
         {
             this.materialOverlay.setValue(editor.getMaterialOverlay() * 100F);
         }
+        /* Another painter may have changed the grid's step since this one was on screen */
+        this.gridStep.setValue(BBSSettings.textureGridStep.get());
         this.updateFramesVisibility();
         this.resize();
     }

@@ -8,6 +8,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.world.World;
 import org.joml.Quaternionf;
+import org.joml.Quaternionfc;
 import org.joml.Vector3f;
 
 import java.util.List;
@@ -55,6 +56,8 @@ final class ChainSolver
      * pose instead; deterministic re-simulation from a checkpoint is handled by the runtime.
      */
     private static final int MAX_TICK_CATCHUP = 4;
+
+    private static final Quaternionfc IDENTITY = new Quaternionf();
 
     /**
      * Sub-step budget of the settling pass. A seed puts the chain on the animated pose, which is not a shape
@@ -224,7 +227,7 @@ final class ChainSolver
         }
     }
 
-    static void step(World world, int age, float transition, IModel model, List<String> ids, ModelPhysicsCache.CompiledChain chain, float gravityMul, float dampingValue, float stiffnessValue, ModelPhysicsConfig.Wind wind, Map<String, BoneConstraint> constraints, Vector3f anchorPosition, Quaternionf anchorRotation, Quaternionf parentRotation, Vector3f targetPosition, List<PivotFrame> chainFrames, ChainState state)
+    static void step(World world, int age, float transition, IModel model, List<String> ids, ModelPhysicsCache.CompiledChain chain, float gravityMul, float dampingValue, float stiffnessValue, ModelPhysicsConfig.Wind wind, Map<String, BoneConstraint> constraints, Vector3f anchorPosition, Quaternionf anchorRotation, Quaternionf parentRotation, Vector3f targetPosition, List<PivotFrame> chainFrames, PhysicsCarrier carrier, ChainState state)
     {
         Vector3f newAnchor = anchorPosition;
         Quaternionf newAnchorRotation = anchorRotation;
@@ -326,6 +329,18 @@ final class ChainSolver
 
         BlockPos.Mutable mutable = collisions ? new BlockPos.Mutable() : null;
 
+        /* The carrier's motion over this tick, slid across the sub-steps like the anchor's. Nothing to carry
+         * on a seed, which places the chain afresh, nor on the first tick of riding a carrier, which has no
+         * earlier frame to measure the motion from. */
+        boolean carried = !settle && carrier != null && state.hasCarrier;
+        float carryShare = carried ? 1F - carrier.feel() : 0F;
+        Vector3f lastCarrier = new Vector3f(state.carrierPosition);
+        Quaternionf lastCarrierRotation = new Quaternionf(state.carrierRotation);
+        Vector3f stepCarrier = new Vector3f();
+        Quaternionf stepCarrierRotation = new Quaternionf();
+        Quaternionf carryTurn = new Quaternionf();
+        Vector3f carryMove = new Vector3f();
+
         /* Roll the settled snapshots: the previous tick's shape keeps its own anchor frame, the new
          * tick's shape is snapshot after the sub-steps in its. renderInterpolate blends the two local
          * shapes by the sub-tick transition. */
@@ -349,6 +364,15 @@ final class ChainSolver
             state.anchorRotation.set(stepAnchorRotation);
             state.pos[0].set(stepAnchor);
             state.prev[0].set(stepAnchor);
+
+            if (carried)
+            {
+                stepCarrier.set(state.carrierPosition).lerp(carrier.position(), progress);
+                stepCarrierRotation.set(state.carrierRotation).slerp(carrier.rotation(), progress);
+                carry(state.pos, state.prev, lastCarrier, lastCarrierRotation, stepCarrier, stepCarrierRotation, carryShare, carryTurn, carryMove);
+                lastCarrier.set(stepCarrier);
+                lastCarrierRotation.set(stepCarrierRotation);
+            }
 
             /* Verlet integration of the free points: inertia carried from the previous step plus
              * gravity. The anchor's motion never forces the points — it reaches the chain only through
@@ -448,7 +472,38 @@ final class ChainSolver
             copyPositions(state.settledLocal, state.settledPrevLocal);
         }
 
+        state.hasCarrier = carrier != null;
+
+        if (carrier != null)
+        {
+            state.carrierPosition.set(carrier.position());
+            state.carrierRotation.set(carrier.rotation());
+        }
+
         state.lastAge = age;
+    }
+
+    /**
+     * Moves the free points with {@code share} of the carrier's motion over one sub-step — its turn about its
+     * origin, then its travel — and their previous positions with them, so their velocity rides along too.
+     * Carried whole, the chain sits still in the carrier's frame and feels only what moves inside it.
+     */
+    private static void carry(Vector3f[] pos, Vector3f[] prev, Vector3f from, Quaternionf fromRotation, Vector3f to, Quaternionf toRotation, float share, Quaternionf turn, Vector3f move)
+    {
+        turn.set(fromRotation).conjugate().premul(toRotation);
+
+        if (share < 1F)
+        {
+            IDENTITY.slerp(turn, share, turn);
+        }
+
+        move.set(to).sub(from).mul(share);
+
+        for (int i = 1; i < pos.length; i++)
+        {
+            turn.transform(pos[i].sub(from)).add(from).add(move);
+            turn.transform(prev[i].sub(from)).add(from).add(move);
+        }
     }
 
     /** True when no free point moved further than {@link #SETTLE_EPS} across the sub-step that just ran. */

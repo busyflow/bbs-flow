@@ -69,6 +69,9 @@ public class RowStyle
     /** How loud a row's text is while nothing is happening to it. */
     private static final float REST_TEXT = 0.85F;
 
+    /** How loud a row is, at rest, when it has nothing set on it — see {@link #quietTextColor}. */
+    private static final float QUIET_TEXT = 0.5F;
+
     /**
      * What a row's text is drawn with. A row nothing is happening to speaks a little quieter, so
      * the one under the cursor and the one that is picked stand out — the way the timeline's track
@@ -92,6 +95,16 @@ public class RowStyle
     public static int textColor(boolean lit, int color)
     {
         return lit ? Colors.A100 | color : Colors.mulA(Colors.A100 | color, REST_TEXT);
+    }
+
+    /**
+     * A row with nothing set on it, in a list where that is the question — a bone with no pose,
+     * no chain, no shake. At rest it steps back so the rows that carry something read at a
+     * glance; under the cursor or picked it speaks like any other row.
+     */
+    public static int quietTextColor(boolean lit)
+    {
+        return lit ? Colors.WHITE : Colors.setA(Colors.WHITE, QUIET_TEXT);
     }
 
     /**

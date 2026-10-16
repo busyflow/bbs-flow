@@ -973,8 +973,12 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
         if (this.keyframes.isNavigating())
         {
-            this.keyframes.dragTimeBy(context.mouseX - lastX);
-            this.dopeSheet.scrollBy(-(context.mouseY - lastY));
+            this.keyframes.navigateTime(context.mouseX - lastX);
+
+            if (!this.keyframes.isZoomNavigating())
+            {
+                this.dopeSheet.scrollBy(-(context.mouseY - lastY));
+            }
         }
     }
 

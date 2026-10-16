@@ -1,5 +1,6 @@
 {
     "block.bbs.model": "模型方块",
+    "block.bbs.model.tooltip.convert": "Alt + 右键点击方块 — 将其转换为模型方块",
     "block.bbs.chroma_red": "红色色度方块",
     "block.bbs.chroma_green": "绿色色度方块",
     "block.bbs.chroma_blue": "蓝色色度方块",

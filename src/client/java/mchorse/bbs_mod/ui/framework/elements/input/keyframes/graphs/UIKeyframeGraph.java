@@ -145,20 +145,7 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
 
     private void fitTime(boolean selected)
     {
-        double min = Double.POSITIVE_INFINITY, max = Double.NEGATIVE_INFINITY;
-        for (UIKeyframeSheet sheet : this.getSheets())
-        {
-            List<Keyframe> keys = selected ? sheet.selection.getSelected() : sheet.channel.getKeyframes();
-            for (Keyframe key : keys)
-            {
-                min = Math.min(min, key.getTick());
-                max = Math.max(max, key.getTick());
-            }
-            if (!selected && !sheet.channel.getLoops().isEmpty()) max = Math.max(max, sheet.channel.getLength());
-        }
-        if (!Double.isFinite(min)) { min = 0; max = Math.max(20, this.keyframes.getDuration()); }
-        if (min == max) { min -= 5; max += 5; }
-        this.keyframes.getXAxis().viewOffset(min, max, this.plotArea.w, Math.min(30, this.plotArea.w / 4));
+        this.keyframes.fitTime(this.getSheets(), selected, this.plotArea.w, Math.min(30, this.plotArea.w / 4));
     }
 
     public void fitSelection()
@@ -420,8 +407,17 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
         this.keyframes.getDopeSheet().getYAxis().drag(context);
         if (this.keyframes.isNavigating())
         {
-            this.keyframes.dragTimeBy(context.mouseX - lastX);
-            this.yAxis.setShift(this.yAxis.getShift() + (context.mouseY - lastY) / this.yAxis.getZoom());
+            this.keyframes.navigateTime(context.mouseX - lastX);
+
+            if (this.keyframes.isZoomNavigating())
+            {
+                /* Up zooms the values in, like right does the time. */
+                this.keyframes.zoomByDrag(this.yAxis, lastY - context.mouseY);
+            }
+            else
+            {
+                this.yAxis.setShift(this.yAxis.getShift() + (context.mouseY - lastY) / this.yAxis.getZoom());
+            }
         }
     }
 

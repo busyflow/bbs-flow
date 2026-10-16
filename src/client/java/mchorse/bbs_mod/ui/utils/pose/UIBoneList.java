@@ -67,7 +67,9 @@ public class UIBoneList extends UIElement
         /* The search fills the row; the two toggles sit fixed-width at the right (all 20px tall). */
         header.add(this.search, this.mirror, this.invert);
 
-        this.keys().register(Keys.TRANSFORMATIONS_MIRROR_EDIT, this::toggleMirrorEdit).category(UIKeys.TRANSFORMS_KEYS_CATEGORY);
+        /* Strict: this list is a child of the pose editor and hears keys first, so a loose Shift+F
+         * would also swallow the editor's Ctrl+Shift+F (flip pose). */
+        this.keys().register(Keys.TRANSFORMATIONS_MIRROR_EDIT, this::toggleMirrorEdit).strict().category(UIKeys.TRANSFORMS_KEYS_CATEGORY);
 
         this.column().vertical().stretch();
         this.add(header, this.list.marginTop(-UIConstants.MARGIN));

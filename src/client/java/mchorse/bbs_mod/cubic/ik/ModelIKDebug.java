@@ -55,13 +55,20 @@ public final class ModelIKDebug
     {
     }
 
-    public static void render(MatrixStack stack, IModel model, ModelForm form, String selectedTip)
+    /**
+     * Reads the solved chains off the rig now and returns their drawing, to run once the
+     * form's body parts are down — drawn right away, the parts painted over it even through
+     * the model. The rig is shared by every form of the same model, so a body part of that
+     * model re-poses it: the frames are read here, never at draw time. Null when there is
+     * nothing to draw.
+     */
+    public static Runnable prepare(MatrixStack stack, IModel model, ModelForm form, String selectedTip)
     {
         ValueIKDebug config = BBSSettings.ikDebug;
 
         if (!config.enabled.get() || model == null || form == null)
         {
-            return;
+            return null;
         }
 
         ModelIKCache.Compiled compiled = ModelIKCache.compile(model, form);
@@ -70,11 +77,17 @@ public final class ModelIKDebug
 
         if (chains.isEmpty() && controllers.isEmpty())
         {
-            return;
+            return null;
         }
 
         Map<String, PivotFrame> frames = collectFrames(model, chains, controllers);
 
+        return () -> render(stack, model, form, chains, controllers, frames, selectedTip, config);
+    }
+
+    private static void render(MatrixStack stack, IModel model, ModelForm form, List<ModelIKCache.CompiledChain> chains,
+        Set<String> controllers, Map<String, PivotFrame> frames, String selectedTip, ValueIKDebug config)
+    {
         if (config.xray.get())
         {
             RenderSystem.disableDepthTest();
@@ -191,11 +204,12 @@ public final class ModelIKDebug
     /**
      * Mirrors the goals into the picking pass: a pickable marker at each goal,
      * registered under the chain's target bone. Must run after the model's bones
-     * are registered so the goal ids fall right after them — the marker encodes
-     * {@code stencilMap.objectIndex} as its colour and {@code addPicking} then
-     * claims that same id. The matrix matches the visual overlay's.
+     * are registered — the marker encodes {@code stencilMap.objectIndex} as its
+     * colour and {@code addPicking} then claims that same id. The matrix matches
+     * the visual overlay's, and so does the timing: read now, drawn after the body
+     * parts (see {@link #prepare}), so a goal shown over a part is clickable there.
      */
-    public static void renderStencil(MatrixStack stack, IModel model, ModelForm modelForm, StencilMap stencilMap, Form form)
+    public static Runnable prepareStencil(MatrixStack stack, IModel model, ModelForm modelForm, StencilMap stencilMap, Form form)
     {
         ValueIKDebug config = BBSSettings.ikDebug;
         boolean targets = config.target.visible.get();
@@ -203,7 +217,7 @@ public final class ModelIKDebug
 
         if (!config.enabled.get() || (!targets && !poles) || model == null || modelForm == null || stencilMap == null)
         {
-            return;
+            return null;
         }
 
         ModelIKCache.Compiled compiled = ModelIKCache.compile(model, modelForm);
@@ -212,10 +226,19 @@ public final class ModelIKDebug
 
         if (chains.isEmpty() && controllers.isEmpty())
         {
-            return;
+            return null;
         }
 
         Map<String, PivotFrame> frames = collectFrames(model, chains, controllers);
+
+        return () -> renderStencil(stack, model, modelForm, stencilMap, form, chains, controllers, frames, config);
+    }
+
+    private static void renderStencil(MatrixStack stack, IModel model, ModelForm modelForm, StencilMap stencilMap, Form form,
+        List<ModelIKCache.CompiledChain> chains, Set<String> controllers, Map<String, PivotFrame> frames, ValueIKDebug config)
+    {
+        boolean targets = config.target.visible.get();
+        boolean poles = config.pole.visible.get();
 
         if (config.xray.get())
         {

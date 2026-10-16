@@ -52,6 +52,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -207,6 +208,7 @@ public class UITexturePicker extends UIElement implements IImportPathProvider, I
         this.topBar.relative(this).w(1F).h(UIPanelTopBar.HEIGHT);
         this.tabs = this.topBar.enableTabs(this);
         this.painter.installActions(this.topBar.actions);
+        this.topBar.actions.close(this.close);
         this.painter.setActionsVisible(false);
 
         this.browseContent.relative(this.topBar).y(1F).w(1F).hTo(this.area, 1F);
@@ -243,7 +245,8 @@ public class UITexturePicker extends UIElement implements IImportPathProvider, I
 
     public UITexturePicker cantBeClosed()
     {
-        this.close.removeFromParent();
+        this.close.setVisible(false);
+        this.topBar.actions.sync();
         this.eventPropagataion(EventPropagation.PASS);
 
         this.canBeClosed = false;
@@ -462,6 +465,13 @@ public class UITexturePicker extends UIElement implements IImportPathProvider, I
         this.painter.setActionsVisible(!browse);
         this.browseContent.setVisible(browse);
 
+        /* In the pop-up what is on screen is what gets picked, so a texture's tab chooses that texture.
+         * A multiskin is put together in the browser, so there the tabs are only for painting. */
+        if (editor != null && this.callback != null && this.multiLink == null && !Objects.equals(editor.getTexture(), this.current))
+        {
+            this.selectCurrent(editor.getTexture());
+        }
+
         this.tabs.sync();
         this.resize();
     }
@@ -556,7 +566,7 @@ public class UITexturePicker extends UIElement implements IImportPathProvider, I
     @Override
     public IKey getTabTooltip(int index)
     {
-        return index == 0 ? null : IKey.raw(EDITORS.get(index - 1).getTexture().path);
+        return index == 0 ? UIKeys.TEXTURES_TOOLTIP : IKey.raw(EDITORS.get(index - 1).getTexture().path);
     }
 
     @Override
@@ -578,15 +588,22 @@ public class UITexturePicker extends UIElement implements IImportPathProvider, I
     }
 
     @Override
+    public boolean isPinnedTab(int index)
+    {
+        return index == 0;
+    }
+
+    @Override
     public boolean canCloseTab(int index)
     {
         return index >= 1 && index <= EDITORS.size();
     }
 
+    /** The browser is where a texture gets chosen to open, so a new tab is a trip back to it. */
     @Override
     public void addTab()
     {
-        findAllTextures(this.getContext(), this.current, (path) -> this.openTexture(Link.create(path)));
+        this.showTab(0);
     }
 
     @Override

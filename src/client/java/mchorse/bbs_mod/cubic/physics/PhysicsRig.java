@@ -188,7 +188,7 @@ interface PhysicsRig
                     return -1F;
                 }
 
-                float len = child.relBoneMat.getTranslation(new Vector3f()).length();
+                float len = boneLength(child);
 
                 return len <= EPS ? EPS : len;
             }
@@ -199,12 +199,27 @@ interface PhysicsRig
             {
                 if (child != null && child.parentBone == bone)
                 {
-                    len = child.relBoneMat.getTranslation(new Vector3f()).length();
+                    len = boneLength(child);
                     break;
                 }
             }
 
             return len <= EPS ? EPS : len;
+        }
+
+        /**
+         * Rest distance from the bone's parent to it, in model space. Not the parent-relative
+         * matrix: that is in the parent's local frame, which carries the armature's scale
+         * (a Mixamo rig's 0.01 made every segment a hundred times too long).
+         */
+        private static float boneLength(BOBJBone bone)
+        {
+            if (bone.parentBone == null)
+            {
+                return bone.boneMat.getTranslation(new Vector3f()).length();
+            }
+
+            return bone.boneMat.getTranslation(new Vector3f()).distance(bone.parentBone.boneMat.getTranslation(new Vector3f()));
         }
 
         @Override

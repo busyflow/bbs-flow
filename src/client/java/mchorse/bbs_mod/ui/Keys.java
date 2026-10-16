@@ -91,6 +91,16 @@ public class Keys
     public static final KeyCombo FORMS_OPEN_STATES_EDITOR = new KeyCombo("open_states_editor", UIKeys.FORMS_EDITOR_STATES_OPEN, GLFW.GLFW_KEY_BACKSLASH).categoryKey("forms");
     public static final KeyCombo FORMS_TOGGLE_BODY_PART_GIZMO = new KeyCombo("toggle_body_part_gizmo", UIKeys.FORMS_EDITOR_BODY_PART_GIZMO, GLFW.GLFW_KEY_Q, GLFW.GLFW_KEY_LEFT_CONTROL).categoryKey("forms");
     public static final KeyCombo FORMS_CENTER_CAMERA = new KeyCombo("center_camera", UIKeys.FORMS_EDITOR_KEYS_CENTER_CAMERA, GLFW.GLFW_KEY_C).categoryKey("forms");
+    public static final KeyCombo FORMS_TAB_1 = new KeyCombo("tab_1", UIKeys.FORMS_EDITOR_KEYS_TAB.format(1), GLFW.GLFW_KEY_1).categoryKey("forms");
+    public static final KeyCombo FORMS_TAB_2 = new KeyCombo("tab_2", UIKeys.FORMS_EDITOR_KEYS_TAB.format(2), GLFW.GLFW_KEY_2).categoryKey("forms");
+    public static final KeyCombo FORMS_TAB_3 = new KeyCombo("tab_3", UIKeys.FORMS_EDITOR_KEYS_TAB.format(3), GLFW.GLFW_KEY_3).categoryKey("forms");
+    public static final KeyCombo FORMS_TAB_4 = new KeyCombo("tab_4", UIKeys.FORMS_EDITOR_KEYS_TAB.format(4), GLFW.GLFW_KEY_4).categoryKey("forms");
+    public static final KeyCombo FORMS_TAB_5 = new KeyCombo("tab_5", UIKeys.FORMS_EDITOR_KEYS_TAB.format(5), GLFW.GLFW_KEY_5).categoryKey("forms");
+    public static final KeyCombo FORMS_TAB_6 = new KeyCombo("tab_6", UIKeys.FORMS_EDITOR_KEYS_TAB.format(6), GLFW.GLFW_KEY_6).categoryKey("forms");
+    public static final KeyCombo FORMS_TAB_7 = new KeyCombo("tab_7", UIKeys.FORMS_EDITOR_KEYS_TAB.format(7), GLFW.GLFW_KEY_7).categoryKey("forms");
+    public static final KeyCombo FORMS_TAB_8 = new KeyCombo("tab_8", UIKeys.FORMS_EDITOR_KEYS_TAB.format(8), GLFW.GLFW_KEY_8).categoryKey("forms");
+    public static final KeyCombo FORMS_TAB_9 = new KeyCombo("tab_9", UIKeys.FORMS_EDITOR_KEYS_TAB.format(9), GLFW.GLFW_KEY_9).categoryKey("forms");
+    public static final KeyCombo FORMS_TAB_10 = new KeyCombo("tab_10", UIKeys.FORMS_EDITOR_KEYS_TAB.format(10), GLFW.GLFW_KEY_0).categoryKey("forms");
 
     /* Pixel editor */
     public static final KeyCombo PIXEL_SWAP = new KeyCombo("swap", UIKeys.TEXTURES_KEYS_SWAP, GLFW.GLFW_KEY_X).categoryKey("pixels");
@@ -114,6 +124,7 @@ public class Keys
     public static final KeyCombo PIXEL_CLEAR = new KeyCombo("clear", UIKeys.TEXTURES_KEYS_CLEAR, GLFW.GLFW_KEY_DELETE).categoryKey("pixels");
     public static final KeyCombo PIXEL_FLIP_H = new KeyCombo("flip_h", UIKeys.TEXTURES_KEYS_FLIP_H, GLFW.GLFW_KEY_H, GLFW.GLFW_KEY_LEFT_SHIFT).categoryKey("pixels");
     public static final KeyCombo PIXEL_FLIP_V = new KeyCombo("flip_v", UIKeys.TEXTURES_KEYS_FLIP_V, GLFW.GLFW_KEY_V, GLFW.GLFW_KEY_LEFT_SHIFT).categoryKey("pixels");
+    public static final KeyCombo PIXEL_GRID = new KeyCombo("grid", UIKeys.TEXTURES_GRID, GLFW.GLFW_KEY_G).categoryKey("pixels");
 
     /* Keyframes */
     public static final KeyCombo KEYFRAMES_ENABLE = new KeyCombo("keyframes_enable", UIKeys.KEYFRAMES_KEYS_ENABLED, GLFW.GLFW_KEY_J).categoryKey("keyframes");
@@ -156,6 +167,7 @@ public class Keys
     public static final KeyCombo TRANSFORMATIONS_ROTATION_MODE = new KeyCombo("rotation_mode", UIKeys.TRANSFORMS_KEYS_ROTATION_MODE, GLFW.GLFW_KEY_Q, GLFW.GLFW_KEY_LEFT_SHIFT).categoryKey("transformations");
     public static final KeyCombo TRANSFORMATIONS_TOGGLE_FIX = new KeyCombo("toggle_fix", UIKeys.TRANSFORMS_KEYS_TOGGLE_FIX, GLFW.GLFW_KEY_Y).categoryKey("transformations");
     public static final KeyCombo TRANSFORMATIONS_MIRROR_EDIT = new KeyCombo("mirror_edit", UIKeys.TRANSFORMS_KEYS_MIRROR_EDIT, GLFW.GLFW_KEY_F, GLFW.GLFW_KEY_LEFT_SHIFT).categoryKey("transformations");
+    public static final KeyCombo TRANSFORMATIONS_FLIP_POSE = new KeyCombo("flip_pose", UIKeys.POSE_CONTEXT_FLIP_POSE, GLFW.GLFW_KEY_F, GLFW.GLFW_KEY_LEFT_CONTROL, GLFW.GLFW_KEY_LEFT_SHIFT).categoryKey("transformations");
     public static final KeyCombo TRANSFORMATIONS_COPY_WORLD = new KeyCombo("copy_world", UIKeys.TRANSFORMS_CONTEXT_COPY_WORLD, GLFW.GLFW_KEY_C, GLFW.GLFW_KEY_LEFT_CONTROL, GLFW.GLFW_KEY_LEFT_SHIFT, GLFW.GLFW_KEY_LEFT_ALT).categoryKey("transformations");
     public static final KeyCombo TRANSFORMATIONS_PASTE_WORLD = new KeyCombo("paste_world", UIKeys.TRANSFORMS_CONTEXT_PASTE_WORLD, GLFW.GLFW_KEY_V, GLFW.GLFW_KEY_LEFT_CONTROL, GLFW.GLFW_KEY_LEFT_SHIFT, GLFW.GLFW_KEY_LEFT_ALT).categoryKey("transformations");
 
@@ -167,6 +179,7 @@ public class Keys
     public static final KeyCombo FILM_CONTROLLER_TOGGLE_ORBIT_MODE = new KeyCombo("toggle_orbit_mode", UIKeys.FILM_CONTROLLER_KEYS_CHANGE_CAMERA_MODE, GLFW.GLFW_KEY_F3).categoryKey("film_controller");
     public static final KeyCombo FILM_CONTROLLER_TOGGLE_ORTHO = new KeyCombo("toggle_ortho", UIKeys.FILM_CONTROLLER_KEYS_TOGGLE_ORTHO, GLFW.GLFW_KEY_KP_5).categoryKey("film_controller");
     public static final KeyCombo FILM_CONTROLLER_TELEPORT_ORBIT = new KeyCombo("teleport_orbit_record", UIKeys.FILM_CONTROLLER_KEYS_TELEPORT_ORBIT, GLFW.GLFW_KEY_C).categoryKey("film_controller");
+    public static final KeyCombo FILM_CONTROLLER_CAMERA_TO_PLAYER = new KeyCombo("camera_to_player", UIKeys.FILM_TELEPORT_CONTEXT_CAMERA, GLFW.GLFW_KEY_C, GLFW.GLFW_KEY_LEFT_SHIFT).categoryKey("film_controller");
     public static final KeyCombo FILM_CONTROLLER_ATTACH_ORBIT = new KeyCombo("attach_orbit_record", UIKeys.FILM_CONTROLLER_KEYS_ATTACH_ORBIT, GLFW.GLFW_KEY_Z, GLFW.GLFW_KEY_LEFT_SHIFT).categoryKey("film_controller");
     public static final KeyCombo FILM_CONTROLLER_TOGGLE_REPLAY_MENU = new KeyCombo("toggle_replay_menu", UIKeys.FILM_CONTROLLER_KEYS_OPEN_REPLAYS, GLFW.GLFW_KEY_F4).categoryKey("film_controller");
     public static final KeyCombo FILM_CONTROLLER_MOVE_REPLAY_TO_CURSOR = new KeyCombo("move_replay_to_cursor", UIKeys.FILM_CONTROLLER_KEYS_MOVE_REPLAY_TO_CURSOR, GLFW.GLFW_KEY_G, GLFW.GLFW_KEY_LEFT_CONTROL).categoryKey("film_controller");
@@ -235,4 +248,6 @@ public class Keys
 
     /* Texture picker */
     public static final KeyCombo TEXTURE_PICKER_FIND = new KeyCombo("find", UIKeys.TEXTURE_KEYS_FIND_ALL, GLFW.GLFW_KEY_F, GLFW.GLFW_KEY_LEFT_CONTROL).categoryKey("texture_picker");
+    /* Not F2: Minecraft takes F2 for a screenshot before any screen sees it */
+    public static final KeyCombo TEXTURE_PICKER_RENAME = new KeyCombo("rename", UIKeys.GENERAL_RENAME, GLFW.GLFW_KEY_R, GLFW.GLFW_KEY_LEFT_CONTROL).categoryKey("texture_picker");
 }

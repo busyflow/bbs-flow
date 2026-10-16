@@ -225,15 +225,9 @@ public class UITextureEditor extends UIPixelsEditor
             return;
         }
         /* The whole document is resized — the strip, not the frame on show */
-        UIResizeTextureOverlayPanel overlayPanel = new UIResizeTextureOverlayPanel(this.document.width, this.document.height, (size) ->
+        UIResizeTextureOverlayPanel overlayPanel = new UIResizeTextureOverlayPanel(this.document.width, this.document.height, (size, stretch) ->
         {
-            boolean editing = this.isEditing();
-            int newW = MathUtils.clamp(size.x, 1, 4096);
-            int newH = MathUtils.clamp(size.y, 1, 4096);
-
-            this.setSize(newW, newH);
-            this.setDirty(true);
-            this.setEditing(editing);
+            this.resizeDocument(MathUtils.clamp(size.x, 1, 4096), MathUtils.clamp(size.y, 1, 4096), stretch);
         });
 
         UIOverlay.addOverlay(this.getContext(), overlayPanel);

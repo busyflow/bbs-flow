@@ -651,6 +651,11 @@ public class BBSRendering
         return optifine;
     }
 
+    public static boolean isIrisLoaded()
+    {
+        return iris;
+    }
+
     public static boolean isRenderingWorld()
     {
         return renderingWorld;
@@ -851,6 +856,20 @@ public class BBSRendering
         return IrisUtils.calculateTangents(v, n, u);
     }
 
+    /** Iris' packed tangent for a triangle with the given normal; 0 without Iris. */
+    public static int computeTangent(float nx, float ny, float nz,
+        float x0, float y0, float z0, float u0, float v0,
+        float x1, float y1, float z1, float u1, float v1,
+        float x2, float y2, float z2, float u2, float v2)
+    {
+        if (!iris)
+        {
+            return 0;
+        }
+
+        return IrisUtils.computeTangent(nx, ny, nz, x0, y0, z0, u0, v0, x1, y1, z1, u1, v1, x2, y2, z2, u2, v2);
+    }
+
     public static void addUniforms(List<CachedUniform> list, Map<String, ShaderCurves.ShaderVariable> variableMap)
     {
         if (!iris)
@@ -869,16 +888,6 @@ public class BBSRendering
         }
 
         return IrisUtils.getSliderProperties();
-    }
-
-    public static Map<String, String> getShadersLanguageMap(String language)
-    {
-        if (!iris)
-        {
-            return Collections.emptyMap();
-        }
-
-        return IrisUtils.getShadersLanguageMap(language);
     }
 
     /* Curves */

@@ -434,6 +434,15 @@ public abstract class VideoExportSession
         this.recordingStartedAtMs = 0L;
     }
 
+    /**
+     * Base name (no extension) of the video being recorded, or {@code null} until the
+     * recording itself has started. Still set during {@link #teardown(boolean)}.
+     */
+    protected String getRecordingName()
+    {
+        return this.movieName;
+    }
+
     /* Hooks */
 
     /**

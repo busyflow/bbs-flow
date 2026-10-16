@@ -32,6 +32,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
+import mchorse.bbs_mod.ui.utils.keys.KeyCombo;
 import mchorse.bbs_mod.utils.Direction;
 import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.joml.Matrices;
@@ -41,6 +42,8 @@ import org.joml.Vector3f;
 public abstract class UIForm <T extends Form> extends UIPanelBase<UIFormPanel<T>>
 {
     private static final List<Consumer<UIForm<?>>> PANEL_EXTENSIONS = new ArrayList<>();
+    private static final KeyCombo[] TAB_KEYS = {Keys.FORMS_TAB_1, Keys.FORMS_TAB_2, Keys.FORMS_TAB_3, Keys.FORMS_TAB_4,
+        Keys.FORMS_TAB_5, Keys.FORMS_TAB_6, Keys.FORMS_TAB_7, Keys.FORMS_TAB_8, Keys.FORMS_TAB_9, Keys.FORMS_TAB_10};
 
     public static void registerPanelExtension(Consumer<UIForm<?>> factory)
     {
@@ -61,6 +64,14 @@ public abstract class UIForm <T extends Form> extends UIPanelBase<UIFormPanel<T>
 
         this.buttons.activeEdge(Direction.RIGHT);
         this.keys().register(Keys.FILM_CONTROLLER_CYCLE_EDITORS, this::cyclePanels);
+
+        /* Digits follow the tab strip from the top, like the track categories of the keyframe editor */
+        for (int i = 0; i < TAB_KEYS.length; i++)
+        {
+            final int index = i;
+
+            this.keys().register(TAB_KEYS[i], () -> this.selectPanel(index)).active(() -> index < this.panels.size());
+        }
     }
 
     @Override
@@ -120,7 +131,12 @@ public abstract class UIForm <T extends Form> extends UIPanelBase<UIFormPanel<T>
         int index = this.panels.indexOf(this.view);
         int newIndex = MathUtils.cycler(index + (Window.isShiftPressed() ? -1 : 1), this.panels);
 
-        this.setPanel(this.panels.get(newIndex));
+        this.selectPanel(newIndex);
+    }
+
+    private void selectPanel(int index)
+    {
+        this.setPanel(this.panels.get(index));
         UIUtils.playClick();
     }
 

@@ -100,6 +100,16 @@ public class UIAnimationStateKeyframes extends UIKeyframes
     }
 
     @Override
+    protected void moveCursorToKeyframe(Keyframe keyframe)
+    {
+        if (this.editor != null)
+        {
+            this.editor.stopPlaybackOnScrub();
+            this.editor.setCursor(keyframe.getTick());
+        }
+    }
+
+    @Override
     protected void renderOverlay(UIContext context)
     {
         /* Draw the cursor in the overlay pass (after the keyframes) so it sits on top of them,

@@ -39,14 +39,18 @@ public class CubicVAOBuilderRenderer implements ICubicRenderer
 
     private Map<ModelGroup, Map<String, ModelVAO>> model;
 
+    /* The welded band draws its quads itself (see WeldMesh); null when the model has no welds. */
+    private WeldMesh band;
+
     /* Temporary variables to avoid allocating and GC vectors */
     private ModelVertex modelVertex = new ModelVertex();
     private Vector3f normal = new Vector3f();
     private Vector4f vertex = new Vector4f();
 
-    public CubicVAOBuilderRenderer(Map<ModelGroup, Map<String, ModelVAO>> model)
+    public CubicVAOBuilderRenderer(Map<ModelGroup, Map<String, ModelVAO>> model, WeldMesh band)
     {
         this.model = model;
+        this.band = band;
     }
 
     /** Accumulated triangle data for a single material within a group. */
@@ -130,7 +134,7 @@ public class CubicVAOBuilderRenderer implements ICubicRenderer
         {
             int count = quad.vertices.size();
 
-            if (count != 3 && count != 4)
+            if (count != 3 && count != 4 || (this.band != null && this.band.isBand(quad)))
             {
                 continue;
             }

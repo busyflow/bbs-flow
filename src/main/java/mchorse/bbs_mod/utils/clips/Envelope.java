@@ -6,7 +6,6 @@ import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.settings.values.numeric.ValueBoolean;
 import mchorse.bbs_mod.settings.values.numeric.ValueFloat;
 import mchorse.bbs_mod.settings.values.core.ValueGroup;
-import mchorse.bbs_mod.settings.values.numeric.ValueInt;
 import mchorse.bbs_mod.utils.interps.IInterp;
 import mchorse.bbs_mod.utils.interps.Interpolation;
 import mchorse.bbs_mod.utils.interps.Interpolations;
@@ -17,7 +16,6 @@ import mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories;
 public class Envelope extends ValueGroup
 {
     public final ValueBoolean enabled = new ValueBoolean("enabled");
-    public final ValueInt mode = new ValueInt("mode", 0, 0, 2);
 
     public final ValueFloat fadeIn = new ValueFloat("fadeIn", 10F);
     public final ValueFloat fadeOut = new ValueFloat("fadeOut", 10F);
@@ -33,7 +31,6 @@ public class Envelope extends ValueGroup
         super(id);
 
         this.add(this.enabled);
-        this.add(this.mode);
         this.add(this.fadeIn);
         this.add(this.fadeOut);
         this.add(this.pre);
@@ -43,32 +40,6 @@ public class Envelope extends ValueGroup
 
         this.channel.insert(0, 0D);
         this.channel.insert(BBSSettings.getDefaultDuration(), 1D);
-    }
-
-    public float getStartX(int duration)
-    {
-        return 0;
-    }
-
-    public float getStartDuration(int duration)
-    {
-        if (this.mode.get() == 1) return this.fadeIn.get() <= 0 ? duration : this.fadeIn.get();
-        else if (this.mode.get() == 2) return 0;
-
-        return this.fadeIn.get();
-    }
-
-    public float getEndX(int duration)
-    {
-        return duration;
-    }
-
-    public float getEndDuration(int duration)
-    {
-        if (this.mode.get() == 1) return duration;
-        else if (this.mode.get() == 2) return duration - (this.fadeOut.get() <= 0 ? duration : this.fadeOut.get());
-
-        return duration - this.fadeOut.get();
     }
 
     public float factorEnabled(int duration, float tick)
@@ -94,9 +65,9 @@ public class Envelope extends ValueGroup
         }
         else
         {
-            float lowOut = this.getStartDuration(duration);
+            float lowOut = this.fadeIn.get();
 
-            envelope = Lerps.envelope(tick, this.getStartX(duration), lowOut, this.getEndDuration(duration), this.getEndX(duration));
+            envelope = Lerps.envelope(tick, 0, lowOut, duration - this.fadeOut.get(), duration);
             envelope = (float) (tick <= lowOut ? this.pre : this.post).interpolate(IInterp.context.set(0, 1, envelope));
         }
 
@@ -127,6 +98,12 @@ public class Envelope extends ValueGroup
                 this.pre.fromData(interpolation);
                 this.post.fromData(interpolation);
             }
+
+            /* The old "start only"/"end only" modes are now just a zero fade on the other side */
+            int mode = map.getInt("mode");
+
+            if (mode == 1) this.fadeOut.set(0F);
+            else if (mode == 2) this.fadeIn.set(0F);
         }
     }
 }

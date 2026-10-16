@@ -11,6 +11,7 @@ import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.forms.utils.FormBone;
+import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
 import net.minecraft.world.World;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -148,6 +149,15 @@ public final class ModelPhysicsRuntime
         STATES.putAll(snapshot);
     }
 
+    /**
+     * The bones of the physics chain from {@code root} down to {@code end}, root first — empty
+     * when the end isn't below the root. The bone list draws the chain from it.
+     */
+    public static List<String> chainBones(IModel model, String root, String end)
+    {
+        return ModelPhysicsCache.buildChainIds(model, end, root);
+    }
+
     public static void invalidate(String modelId)
     {
         /* The skeleton the checkpoint was taken against is gone, so putting it back would resurrect a
@@ -202,7 +212,12 @@ public final class ModelPhysicsRuntime
 
         wind = resolveWindDirection(wind, baseTransform);
 
-        applyCompiled(entity.getWorld(), entity.getAge(), transition, model, instance, compiled.chains(), wind, constraints, state, baseTransform);
+        /* What the form rides when it is anchored (a passenger in a car): the share of the carrier's motion the
+         * physics isn't meant to feel is carried out of it. Null — the plain world — everywhere else, and for
+         * chains run model-local (no world frame), which a world-space carrier means nothing to. */
+        PhysicsCarrier carrier = baseTransform == null ? null : RenderFrame.getCarrier(form);
+
+        applyCompiled(entity.getWorld(), entity.getAge(), transition, model, instance, compiled.chains(), wind, constraints, carrier, state, baseTransform);
     }
 
     /**
@@ -225,7 +240,7 @@ public final class ModelPhysicsRuntime
         return new ModelPhysicsConfig.Wind(wind.strength(), dir.x, dir.y, dir.z, wind.turbulence(), wind.turbulenceSpeed(), wind.turbulenceScale(), false);
     }
 
-    private static void applyCompiled(World world, int age, float transition, IModel model, ModelInstance instance, List<ModelPhysicsCache.CompiledChain> compiledChains, ModelPhysicsConfig.Wind wind, Map<String, BoneConstraint> constraints, InstanceState state, Matrix4f baseTransform)
+    private static void applyCompiled(World world, int age, float transition, IModel model, ModelInstance instance, List<ModelPhysicsCache.CompiledChain> compiledChains, ModelPhysicsConfig.Wind wind, Map<String, BoneConstraint> constraints, PhysicsCarrier carrier, InstanceState state, Matrix4f baseTransform)
     {
         Set<String> wanted = new HashSet<>();
         Set<String> chainIds = new HashSet<>();
@@ -259,11 +274,11 @@ public final class ModelPhysicsRuntime
 
         for (ModelPhysicsCache.CompiledChain chain : compiledChains)
         {
-            applyChain(world, age, transition, model, instance, chain, wind, constraints, frames, state);
+            applyChain(world, age, transition, model, instance, chain, wind, constraints, frames, carrier, state);
         }
     }
 
-    private static void applyChain(World world, int age, float transition, IModel model, ModelInstance instance, ModelPhysicsCache.CompiledChain chain, ModelPhysicsConfig.Wind wind, Map<String, BoneConstraint> constraints, Map<String, PivotFrame> frames, InstanceState instanceState)
+    private static void applyChain(World world, int age, float transition, IModel model, ModelInstance instance, ModelPhysicsCache.CompiledChain chain, ModelPhysicsConfig.Wind wind, Map<String, BoneConstraint> constraints, Map<String, PivotFrame> frames, PhysicsCarrier carrier, InstanceState instanceState)
     {
         List<String> ids = chain.chainRootToEnd();
         int pivotCount = ids.size();
@@ -398,7 +413,7 @@ public final class ModelPhysicsRuntime
         }
 
         ChainSolver.computePoseTargets(model, ids, chainFrames, chain.restLengths(), anchor, anchorRotation, target != null, state);
-        ChainSolver.step(world, age, transition, model, ids, chain, gravity, damping, stiffness, wind, constraints, anchor, anchorRotation, chainFrames.get(0).parentRotation(), target, chainFrames, state);
+        ChainSolver.step(world, age, transition, model, ids, chain, gravity, damping, stiffness, wind, constraints, anchor, anchorRotation, chainFrames.get(0).parentRotation(), target, chainFrames, carrier, state);
 
         Vector3f[] positions = ChainSolver.renderInterpolate(state, state.renderAlpha, anchor, anchorRotation, target);
         ModelRotationBlender.applyWeightedRotations(model, chainFrames.get(0).parentRotation(), ids, positions, weight);

@@ -5,7 +5,6 @@ import mchorse.bbs_mod.data.types.BaseType;
 import mchorse.bbs_mod.data.types.ListType;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.settings.values.core.StableIds;
-import mchorse.bbs_mod.utils.StringUtils;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
@@ -14,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The form-fragment half of the stable-id migration: gives every body part of a <em>raw</em> form
@@ -29,6 +29,9 @@ import java.util.Set;
 public class FormStableIds
 {
     private static final Logger LOGGER = LogUtils.getLogger();
+
+    /** Every form read walks through here, so an orphan left as is would otherwise be reported on each load and copy. */
+    private static final Set<String> REPORTED_ORPHANS = ConcurrentHashMap.newKeySet();
 
     /** A replay preset also owns tracks outside its form, but has no film version gate. */
     public static Map<String, String> ensureReplay(MapType replay)
@@ -229,7 +232,7 @@ public class FormStableIds
         String[] segments = key.split("/");
         int indices = 0;
 
-        while (indices < segments.length && StringUtils.isInteger(segments[indices]))
+        while (indices < segments.length && isIndex(segments[indices]))
         {
             indices += 1;
         }
@@ -244,7 +247,10 @@ public class FormStableIds
 
         if (idPath == null)
         {
-            LOGGER.warn("Track key \"" + key + "\" points at body part [" + indexPath + "] which does not exist; leaving the orphan as is");
+            if (REPORTED_ORPHANS.add(key))
+            {
+                LOGGER.warn("Track key \"" + key + "\" points at body part [" + indexPath + "] which does not exist; leaving the orphan as is");
+            }
 
             return key;
         }
@@ -252,5 +258,27 @@ public class FormStableIds
         String tail = String.join("/", java.util.Arrays.copyOfRange(segments, indices, segments.length));
 
         return tail.isEmpty() ? idPath : idPath + "/" + tail;
+    }
+
+    /**
+     * A legacy body part index segment: digits only. Stricter than {@link
+     * mchorse.bbs_mod.utils.StringUtils#isInteger}, which says yes to {@code ""} and {@code "-"}.
+     */
+    private static boolean isIndex(String segment)
+    {
+        if (segment.isEmpty())
+        {
+            return false;
+        }
+
+        for (int i = 0; i < segment.length(); i++)
+        {
+            if (!Character.isDigit(segment.charAt(i)))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

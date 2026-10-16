@@ -20,8 +20,8 @@ import java.util.List;
 
 /**
  * Compact look editor for a model debug overlay (IK or physics), mirroring the
- * motion path's menu: a header with the overlay's toggle, the X-ray mode and
- * dashed lines, then a row per element — a shape (click cycles), an eye, its
+ * motion path's menu: a header with the overlay's toggle, the X-ray mode,
+ * dashed lines and a reset to the default look, then a row per element — a shape (click cycles), an eye, its
  * colour and its size — and the overlay's opacity. Works on any
  * {@link ValueModelDebug}; element labels come from
  * {@code bbs.ui.model_debug.<element id>}.
@@ -31,7 +31,7 @@ public class UIDebugOverlayContextMenu extends UIContextMenu
     public UIIcon enable;
     public UIIcon xray;
     public UIIcon dashed;
-    public UISliderTrackpad opacity;
+    public UIIcon reset;
 
     private ValueModelDebug config;
     private UIElement column;
@@ -48,28 +48,49 @@ public class UIDebugOverlayContextMenu extends UIContextMenu
         this.dashed = new UIIcon(Icons.LINE, (b) -> this.config.dashed.toggle());
         this.dashed.highlight(this.config.dashed::get, Direction.BOTTOM);
         this.dashed.tooltip(UIKeys.MODEL_DEBUG_DASHED);
+        this.reset = new UIIcon(Icons.REFRESH, (b) -> this.reset());
+        this.reset.tooltip(UIKeys.MODEL_DEBUG_RESET);
 
-        this.opacity = new UISliderTrackpad((v) -> this.config.opacity.set(v.floatValue()));
-        this.opacity.limit(this.config.opacity).setValue(this.config.opacity.get());
+        this.build();
+    }
+
+    /** The rows read their values once, so they are rebuilt after a reset. */
+    private void build()
+    {
+        UISliderTrackpad opacity = new UISliderTrackpad((v) -> this.config.opacity.set(v.floatValue()));
+
+        opacity.limit(this.config.opacity).setValue(this.config.opacity.get());
 
         List<UIElement> rows = new ArrayList<>();
 
-        rows.add(UI.row(this.enable, this.xray, this.dashed));
+        rows.add(UI.row(this.enable, this.xray, this.dashed, this.reset));
 
-        for (ValueDebugElement element : config.getElements())
+        for (ValueDebugElement element : this.config.getElements())
         {
             rows.add(UI.label(L10n.lang("bbs.ui.model_debug." + element.getId())));
             rows.add(this.row(element));
         }
 
         rows.add(UI.label(UIKeys.MODEL_DEBUG_OPACITY));
-        rows.add(this.opacity);
+        rows.add(opacity);
 
         this.column = UI.column(4, 8, rows.toArray(new UIElement[0]));
         this.column.relative(this).w(210);
 
         this.add(this.column);
         this.column.resize();
+    }
+
+    /** Back to the default look; the overlay stays on or off as it is. */
+    private void reset()
+    {
+        boolean enabled = this.config.enabled.get();
+
+        this.config.reset();
+        this.config.enabled.set(enabled);
+
+        this.column.removeFromParent();
+        this.build();
     }
 
     private UIElement row(ValueDebugElement element)

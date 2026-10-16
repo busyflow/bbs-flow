@@ -1,6 +1,7 @@
 package mchorse.bbs_mod.forms.renderers.utils;
 
 import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.cubic.physics.PhysicsCarrier;
 import mchorse.bbs_mod.forms.FormUtilsClient;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.BodyPart;
@@ -39,6 +40,12 @@ public class RenderFrame
      */
     private static final Map<Form, Float> FILM_TICKS = new IdentityHashMap<>();
 
+    /**
+     * What each anchored form rides for its bone physics in this frame, laid down by the film for the actor
+     * and its body parts, see {@link PhysicsCarrier}. Like the film tick it lives for the whole frame.
+     */
+    private static final Map<Form, PhysicsCarrier> CARRIERS = new IdentityHashMap<>();
+
     private static long epoch;
 
     public static long getEpoch()
@@ -57,6 +64,7 @@ public class RenderFrame
         epoch += 1;
         ENTRIES.clear();
         FILM_TICKS.clear();
+        CARRIERS.clear();
     }
 
     /** The film shows this form, and the forms of its body parts, at this tick in this frame. */
@@ -79,6 +87,35 @@ public class RenderFrame
     public static Float getFilmTick(Form form)
     {
         return form == null ? null : FILM_TICKS.get(form);
+    }
+
+    /** This form and the forms of its body parts ride this carrier in this frame; {@code null} rides nothing. */
+    public static void setCarrier(Form form, PhysicsCarrier carrier)
+    {
+        if (form == null || carrier == null && CARRIERS.isEmpty())
+        {
+            return;
+        }
+
+        if (carrier == null)
+        {
+            CARRIERS.remove(form);
+        }
+        else
+        {
+            CARRIERS.put(form, carrier);
+        }
+
+        for (BodyPart part : form.parts.getAllTyped())
+        {
+            setCarrier(part.getForm(), carrier);
+        }
+    }
+
+    /** What this form rides for its bone physics in this frame, or null when its physics lives in the world. */
+    public static PhysicsCarrier getCarrier(Form form)
+    {
+        return form == null ? null : CARRIERS.get(form);
     }
 
     /**

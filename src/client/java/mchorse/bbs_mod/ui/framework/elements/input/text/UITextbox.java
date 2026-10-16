@@ -20,6 +20,8 @@ public class UITextbox extends UIBaseTextbox implements ITextColoring
 {
     public static final Predicate<String> FILENAME_PREDICATE = (s) -> Patterns.FILENAME.matcher(s).find();
     public static final Predicate<String> PATH_PREDICATE = (s) -> Patterns.PATH.matcher(s).find();
+    /** A file name that may also hold spaces — textures are plain files on disk, named like any other */
+    public static final Predicate<String> SPACED_FILENAME_PREDICATE = (s) -> FILENAME_PREDICATE.test(s.replace(" ", ""));
 
     public Consumer<String> callback;
 

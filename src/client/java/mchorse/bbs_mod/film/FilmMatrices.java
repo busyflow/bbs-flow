@@ -2,6 +2,7 @@ package mchorse.bbs_mod.film;
 
 import mchorse.bbs_mod.forms.entities.ReplayEntity;
 
+import mchorse.bbs_mod.cubic.physics.PhysicsCarrier;
 import mchorse.bbs_mod.cubic.spline.SplinePath;
 import mchorse.bbs_mod.forms.forms.SplineForm;
 import mchorse.bbs_mod.ui.utils.SplineEditorUtils;
@@ -135,6 +136,41 @@ public class FilmMatrices
         }
 
         return result;
+    }
+
+    /**
+     * What the anchored form rides for its bone physics: the frame its anchor resolves to before the anchor's
+     * own offset, in world space — the target as this anchor takes it. The offset is left out because moving
+     * the form about inside the carrier is the form's own motion, which the physics should feel. {@code null}
+     * when the physics feels the whole world: no target, or an anchor feeling all of its target's motion
+     * ({@link Anchor#physics} at 1, the default). A target transition blends the two frames and the two
+     * shares the way the form itself is blended between them.
+     */
+    public static PhysicsCarrier getCarrier(Map<String, IEntity> entities, Anchor value, Matrix4f defaultMatrix, float transition, FormFrameCache frame)
+    {
+        if (value == null) return null;
+        value = FormPoseEvents.ANCHOR.invoker().resolve(value);
+
+        boolean same = value.previous == null || Objects.equals(value, value.previous);
+        boolean only = value.previous != null && (value.x == 0F || value.x == 1F);
+        Anchor anchor = same || value.x == 1F ? value : value.previous;
+        float feel = MathUtils.clamp(same || only ? anchor.physics : Lerps.lerp(value.previous.physics, value.physics, value.x), 0F, 1F);
+
+        if (feel >= 1F)
+        {
+            return null;
+        }
+
+        Matrix4f matrix = getEntityMatrix(entities, 0D, 0D, 0D, anchor, defaultMatrix, transition, 0, false, frame);
+
+        if (!same && !only)
+        {
+            Matrix4f lastMatrix = getEntityMatrix(entities, 0D, 0D, 0D, value.previous, defaultMatrix, transition, 0, false, frame);
+
+            matrix = lastMatrix == defaultMatrix && matrix == defaultMatrix ? defaultMatrix : Matrices.lerp(lastMatrix, matrix, value.x);
+        }
+
+        return matrix == defaultMatrix ? null : PhysicsCarrier.of(matrix, feel);
     }
 
     private static Matrix4f applyAnchorTransform(Matrix4f matrix, Anchor anchor)

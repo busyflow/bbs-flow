@@ -19,6 +19,7 @@ import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UISearchList;
 import mchorse.bbs_mod.ui.utils.UIConstants;
+import mchorse.bbs_mod.ui.utils.bones.BoneRoles;
 import mchorse.bbs_mod.ui.utils.bones.UIBoneTreeList;
 import mchorse.bbs_mod.ui.utils.presets.UIDataContextMenu;
 import mchorse.bbs_mod.ui.utils.values.UIValues;
@@ -32,7 +33,8 @@ import java.util.function.Supplier;
 
 /**
  * The shared skeleton of the per-bone solver panels: a searchable bone tree and fields
- * for the selected bone. Each solver owns its data and optional preset menu.
+ * for the selected bone. Each solver owns its data and optional preset menu, and says
+ * what it has on which bone ({@link #describeBones}) so the tree reads it at a glance.
  */
 public abstract class UIBoneListFormPanel extends UIFormPanel<ModelForm>
 {
@@ -67,6 +69,7 @@ public abstract class UIBoneListFormPanel extends UIFormPanel<ModelForm>
             this.updateFields();
         });
         this.bones.background();
+        this.bones.roles(this::describeBones);
 
         this.bonesSearch = new UISearchList<>(this.bones);
         this.bonesSearch.label(UIKeys.GENERAL_SEARCH);
@@ -100,6 +103,30 @@ public abstract class UIBoneListFormPanel extends UIFormPanel<ModelForm>
 
     /** Push the selected bone's values into the fields. */
     protected abstract void updateFields();
+
+    /**
+     * Say which bones carry this solver's settings and what they are to it (see
+     * {@link BoneRoles}). Asked on every draw of the bone tree, so it reads the form as it
+     * is right now — no cache to keep in step with edits, undo or a playing film.
+     */
+    protected abstract void describeBones(BoneRoles roles);
+
+    /** Every bone entry the form has; bones never edited have none. */
+    protected void forEachFormBone(Consumer<FormBone> consumer)
+    {
+        if (this.form == null)
+        {
+            return;
+        }
+
+        for (BaseValue value : this.form.bones.getAll())
+        {
+            if (value instanceof FormBone bone)
+            {
+                consumer.accept(bone);
+            }
+        }
+    }
 
     /** Grey the whole panel out while there is no model to pick bones from. */
     protected abstract void setElementsEnabled(boolean enabled);

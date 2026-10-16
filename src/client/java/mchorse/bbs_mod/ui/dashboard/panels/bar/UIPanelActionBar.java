@@ -24,7 +24,8 @@ import java.util.function.BooleanSupplier;
  * the same place in every panel: {@link #editor which of the panel's editors is open}, then
  * {@link #action panel actions}, then a separator, then {@link #layout what acts on the panel's
  * own layout}, then {@link #common the buttons every panel shares} — the list of what the panel
- * edits, then save — and finally {@link #menu the panel's menu} at the very end.</p>
+ * edits, then save — and finally {@link #menu the panel's menu} at the very end, followed only by
+ * {@link #close the cross} of a pop-up that wears this bar.</p>
  *
  * <p>Past the separator is everything that is <em>about</em> the panel rather than about what it
  * edits, which is why the layout lock sits there rather than among the actions.</p>
@@ -51,6 +52,7 @@ public class UIPanelActionBar extends UIElement
     private final UIElement separator = new UIElement();
 
     private UIIcon menu;
+    private UIIcon close;
     private int contentWidth;
 
     public UIPanelActionBar()
@@ -129,6 +131,18 @@ public class UIPanelActionBar extends UIElement
         return this;
     }
 
+    /**
+     * Set the cross that closes the pop-up this bar belongs to (the "select texture" picker). The
+     * very last button, so it sits in the corner whatever else the bar shows.
+     */
+    public UIPanelActionBar close(UIIcon icon)
+    {
+        this.close = this.adopt(icon, null);
+        this.sync();
+
+        return this;
+    }
+
     private UIIcon adopt(UIIcon icon, BooleanSupplier active)
     {
         icon.wh(BUTTON_SIZE, BUTTON_SIZE);
@@ -165,7 +179,7 @@ public class UIPanelActionBar extends UIElement
 
         width = this.addSlot(this.actions, width);
 
-        if (width > 0 && (this.hasVisible(this.layout) || this.hasVisible(this.common) || this.isVisible(this.menu)))
+        if (width > 0 && (this.hasVisible(this.layout) || this.hasVisible(this.common) || this.isVisible(this.menu) || this.isVisible(this.close)))
         {
             this.add(this.separator);
 
@@ -178,6 +192,13 @@ public class UIPanelActionBar extends UIElement
         if (this.isVisible(this.menu))
         {
             this.add(this.menu);
+
+            width += BUTTON_SIZE;
+        }
+
+        if (this.isVisible(this.close))
+        {
+            this.add(this.close);
 
             width += BUTTON_SIZE;
         }
@@ -236,6 +257,11 @@ public class UIPanelActionBar extends UIElement
         if (this.menu != null)
         {
             this.renderHover(context, this.menu);
+        }
+
+        if (this.close != null)
+        {
+            this.renderHover(context, this.close);
         }
 
         this.renderSeparator(context, this.editorSeparator);

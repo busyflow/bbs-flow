@@ -18,6 +18,7 @@ import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.math.IExpression;
 import mchorse.bbs_mod.math.MathBuilder;
+import mchorse.bbs_mod.network.ClientNetwork;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.settings.values.IValueListener;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
@@ -1717,7 +1718,19 @@ public class UIReplayList extends UIList<ReplayListEntry>
             }
         });
 
-        list.setBlocks(BBSRendering.capturedModelBlocks);
+        /* A block that is off has usually been turned into a replay already, so only the
+         * ones still standing in the world are offered. */
+        List<ModelBlockEntity> blocks = new ArrayList<>();
+
+        for (ModelBlockEntity block : BBSRendering.capturedModelBlocks)
+        {
+            if (block.getProperties().isEnabled())
+            {
+                blocks.add(block);
+            }
+        }
+
+        list.setBlocks(blocks);
         list.background();
 
         search.label(UIKeys.GENERAL_SEARCH);
@@ -1732,6 +1745,11 @@ public class UIReplayList extends UIList<ReplayListEntry>
     private void fromModelBlock(ModelBlockEntity modelBlock)
     {
         this.showNewReplay(ReplayFactory.fromModelBlock(this.panel.getData(), modelBlock));
+
+        /* The replay now shows the form at the same spot, so the block is switched off
+         * rather than left drawing a second copy on top of it. */
+        modelBlock.getProperties().setEnabled(false);
+        ClientNetwork.sendModelBlockForm(modelBlock.getPos(), modelBlock);
     }
 
     /**

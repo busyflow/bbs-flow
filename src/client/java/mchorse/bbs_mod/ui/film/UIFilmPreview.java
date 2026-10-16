@@ -46,6 +46,7 @@ import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.joml.Vectors;
 import mchorse.bbs_mod.settings.values.numeric.ValueBoolean;
 import mchorse.bbs_mod.utils.iris.IrisShaderPacks;
+import mchorse.bbs_mod.utils.iris.ShaderOptions;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.util.math.MatrixStack;
@@ -141,6 +142,11 @@ public class UIFilmPreview extends UIElement
         this.teleport.tooltip(UIKeys.FILM_TELEPORT_TITLE);
         this.teleport.context((menu) ->
         {
+            if (!this.panel.getController().isControlling())
+            {
+                menu.action(Icons.PLAYER, UIKeys.FILM_TELEPORT_CONTEXT_CAMERA, () -> this.panel.getController().cameraToPlayer());
+            }
+
             menu.action(Icons.MOVE_TO, UIKeys.FILM_TELEPORT_CONTEXT_PLAYER, this.panel.playerToCamera, () -> this.panel.setPlayerToCamera(!this.panel.playerToCamera));
             menu.action(Icons.COPY, UIKeys.CAMERA_PANELS_CONTEXT_COPY_POSITION, () ->
             {
@@ -324,18 +330,15 @@ public class UIFilmPreview extends UIElement
     {
         if (!FabricLoader.getInstance().isModLoaded("iris")) return;
 
-        try
+        UIContext context = this.getContext();
+
+        ShaderOptions.reload(() ->
         {
             if (!IrisShaderPacks.toggle())
             {
-                UIOverlay.addOverlay(this.getContext(), new UIMessageOverlayPanel(UIKeys.FILM_TOGGLE_SHADERS, UIKeys.FILM_SELECT_SHADER));
+                UIOverlay.addOverlay(context, new UIMessageOverlayPanel(UIKeys.FILM_TOGGLE_SHADERS, UIKeys.FILM_SELECT_SHADER));
             }
-        }
-        catch (Exception e)
-        {
-            e.printStackTrace();
-            UIOverlay.addOverlay(this.getContext(), new UIMessageOverlayPanel(UIKeys.GENERAL_ERROR, UIKeys.UTILITY_SHADER_ERROR));
-        }
+        }, () -> UIOverlay.addOverlay(context, new UIMessageOverlayPanel(UIKeys.GENERAL_ERROR, UIKeys.UTILITY_SHADER_ERROR)));
     }
 
     /**
@@ -525,6 +528,8 @@ public class UIFilmPreview extends UIElement
         }
 
         this.iconsVisible &= this.icons.getChildren().stream().anyMatch(element -> element.isVisible());
+        /* None of them can be used during an export, and the frame is all there is to watch */
+        this.iconsVisible &= !this.panel.recorder.isExporting();
         this.icons.setVisible(this.iconsVisible);
     }
 
@@ -548,6 +553,9 @@ public class UIFilmPreview extends UIElement
         this.updateIconsVisibility(context);
         this.hud.begin(area);
         if (this.iconsVisible) this.hud.reserve(PreviewHud.Anchor.BOTTOM_CENTER, area.ey() - this.icons.area.y);
+
+        /* First in the top left: while exporting, the export is what the editor is doing */
+        this.panel.recorder.renderHud(context, this.hud);
 
         /* The navigation widget claims the bottom left corner before anything else does, so
          * that whatever the editor stacks there later (the stick guide) ends up above it

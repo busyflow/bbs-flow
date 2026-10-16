@@ -48,7 +48,8 @@ import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.bones.UIBonePicker;
-import mchorse.bbs_mod.ui.utils.bones.UIBoneTreeList;
+import mchorse.bbs_mod.ui.utils.bones.BoneRole;
+import mchorse.bbs_mod.ui.utils.bones.BoneRoles;
 import mchorse.bbs_mod.ui.utils.context.ContextMenuManager;
 import mchorse.bbs_mod.ui.utils.context.MenuVerb;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
@@ -126,10 +127,6 @@ public class UIModelConfigEditor extends UIElement
     private static Tab lastTab = Tab.GENERAL;
 
     private static final CubeFace[] FACES = CubeFace.values();
-
-    /* The role dots of the bone tree: rightmost, a mirror bone is set; next to it, a picking override. */
-    private static final int MARKER_MIRROR = Colors.A100 | Colors.CYAN;
-    private static final int MARKER_PICKING = Colors.A100 | Colors.ORANGE;
 
     /** The panel this editor lives in: what it edits, and the preview it edits it against. */
     private final UIModelEditorPanel modelPanel;
@@ -394,7 +391,7 @@ public class UIModelConfigEditor extends UIElement
         /* Bones: the tree with the picked bone's settings under it — no header, it IS the page. The tree
          * takes whatever height the page has left after the rest; the ask is a floor, not the wish. */
         this.bones = new UIModelBoneList((list) -> this.fillBone(), () -> this.data == null ? null : this.data.disabledBones, this::fillBone);
-        this.bones.markers(this::boneMarkers, UIKeys.MODEL_EDITOR_BONES_LEGEND);
+        this.bones.roles(this::describeBones);
         this.bonesSearch = new UISearchList<>(this.bones);
         this.bonesSearch.label(UIKeys.GENERAL_SEARCH);
         this.bonesSearch.h(UIStringList.DEFAULT_HEIGHT * 8 - 8).expand();
@@ -1283,28 +1280,30 @@ public class UIModelConfigEditor extends UIElement
         this.resizePage(Tab.BONES);
     }
 
-    private UIBoneTreeList.Marker[] boneMarkers(String bone)
+    /**
+     * What the model sets on its bones, for the bone tree: rightmost, a mirror bone (on both
+     * bones of the pair — the pose flip reads it from either side); next to it, a picking
+     * override. A hidden bone grays out by itself.
+     */
+    private void describeBones(BoneRoles roles)
     {
         ModelConfig config = this.data;
 
         if (config == null)
         {
-            return null;
+            return;
         }
 
-        boolean mirror = !this.mirrorOf(bone).isEmpty();
-        boolean picking = config.pickingOverrides.get().containsKey(bone);
-
-        if (!mirror && !picking)
+        for (Map.Entry<String, String> pair : config.flippedParts.get().entrySet())
         {
-            return null;
+            roles.mark(pair.getKey(), 0, BoneRole.MIRROR);
+            roles.mark(pair.getValue(), 0, BoneRole.MIRROR);
         }
 
-        return new UIBoneTreeList.Marker[]
+        for (String bone : config.pickingOverrides.get().keySet())
         {
-            mirror ? new UIBoneTreeList.Marker(MARKER_MIRROR, false) : null,
-            picking ? new UIBoneTreeList.Marker(MARKER_PICKING, false) : null
-        };
+            roles.mark(bone, 1, BoneRole.PICKING);
+        }
     }
 
     /**

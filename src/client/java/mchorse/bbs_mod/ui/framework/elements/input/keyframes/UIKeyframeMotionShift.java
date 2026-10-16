@@ -4,7 +4,6 @@ import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.graphics.line.LineBuilder;
 import mchorse.bbs_mod.graphics.line.SolidColorLineRenderer;
-import mchorse.bbs_mod.settings.values.IValueListener;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.IUIKeyframeGraph;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeGraph;
@@ -146,21 +145,23 @@ public class UIKeyframeMotionShift
             return false;
         }
 
-        this.view.getGraph().clearSelection();
-        hit.sheet.selection.add(hit.key);
+        /* A handle of an already selected key edits the whole selection, like the trackpad does. */
+        if (!hit.sheet.selection.has(hit.key))
+        {
+            this.view.getGraph().clearSelection();
+            hit.sheet.selection.add(hit.key);
+        }
         this.view.pickKeyframe(hit.key);
         if (this.doubleClick.hit(hit.key))
         {
-            if (hit.key.getMotionShift() != 0F)
-            {
-                hit.sheet.channel.preNotify(IValueListener.FLAG_UNMERGEABLE);
-                hit.key.setMotionShift(0F, false);
-                hit.sheet.channel.postNotify(IValueListener.FLAG_UNMERGEABLE);
-                this.view.triggerChange();
-            }
+            this.view.cacheKeyframes();
+            this.view.getGraph().setMotionShift(0F, false);
+            this.view.submitKeyframes();
+            this.view.getGraph().pickSelected();
             return true;
         }
 
+        this.view.cacheKeyframes();
         this.dragging = hit;
         this.original = hit.key.getMotionShift();
         this.pressX = context.mouseX;
@@ -177,24 +178,17 @@ public class UIKeyframeMotionShift
             - this.view.toGraphX(hit.start + hit.duration * 0.5F));
         if (context.mouseX != this.pressX && pixels <= 3) shift = 0F;
         if (context.mouseX != this.pressX) this.doubleClick.hit(null);
-        hit.key.setMotionShift(shift, false);
-        this.view.triggerChange();
+        this.view.getGraph().setMotionShift(shift, false);
     }
 
     public boolean release(boolean cancel)
     {
         if (!this.isDragging()) return false;
-        Hit hit = this.dragging;
-        float value = hit.key.getMotionShift();
-        hit.key.setMotionShift(this.original, false);
-        if (!cancel && value != this.original)
-        {
-            hit.sheet.channel.preNotify(IValueListener.FLAG_UNMERGEABLE);
-            hit.key.setMotionShift(value, false);
-            hit.sheet.channel.postNotify(IValueListener.FLAG_UNMERGEABLE);
-        }
         this.dragging = null;
-        this.view.triggerChange();
+        if (cancel) this.view.cancelKeyframes();
+        else this.view.submitKeyframes();
+        /* Submitting rebuilds changed channels, so the picked key must be refreshed. */
+        this.view.getGraph().pickSelected();
         return true;
     }
 

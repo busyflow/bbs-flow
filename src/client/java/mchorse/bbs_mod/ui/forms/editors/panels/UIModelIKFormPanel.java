@@ -26,18 +26,15 @@ import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.UITrackpad;
 import mchorse.bbs_mod.ui.utils.bones.UIBonePicker;
 import mchorse.bbs_mod.ui.utils.bones.UIBonePickerContextMenu;
-import mchorse.bbs_mod.ui.utils.bones.UIBoneTreeList;
+import mchorse.bbs_mod.ui.utils.bones.BoneRole;
+import mchorse.bbs_mod.ui.utils.bones.BoneRoles;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.pose.ModelIKManager;
 
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -45,13 +42,6 @@ import mchorse.bbs_mod.ui.utils.UIIKControlFields;
 
 public class UIModelIKFormPanel extends UIBoneListFormPanel
 {
-    /* Bone list role dots — the same yellow the film's IK sheet uses for a chain. */
-    private static final int MARKER_CHAIN = Colors.A100 | Colors.YELLOW;
-    private static final int MARKER_TARGET = Colors.A100 | Colors.CYAN;
-    private static final int MARKER_POLE = Colors.A100 | Colors.MAGENTA;
-    private static final int MARKER_JOINT = Colors.A100 | Colors.ORANGE;
-    private static final int MARKER_OFF = Colors.GRAY;
-
     public UIToggle debug;
     public UIToggle enabled;
     public UIToggle boneController;
@@ -99,13 +89,10 @@ public class UIModelIKFormPanel extends UIBoneListFormPanel
     private UIElement limitRowY;
     private UIElement limitRowZ;
 
-    private final Map<String, UIBoneTreeList.Marker[]> boneMarkers = new HashMap<>();
-
     public UIModelIKFormPanel(UIForm editor)
     {
         super(editor);
 
-        this.bones.markers(this.boneMarkers::get, UIKeys.FORMS_EDITORS_MODEL_IK_BONES_TOOLTIP);
         this.bonePresets(ModelIKManager.INSTANCE, "_CopyModelIK",
             UIKeys.FORMS_EDITORS_MODEL_IK_CONTEXT_COPY,
             UIKeys.FORMS_EDITORS_MODEL_IK_CONTEXT_PASTE,
@@ -489,13 +476,6 @@ public class UIModelIKFormPanel extends UIBoneListFormPanel
         return bone == null ? JointDoF.FREE : bone.joint.get();
     }
 
-    @Override
-    protected void editBone(Consumer<FormBone> edit)
-    {
-        super.editBone(edit);
-        this.updateMarkers();
-    }
-
     /** Edits the selected bone's IK scalars as one value change (one undo entry). */
     private void editControl(Consumer<IKControl> edit)
     {
@@ -521,16 +501,14 @@ public class UIModelIKFormPanel extends UIBoneListFormPanel
     }
 
     /**
-     * Rebuilds the bone list's role dots, so the rig's IK reads off the list
-     * itself instead of one click per bone. Three fixed slots, right to left:
-     * chain (big = the chain lives on this bone, small = the chain drives it),
-     * controller (its target, or the pole the bend aims at), joint freedom.
-     * A disabled chain fades to gray everywhere — it drives nothing this tick.
+     * The rig's IK, read off the bone list instead of one click per bone. Three slots, right
+     * to left: the chain (living on its tip; the bones it drives run as a line along the
+     * tree), the controller (a target, or the pole the bend aims at), the joint's limits.
+     * A switched-off chain goes gray everywhere — it drives nothing this tick.
      */
-    private void updateMarkers()
+    @Override
+    protected void describeBones(BoneRoles roles)
     {
-        this.boneMarkers.clear();
-
         IModel model = this.modelInstance == null ? null : this.modelInstance.model;
 
         if (model == null || this.form == null)
@@ -538,96 +516,40 @@ public class UIModelIKFormPanel extends UIBoneListFormPanel
             return;
         }
 
-        Set<String> touched = new HashSet<>();
-        Set<String> driven = new HashSet<>();
-        Set<String> targets = new HashSet<>();
-        Set<String> poles = new HashSet<>();
-        Set<String> offControllers = new HashSet<>();
-
-        for (BaseValue value : this.form.bones.getAll())
+        /* Targets before poles: a bone that is both reads as the target, as it always has. */
+        this.forEachFormBone((bone) ->
         {
-            if (!(value instanceof FormBone bone))
-            {
-                continue;
-            }
-
             String tip = bone.getId();
 
             if (bone.boneController.get())
             {
-                targets.add(tip);
+                roles.mark(tip, 1, BoneRole.TARGET);
             }
 
             if (bone.hasChain())
             {
-                IKControl control = bone.ik.get();
+                boolean on = bone.ik.get().enabled;
 
-                touched.add(tip);
-
-                if (control.enabled)
-                {
-                    driven.addAll(ModelIKRuntime.chainBones(model, tip, bone.ikChainLength.get()));
-                    targets.add(bone.ikTarget.get());
-
-                    if (control.pole && !bone.ikPoleTarget.get().isEmpty())
-                    {
-                        poles.add(bone.ikPoleTarget.get());
-                    }
-                }
-                else
-                {
-                    offControllers.add(bone.ikTarget.get());
-                }
+                roles.chain(ModelIKRuntime.chainBones(model, tip, bone.ikChainLength.get()), on ? BoneRole.LINK : BoneRole.LINK.off());
+                roles.mark(tip, 0, on ? BoneRole.CHAIN : BoneRole.CHAIN.off());
+                roles.mark(bone.ikTarget.get(), 1, on ? BoneRole.TARGET : BoneRole.TARGET.off());
             }
 
             if (!bone.joint.get().isFree())
             {
-                touched.add(tip);
+                roles.mark(tip, 2, BoneRole.LIMIT);
             }
-        }
+        });
 
-        touched.addAll(driven);
-        touched.addAll(targets);
-        touched.addAll(poles);
-        touched.addAll(offControllers);
-
-        for (String name : touched)
+        this.forEachFormBone((bone) ->
         {
-            FormBone bone = this.form.bones.getBone(name);
-            boolean hasChain = bone != null && bone.hasChain();
-            UIBoneTreeList.Marker slotChain = null;
-            UIBoneTreeList.Marker slotController = null;
-            UIBoneTreeList.Marker slotJoint = null;
+            IKControl control = bone.ik.get();
 
-            if (hasChain)
+            if (bone.hasChain() && control.enabled && control.pole)
             {
-                slotChain = new UIBoneTreeList.Marker(bone.ik.get().enabled ? MARKER_CHAIN : MARKER_OFF, false);
+                roles.mark(bone.ikPoleTarget.get(), 1, BoneRole.POLE);
             }
-            else if (driven.contains(name))
-            {
-                slotChain = new UIBoneTreeList.Marker(MARKER_CHAIN, true);
-            }
-
-            if (targets.contains(name))
-            {
-                slotController = new UIBoneTreeList.Marker(MARKER_TARGET, false);
-            }
-            else if (poles.contains(name))
-            {
-                slotController = new UIBoneTreeList.Marker(MARKER_POLE, false);
-            }
-            else if (offControllers.contains(name))
-            {
-                slotController = new UIBoneTreeList.Marker(MARKER_OFF, true);
-            }
-
-            if (bone != null && !bone.joint.get().isFree())
-            {
-                slotJoint = new UIBoneTreeList.Marker(MARKER_JOINT, false);
-            }
-
-            this.boneMarkers.put(name, new UIBoneTreeList.Marker[] {slotChain, slotController, slotJoint});
-        }
+        });
     }
 
     @Override
@@ -637,8 +559,6 @@ public class UIModelIKFormPanel extends UIBoneListFormPanel
         {
             return;
         }
-
-        this.updateMarkers();
 
         FormBone formBone = this.selectedFormBone();
         IKControl control = this.currentControl();

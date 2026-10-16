@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.ui.dashboard.textures;
 
+import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.client.BBSShaders;
 import mchorse.bbs_mod.graphics.texture.Texture;
 import mchorse.bbs_mod.graphics.window.ImageClipboard;
@@ -16,6 +17,7 @@ import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.utils.UICanvasEditor;
 import mchorse.bbs_mod.ui.utils.Area;
+import mchorse.bbs_mod.ui.utils.DragGesture;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.MathUtils;
@@ -47,6 +49,12 @@ import java.util.function.Supplier;
 public class UIPixelsEditor extends UICanvasEditor
 {
     private static final double[] BRUSH_SAMPLE_OFFSETS = {0.25D, 0.75D};
+
+    /* Screen pixels a grid cell must span before its lines start to show, and before they show fully */
+    private static final float PIXEL_GRID_FROM = 6F;
+    private static final float PIXEL_GRID_FULL = 12F;
+    private static final float STEP_GRID_FROM = 8F;
+    private static final float STEP_GRID_FULL = 16F;
 
     public UIElement toolbar;
 
@@ -87,6 +95,11 @@ public class UIPixelsEditor extends UICanvasEditor
     private List<SelectionRect> selections = new ArrayList<>();
     private SelectionRect currentSelection;
     private boolean currentSelectionSubtract;
+
+    /** Where the selection press went down on screen, and whether it has travelled far enough since to be a drag rather than a click. */
+    private int selectionPressX;
+    private int selectionPressY;
+    private boolean selectionDragged;
 
     public static class SelectionRect
     {
@@ -132,6 +145,8 @@ public class UIPixelsEditor extends UICanvasEditor
     private Supplier<Boolean> alphaLockSupplier = () -> false;
     private Supplier<Float> brushSoftnessSupplier = () -> 0.0F;
     private Supplier<Float> eraserOpacitySupplier = () -> 1.0F;
+    private Supplier<Boolean> gridSupplier = () -> false;
+    private Supplier<Integer> gridStepSupplier = () -> 8;
 
     private Consumer<Boolean> secondaryEraserToggle = (engage) -> {};
 
@@ -158,7 +173,7 @@ public class UIPixelsEditor extends UICanvasEditor
         this.keys().register(Keys.COPY, this::copyImage).label(UIKeys.TEXTURES_COPY_IMAGE).inside().active(texture).category(category);
         this.keys().register(Keys.PIXEL_COPY_HEX, this::copyPixel).label(UIKeys.TEXTURES_VIEWER_CONTEXT_COPY_HEX).inside().active(texture).category(category);
         this.keys().register(Keys.CUT, this::cut).label(UIKeys.GENERAL_CUT).inside().active(editing).category(category);
-        this.keys().register(Keys.PASTE, this::pasteImage).label(UIKeys.TEXTURES_PASTE_IMAGE).inside().active(editing).category(category);
+        this.keys().register(Keys.PASTE, this::pasteAtCursor).label(UIKeys.TEXTURES_PASTE_IMAGE).inside().active(editing).category(category);
         this.keys().register(Keys.UNDO, this::undo).inside().active(editing).category(category);
         this.keys().register(Keys.REDO, this::redo).inside().active(editing).category(category);
         this.keys().register(Keys.PIXEL_DESELECT, this::clearSelection).inside().active(editing).category(category);
@@ -438,6 +453,15 @@ public class UIPixelsEditor extends UICanvasEditor
     public UIPixelsEditor backgroundSupplier(Supplier<Float> supplier)
     {
         this.backgroundSupplier = supplier;
+
+        return this;
+    }
+
+    /** Whether the grid is on, and every how many pixels its bold lines go. */
+    public UIPixelsEditor gridSupplier(Supplier<Boolean> enabled, Supplier<Integer> step)
+    {
+        this.gridSupplier = enabled;
+        this.gridStepSupplier = step;
 
         return this;
     }
@@ -1294,6 +1318,20 @@ public class UIPixelsEditor extends UICanvasEditor
         this.invalidateSelectionMask();
     }
 
+    /**
+     * Whether the selection press has become a drag: once the cursor has travelled a few pixels
+     * from where it went down it stays one, so coming back doesn't turn it into a click.
+     */
+    private boolean isSelectionDrag(int mouseX, int mouseY)
+    {
+        if (!this.selectionDragged)
+        {
+            this.selectionDragged = Math.abs(mouseX - this.selectionPressX) >= DragGesture.THRESHOLD || Math.abs(mouseY - this.selectionPressY) >= DragGesture.THRESHOLD;
+        }
+
+        return this.selectionDragged;
+    }
+
     /** Mark the GPU selection mask stale so it's rebuilt before the next render. */
     private void invalidateSelectionMask()
     {
@@ -1309,7 +1347,8 @@ public class UIPixelsEditor extends UICanvasEditor
     {
         boolean[][] mask = this.buildSelectionMask();
 
-        this.fillSelectionMask(mask, this.currentSelection, !this.currentSelectionSubtract);
+        /* Until the press turns into a drag it may still be a click that drops the selection */
+        this.fillSelectionMask(mask, this.selectionDragged ? this.currentSelection : null, !this.currentSelectionSubtract);
 
         /* The mask covers the whole document, not just the window: a selection may span frames */
         int w = this.docW();
@@ -1698,12 +1737,33 @@ public class UIPixelsEditor extends UICanvasEditor
     }
 
     /**
-     * Ctrl+V (and the layers panel's "paste as layer"): paste a clipboard image as a new layer above
-     * the active one. When the clipboard remembers where the image was copied from, it is placed back
-     * at that on-canvas position; otherwise it is centered. Clipped to the canvas. No-op when the
-     * clipboard holds no image. Recorded as a single undo step; refreshes the layers list.
+     * Ctrl+V: the image lands under the cursor, centred on it and kept inside the frame on show when
+     * it fits there. With the cursor off the picture it goes where {@link #pasteImage()} puts it.
+     */
+    private void pasteAtCursor()
+    {
+        UIContext context = this.getContext();
+        Vector2i pixel = context == null ? null : this.getHoverPixel(context.mouseX, context.mouseY);
+        boolean over = pixel != null && pixel.x >= this.frameX && pixel.y >= this.frameY && pixel.x < this.frameX + this.w && pixel.y < this.frameY + this.h;
+
+        this.pasteImage(over ? pixel : null);
+    }
+
+    /**
+     * The layers panel's "paste as layer": the image goes back where it was copied from when the
+     * clipboard remembers that, otherwise in the middle of the frame on show.
      */
     public void pasteImage()
+    {
+        this.pasteImage(null);
+    }
+
+    /**
+     * Paste a clipboard image as a new layer above the active one, centred on {@code at} (document
+     * coordinates) or, without it, placed as {@link #pasteImage()} says. Clipped to the canvas.
+     * No-op when the clipboard holds no image. Recorded as a single undo step; refreshes the layers list.
+     */
+    private void pasteImage(Vector2i at)
     {
         if (this.document == null)
         {
@@ -1722,10 +1782,20 @@ public class UIPixelsEditor extends UICanvasEditor
             int w = this.document.width;
             int h = this.document.height;
             Pixels layerPixels = Pixels.fromSize(w, h);
+            int px;
+            int py;
 
-            /* Without a remembered origin, land in the middle of the frame on show */
-            int px = ImageClipboard.hasOrigin() ? ImageClipboard.getOriginX() : this.frameX + (this.w - pasted.width) / 2;
-            int py = ImageClipboard.hasOrigin() ? ImageClipboard.getOriginY() : this.frameY + (this.h - pasted.height) / 2;
+            if (at != null)
+            {
+                px = this.placeAround(at.x, pasted.width, this.frameX, this.w);
+                py = this.placeAround(at.y, pasted.height, this.frameY, this.h);
+            }
+            else
+            {
+                /* Without a remembered origin, land in the middle of the frame on show */
+                px = ImageClipboard.hasOrigin() ? ImageClipboard.getOriginX() : this.frameX + (this.w - pasted.width) / 2;
+                py = ImageClipboard.hasOrigin() ? ImageClipboard.getOriginY() : this.frameY + (this.h - pasted.height) / 2;
+            }
 
             layerPixels.draw(pasted, px, py);
             layerPixels.rewindBuffer();
@@ -1747,6 +1817,14 @@ public class UIPixelsEditor extends UICanvasEditor
 
         pasted.delete();
         UIUtils.playClick();
+    }
+
+    /** Start of a {@code size} long span centred on {@code at}, pushed inside {@code [start, start + length)} when it fits there. */
+    private int placeAround(int at, int size, int start, int length)
+    {
+        int place = at - size / 2;
+
+        return size <= length ? MathUtils.clamp(place, start, start + length - size) : place;
     }
 
     private void copyPixel()
@@ -1865,6 +1943,37 @@ public class UIPixelsEditor extends UICanvasEditor
         this.updateWindow(true);
     }
 
+    /**
+     * The resize overlay's answer, as one undo step: crop the canvas to {@code w}x{@code h} (the
+     * pixels stay where they are) or stretch the picture to it. A stretched selection would no
+     * longer outline what it did, so it goes.
+     */
+    public void resizeDocument(int w, int h, boolean stretch)
+    {
+        if (this.document == null || (w == this.document.width && h == this.document.height))
+        {
+            return;
+        }
+
+        this.recordLayerChange(null, () ->
+        {
+            if (stretch)
+            {
+                this.clearSelection();
+                this.document.scale(w, h);
+                this.setActiveLayer(this.document.activeLayerIndex);
+                this.updateWindow(true);
+            }
+            else
+            {
+                this.setSize(w, h);
+                this.invalidateSelectionMask();
+            }
+
+            this.wasChanged();
+        });
+    }
+
     @Override
     public boolean subMouseClicked(UIContext context)
     {
@@ -1939,6 +2048,9 @@ public class UIPixelsEditor extends UICanvasEditor
             this.hasSelection = !this.selections.isEmpty() || !subtract;
             this.currentSelection = new SelectionRect(pixel.x, pixel.y, pixel.x, pixel.y);
             this.currentSelectionSubtract = subtract;
+            this.selectionPressX = context.mouseX;
+            this.selectionPressY = context.mouseY;
+            this.selectionDragged = false;
 
             return;
         }
@@ -2008,11 +2120,23 @@ public class UIPixelsEditor extends UICanvasEditor
     {
         if (this.dragging && this.getActivePaintTool() == TexturePaintTool.SELECTION && this.currentSelection != null)
         {
-            Vector2i hoverPixel = this.getHoverPixel(context.mouseX, context.mouseY);
+            if (this.isSelectionDrag(context.mouseX, context.mouseY))
+            {
+                Vector2i hoverPixel = this.getHoverPixel(context.mouseX, context.mouseY);
 
-            this.currentSelection.x2 = hoverPixel.x;
-            this.currentSelection.y2 = hoverPixel.y;
-            this.applyCurrentSelection();
+                this.currentSelection.x2 = hoverPixel.x;
+                this.currentSelection.y2 = hoverPixel.y;
+                this.applyCurrentSelection();
+            }
+            else
+            {
+                /* A click that went nowhere puts the selection away, as in any editor: the press
+                 * has already dropped it, unless Shift or Ctrl kept it to add to or cut from */
+                this.currentSelection = null;
+                this.currentSelectionSubtract = false;
+                this.hasSelection = !this.selections.isEmpty();
+                this.invalidateSelectionMask();
+            }
         }
 
         if (this.dragging && this.pixelsUndo != null)
@@ -2074,6 +2198,71 @@ public class UIPixelsEditor extends UICanvasEditor
     protected void renderBackground(UIContext context)
     {}
 
+    /**
+     * The grid over the frame on show: fine lines between the pixels, bold ones every step pixels.
+     * Each kind fades in as its cells grow on screen, so zooming out never ends in a grey wash.
+     */
+    private void renderGrid(UIContext context)
+    {
+        if (!this.gridSupplier.get())
+        {
+            return;
+        }
+
+        int step = Math.max(1, this.gridStepSupplier.get());
+        float zoom = (float) this.scaleX.getZoom();
+        float fine = gridFade(zoom, PIXEL_GRID_FROM, PIXEL_GRID_FULL);
+        float bold = gridFade(zoom * step, STEP_GRID_FROM, STEP_GRID_FULL);
+
+        if (fine > 0F)
+        {
+            this.renderGridLines(context, 1, Colors.setA(0x808080, 0.4F * fine));
+        }
+
+        if (bold > 0F)
+        {
+            this.renderGridLines(context, step, Colors.setA(BBSSettings.primaryColor.get(), 0.75F * bold));
+        }
+    }
+
+    /** How visible a grid is whose cells are {@code cell} screen pixels big: nothing below {@code from}, fully from {@code full}. */
+    private static float gridFade(float cell, float from, float full)
+    {
+        return MathUtils.clamp((cell - from) / (full - from), 0F, 1F);
+    }
+
+    /** Lines every {@code every} pixels inside the frame on show (its edges are the frame's own border). */
+    private void renderGridLines(UIContext context, int every, int color)
+    {
+        int x = -this.w / 2;
+        int y = -this.h / 2;
+        Area frame = this.calculate(x, y, x + this.w, y + this.h);
+        int left = Math.max(frame.x, this.area.x);
+        int top = Math.max(frame.y, this.area.y);
+        int right = Math.min(frame.ex(), this.area.ex());
+        int bottom = Math.min(frame.ey(), this.area.ey());
+
+        for (int i = every; i < this.w; i += every)
+        {
+            int sx = this.toX(x + i);
+
+            if (sx >= left && sx < right)
+            {
+                context.batcher.box(sx, top, sx + 1, bottom, color);
+            }
+        }
+
+        for (int i = every; i < this.h; i += every)
+        {
+            int sy = this.toY(y + i);
+
+            if (sy >= top && sy < bottom)
+            {
+                context.batcher.box(left, sy, right, sy + 1, color);
+            }
+        }
+    }
+
     @Override
     protected void renderCanvasFrame(UIContext context)
     {
@@ -2094,6 +2283,8 @@ public class UIPixelsEditor extends UICanvasEditor
         {
             this.renderEditingContent(context);
         }
+
+        this.renderGrid(context);
 
         /* Draw brush preview for stroke tools */
         if (this.isStrokePaintTool())
@@ -2116,7 +2307,7 @@ public class UIPixelsEditor extends UICanvasEditor
             {
                 Vector2i current = this.getHoverPixel(context.mouseX, context.mouseY);
 
-                if (this.currentSelection != null)
+                if (this.currentSelection != null && this.isSelectionDrag(context.mouseX, context.mouseY))
                 {
                     this.currentSelection.x2 = current.x;
                     this.currentSelection.y2 = current.y;

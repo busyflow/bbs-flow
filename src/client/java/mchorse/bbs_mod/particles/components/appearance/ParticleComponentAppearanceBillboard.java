@@ -646,7 +646,7 @@ public class ParticleComponentAppearanceBillboard extends ParticleComponentBase 
         else
         {
             Vector3d pos = particle.getGlobalPosition(emitter);
-            BlockPos blockPos = new BlockPos((int) pos.x, (int) pos.y, (int) pos.z);
+            BlockPos blockPos = BlockPos.ofFloored(pos.x, pos.y, pos.z);
             int lightLevel = WorldRenderer.getLightmapCoordinates(emitter.world, blockPos);
 
             this.light = lightLevel;

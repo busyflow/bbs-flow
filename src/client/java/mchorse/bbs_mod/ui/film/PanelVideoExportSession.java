@@ -12,6 +12,7 @@ import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIMessageOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
+import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.StringUtils;
 import mchorse.bbs_mod.utils.clips.Clips;
 import org.joml.Vector2i;
@@ -30,8 +31,10 @@ public class PanelVideoExportSession extends VideoExportSession
     private final UIFilmPanel editor;
 
     private int duration;
+    private int start;
     private int end;
     private boolean restorePaused;
+    private long startedAtMs;
 
     public PanelVideoExportSession(UIFilmRecorder ui, UIFilmPanel editor)
     {
@@ -81,9 +84,11 @@ public class PanelVideoExportSession extends VideoExportSession
         int max = this.editor.cameraEditor.clips.loopMax;
         boolean looping = BBSSettings.editorLoop.get();
 
+        this.start = looping ? Math.min(min, max) : 0;
         this.end = looping && min != max ? Math.max(min, max) : this.duration;
 
-        this.editor.setCursor(looping ? Math.min(min, max) : 0);
+        this.editor.setCursor(this.start);
+        this.editor.fitTimelinesToExport(this.start, this.end);
         this.editor.notifyServer(ActionState.RESTART);
 
         if (this.ui.resetReplays)
@@ -161,9 +166,40 @@ public class PanelVideoExportSession extends VideoExportSession
         this.editor.getController().setPaused(true);
     }
 
+    /**
+     * How much of the exported range is already recorded, from 0 to 1. Zero until the
+     * recording itself starts.
+     */
+    public float getProgress(float transition)
+    {
+        if (this.state != State.RECORDING || this.end <= this.start)
+        {
+            return 0F;
+        }
+
+        return MathUtils.clamp((this.editor.getCursor(transition) - this.start) / (float) (this.end - this.start), 0F, 1F);
+    }
+
+    /**
+     * Rough time left, extrapolated from how long the recorded part took. -1 until there is
+     * enough of it to go on.
+     */
+    public long getRemainingMs(float progress)
+    {
+        long elapsed = System.currentTimeMillis() - this.startedAtMs;
+
+        if (this.state != State.RECORDING || progress < 0.01F || elapsed < 1000L)
+        {
+            return -1L;
+        }
+
+        return (long) (elapsed * (1F - progress) / progress);
+    }
+
     @Override
     protected void onRecordingStarted()
     {
+        this.startedAtMs = System.currentTimeMillis();
         this.editor.getController().setPaused(false);
         this.editor.togglePlayback();
     }
@@ -179,10 +215,16 @@ public class PanelVideoExportSession extends VideoExportSession
     {
         this.editor.getController().setPaused(this.restorePaused);
         this.editor.restorePreviewSize();
+        this.editor.restoreTimelineViews();
 
         if (this.editor.isRunning())
         {
             this.editor.togglePlayback();
+        }
+
+        if (!cancelled)
+        {
+            this.ui.showFinished(this.getRecordingName());
         }
 
         this.ui.detachOverlay();

@@ -37,6 +37,14 @@ public class Anchor implements IMapSerializable
     public boolean inheritRotation = true;
     public boolean inheritScale = true;
 
+    /**
+     * How much of the target's motion the anchored form's bone physics feels, 0..1. At 1 (the default)
+     * the physics lives in the world like an unanchored form's: a car driving off drags a passenger's hair
+     * behind. Below it the chains ride the target's frame along with the rest of that share, so the hair
+     * hangs still in the moving car and only swings to what the passenger does inside it.
+     */
+    public float physics = 1F;
+
     public final Transform transform = new Transform();
 
     /* Interpolation data */
@@ -117,6 +125,7 @@ public class Anchor implements IMapSerializable
         anchor.spline = this.spline;
         anchor.progress = this.progress;
         anchor.horizontal = this.horizontal;
+        anchor.physics = this.physics;
         anchor.transform.copy(this.transform);
 
         return anchor;
@@ -133,10 +142,17 @@ public class Anchor implements IMapSerializable
         if (obj instanceof Anchor anchor)
         {
             return this.hasSameTarget(anchor) && this.progress == anchor.progress
-                && this.transform.equals(anchor.transform);
+                && this.physics == anchor.physics && this.transform.equals(anchor.transform);
         }
 
         return false;
+    }
+
+    /** The saved settings, so equal anchors in different copies of a film read the same. */
+    @Override
+    public String toString()
+    {
+        return "Anchor" + this.toData();
     }
 
     @Override
@@ -147,6 +163,7 @@ public class Anchor implements IMapSerializable
         this.spline = data.getBool("spline", false);
         this.progress = data.getFloat("progress", 0F);
         this.horizontal = data.getBool("horizontal", false);
+        this.physics = data.getFloat("physics", 1F);
 
         if (data.has("inheritPosition") || data.has("inheritRotation") || data.has("inheritScale"))
         {
@@ -191,6 +208,11 @@ public class Anchor implements IMapSerializable
         data.putBool("inheritPosition", this.inheritPosition);
         data.putBool("inheritRotation", this.inheritRotation);
         data.putBool("inheritScale", this.inheritScale);
+
+        if (this.physics != 1F)
+        {
+            data.putFloat("physics", this.physics);
+        }
 
         if (!this.transform.isDefault())
         {

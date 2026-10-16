@@ -3,6 +3,8 @@ package mchorse.bbs_mod.blocks;
 import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.blocks.entities.ModelBlockEntity;
 import mchorse.bbs_mod.blocks.entities.ModelBody;
+import mchorse.bbs_mod.blocks.entities.ModelProperties;
+import mchorse.bbs_mod.forms.forms.BlockForm;
 import mchorse.bbs_mod.network.ServerNetwork;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockEntityProvider;
@@ -23,6 +25,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.sound.BlockSoundGroup;
+import net.minecraft.sound.SoundCategory;
 import net.minecraft.state.StateManager;
 import net.minecraft.state.property.EnumProperty;
 import net.minecraft.state.property.IntProperty;
@@ -33,6 +36,7 @@ import net.minecraft.util.ItemScatterer;
 import net.minecraft.util.collection.DefaultedList;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Box;
 import net.minecraft.util.shape.VoxelShape;
 import net.minecraft.util.shape.VoxelShapes;
 import net.minecraft.world.BlockView;
@@ -101,6 +105,84 @@ public class ModelBlock extends Block implements BlockEntityProvider, Waterlogga
         {
             world.setBlockState(pos, updated, Block.NOTIFY_ALL);
         }
+    }
+
+    /** Whether {@link #convert} has anything to turn into a model block here. */
+    public static boolean canConvert(BlockState state)
+    {
+        return !state.isAir() && !(state.getBlock() instanceof ModelBlock);
+    }
+
+    /**
+     * Turn the block at {@code pos} into a model block that shows that same block: a block form
+     * with its state, and a body taken from the block — light, sound, hardness, whether it is
+     * walked on and its outline as the hitbox — so nothing changes until the user edits it.
+     * Neighbours are not updated, so the other half of a door or a torch on its side stay as the
+     * set had them. Server side.
+     *
+     * @return whether the block was swapped
+     */
+    public static boolean convert(World world, BlockPos pos)
+    {
+        BlockState state = world.getBlockState(pos);
+
+        if (!canConvert(state))
+        {
+            return false;
+        }
+
+        /* Everything read off the old block before it is gone */
+        boolean waterlogged = state.getFluidState().isOf(Fluids.WATER);
+        int light = state.getLuminance();
+        BlockSoundGroup group = state.getSoundGroup();
+        ModelBlockSound sound = ModelBlockSound.of(group);
+        float hardness = state.getHardness(world, pos);
+        VoxelShape outline = state.getOutlineShape(world, pos);
+        boolean solid = !state.getCollisionShape(world, pos).isEmpty();
+        boolean camera = !state.getCameraCollisionShape(world, pos, ShapeContext.absent()).isEmpty();
+
+        BlockState modelState = BBSMod.MODEL_BLOCK.getDefaultState()
+            .with(Properties.WATERLOGGED, waterlogged)
+            .with(LIGHT_LEVEL, light)
+            .with(SOUND, sound);
+
+        if (!world.setBlockState(pos, modelState, Block.NOTIFY_LISTENERS | Block.FORCE_STATE)
+            || !(world.getBlockEntity(pos) instanceof ModelBlockEntity model))
+        {
+            return false;
+        }
+
+        /* The water is the model block's now; left in the form it would be drawn twice */
+        BlockForm form = new BlockForm();
+
+        form.blockState.set(state.contains(Properties.WATERLOGGED) ? state.with(Properties.WATERLOGGED, false) : state);
+
+        ModelProperties properties = model.getProperties();
+        ModelBody body = properties.getBody();
+
+        properties.setForm(form);
+        body.setLightLevel(light);
+        body.setSound(sound);
+        body.setHardness(hardness);
+        body.setSolid(solid);
+        body.setCameraCollision(camera);
+
+        if (!outline.isEmpty())
+        {
+            Box box = outline.getBoundingBox();
+
+            if (box.minX != 0 || box.minY != 0 || box.minZ != 0 || box.maxX != 1 || box.maxY != 1 || box.maxZ != 1)
+            {
+                body.setHitboxMode(ModelBody.HitboxMode.MANUAL);
+                body.getHitboxMin().set((float) box.minX, (float) box.minY, (float) box.minZ);
+                body.getHitboxMax().set((float) box.maxX, (float) box.maxY, (float) box.maxZ);
+            }
+        }
+
+        model.markDirty();
+        world.playSound(null, pos, group.getPlaceSound(), SoundCategory.BLOCKS, (group.getVolume() + 1F) / 2F, group.getPitch() * 0.8F);
+
+        return true;
     }
 
     @Nullable

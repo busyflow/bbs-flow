@@ -32,7 +32,12 @@ public class UIPromptOverlayPanel extends UIMessageBarOverlayPanel
     {
         super.onAdd(parent);
 
-        this.text.textbox.moveCursorToEnd();
+        /* A selection set up before opening (e.g. the name without its extension) stays as it is */
+        if (!this.text.textbox.isSelected())
+        {
+            this.text.textbox.moveCursorToEnd();
+        }
+
         parent.getContext().focus(this.text);
     }
 

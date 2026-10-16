@@ -28,6 +28,9 @@ public class UIDataTabElement extends UIClickable<UIDataTabElement>
     private static final int CLOSE_GAP = 4;
     private static final int CLOSE_ZONE = CLOSE_SIZE + TEXT_RIGHT_PADDING;
 
+    /** A pinned tab is its icon with the same margin on both sides. */
+    public static final int PINNED_WIDTH = ICON_X * 2 + ICON_SIZE;
+
     private int index;
     private IKey label;
     private Icon icon;
@@ -109,6 +112,14 @@ public class UIDataTabElement extends UIClickable<UIDataTabElement>
 
         FontRenderer font = context.batcher.getFont();
         int iconColor = RowStyle.iconColor(active || hover);
+
+        if (this.host.isPinnedTab(this.index))
+        {
+            context.batcher.icon(this.icon, iconColor, this.area.mx(), this.area.my(), 0.5F, 0.5F);
+
+            return;
+        }
+
         context.batcher.icon(this.icon, iconColor, this.area.x + ICON_X, this.area.my(), 0F, 0.5F);
 
         int right = showClose ? CLOSE_ZONE : TEXT_RIGHT_PADDING;

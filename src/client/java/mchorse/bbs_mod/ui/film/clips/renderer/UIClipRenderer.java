@@ -132,13 +132,14 @@ public class UIClipRenderer <T extends Clip> implements IUIClipRenderer<T>
                 Vector2f point = this.calculateEnvelopePoint(vector, (int) keyframe.getTick(), keyframe.getValue().floatValue(), duration, x1, y1, x2, y2);
                 Vector2f prevPoint = this.calculateEnvelopePoint(previous, (int) prevKeyframe.getTick(), prevKeyframe.getValue().floatValue(), duration, x1, y1, x2, y2);
 
-                builder.vertex(matrix, prevPoint.x, y2, 0F).color(c).next();
-                builder.vertex(matrix, point.x, point.y, 0F).color(c).next();
-                builder.vertex(matrix, prevPoint.x, prevPoint.y, 0F).color(c).next();
+                this.shadeAbove(builder, matrix, c, prevPoint.x, prevPoint.y, point.x, point.y, y1);
+            }
+            else if (keyframe.getTick() > 0)
+            {
+                /* Before the first keyframe the envelope holds its value */
+                Vector2f point = this.calculateEnvelopePoint(vector, (int) keyframe.getTick(), keyframe.getValue().floatValue(), duration, x1, y1, x2, y2);
 
-                builder.vertex(matrix, point.x, y2, 0F).color(c).next();
-                builder.vertex(matrix, point.x, point.y, 0F).color(c).next();
-                builder.vertex(matrix, prevPoint.x, y2, 0F).color(c).next();
+                this.shadeAbove(builder, matrix, c, x1, point.y, point.x, point.y, y1);
             }
 
             prevKeyframe = keyframe;
@@ -149,19 +150,14 @@ public class UIClipRenderer <T extends Clip> implements IUIClipRenderer<T>
         {
             Vector2f point = this.calculateEnvelopePoint(vector, (int) prevKeyframe.getTick(), prevKeyframe.getValue().floatValue(), duration, x1, y1, x2, y2);
 
-            builder.vertex(matrix, point.x, y2, 0F).color(c).next();
-            builder.vertex(matrix, x2, point.y, 0F).color(c).next();
-            builder.vertex(matrix, point.x, point.y, 0F).color(c).next();
-
-            builder.vertex(matrix, x2, y2, 0F).color(c).next();
-            builder.vertex(matrix, x2, point.y, 0F).color(c).next();
-            builder.vertex(matrix, point.x, y2, 0F).color(c).next();
+            this.shadeAbove(builder, matrix, c, point.x, point.y, x2, point.y, y1);
         }
     }
 
     /**
      * Render simple envelope by sampling its actual shape, so the fade in/out edges
      * follow the chosen {@code pre}/{@code post} interpolation instead of straight lines.
+     * Only the faded part gets shaded.
      */
     protected void renderSimpleEnvelope(BufferBuilder builder, Matrix4f matrix, Envelope envelope, int duration, int x1, int y1, int x2, int y2)
     {
@@ -185,17 +181,26 @@ public class UIClipRenderer <T extends Clip> implements IUIClipRenderer<T>
             float x = x1 + width * f;
             float y = y1 + height * (1 - MathUtils.clamp(envelope.factor(duration, duration * f), 0F, 1F));
 
-            builder.vertex(matrix, prevX, prevY, 0F).color(c).next();
-            builder.vertex(matrix, prevX, y2, 0F).color(c).next();
-            builder.vertex(matrix, x, y2, 0F).color(c).next();
-
-            builder.vertex(matrix, prevX, prevY, 0F).color(c).next();
-            builder.vertex(matrix, x, y2, 0F).color(c).next();
-            builder.vertex(matrix, x, y, 0F).color(c).next();
+            this.shadeAbove(builder, matrix, c, prevX, prevY, x, y, y1);
 
             prevX = x;
             prevY = y;
         }
+    }
+
+    /**
+     * Shade the part of the clip above one segment of the envelope, i.e. the part
+     * that's faded away, so a clip without fades looks untouched.
+     */
+    private void shadeAbove(BufferBuilder builder, Matrix4f matrix, int c, float ax, float ay, float bx, float by, float top)
+    {
+        builder.vertex(matrix, ax, top, 0F).color(c).next();
+        builder.vertex(matrix, ax, ay, 0F).color(c).next();
+        builder.vertex(matrix, bx, by, 0F).color(c).next();
+
+        builder.vertex(matrix, ax, top, 0F).color(c).next();
+        builder.vertex(matrix, bx, by, 0F).color(c).next();
+        builder.vertex(matrix, bx, top, 0F).color(c).next();
     }
 
     protected Vector2f calculateEnvelopePoint(Vector2f vector, int tick, float value, int duration, int x1, int y1, int x2, int y2)

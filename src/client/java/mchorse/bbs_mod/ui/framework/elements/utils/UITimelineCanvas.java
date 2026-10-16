@@ -14,7 +14,7 @@ import mchorse.bbs_mod.utils.colors.Colors;
  * Common ancestor of the two time canvases — the film's clip timeline ({@code UIClips}) and the
  * keyframe editor ({@code UIKeyframes}). It owns what the canvases share by NATURE, not by
  * accident: the horizontal time axis with its pixel↔tick conversions, the wheel navigation over
- * it (anchored zoom, horizontal pan, middle-drag panning), the marquee band, the pressed-mouse
+ * it (anchored zoom, horizontal pan, middle-drag panning, Ctrl+middle-drag zoom), the marquee band, the pressed-mouse
  * bookkeeping and the look of the time cursor.
  *
  * <p>Deliberately NOT here: what an element of the timeline is and how it moves. A clip has a
@@ -34,8 +34,14 @@ public abstract class UITimelineCanvas extends UIElement
     /** The Shift-drag selection band. Subclasses decide what falls into it on release. */
     protected final Marquee marquee = new Marquee();
 
+    /** How much a Ctrl+middle-drag zooms per pixel: about 2.7× per 100 pixels. */
+    private static final double DRAG_ZOOM_RATE = 0.01D;
+
     /** Middle-drag navigation: while pressed, the canvas pans with the cursor. */
     protected boolean navigating;
+
+    /** Ctrl held at the middle press: the drag zooms around the press point instead (like Blender). */
+    protected boolean zoomNavigating;
 
     /* Where the pressed mouse was last frame and where the press began, for every gesture
      * that measures its own movement. */
@@ -100,6 +106,19 @@ public abstract class UITimelineCanvas extends UIElement
         return this.navigating;
     }
 
+    public boolean isZoomNavigating()
+    {
+        return this.navigating && this.zoomNavigating;
+    }
+
+    /** Begin middle-drag navigation at the press remembered by {@link #setMouse}; Ctrl makes it zoom. */
+    protected void startNavigating()
+    {
+        this.navigating = true;
+        this.zoomNavigating = Window.isCtrlPressed();
+        this.xAxis.stopZoom();
+    }
+
     /** Remember where a press landed (and start measuring movement from there). */
     protected void setMouse(int x, int y)
     {
@@ -128,6 +147,39 @@ public abstract class UITimelineCanvas extends UIElement
     public void dragTimeBy(int dx)
     {
         this.xAxis.setShift(this.xAxis.getShift() - dx / this.xAxis.getZoom());
+    }
+
+    /** Follow a middle-drag along the time axis: pan with the cursor, or with Ctrl zoom (right zooms in). */
+    public void navigateTime(int dx)
+    {
+        if (this.zoomNavigating)
+        {
+            this.zoomByDrag(this.xAxis, dx);
+        }
+        else
+        {
+            this.dragTimeBy(dx);
+        }
+    }
+
+    /**
+     * Zoom an axis by a drag of {@code pixels} (positive zooms in), keeping the value under the
+     * point where the drag began in place.
+     */
+    public void zoomByDrag(Scale scale, double pixels)
+    {
+        int side = scale.direction.getSide(scale.area);
+
+        if (pixels == 0 || side <= 0)
+        {
+            return;
+        }
+
+        int pressed = scale.direction == ScrollDirection.HORIZONTAL ? this.initialX : this.initialY;
+        float anchor = (pressed - scale.direction.getPosition(scale.area, 0F)) / (float) side;
+        double zoom = scale.getZoom();
+
+        scale.zoomAnchor(anchor, zoom * Math.exp(pixels * DRAG_ZOOM_RATE) - zoom);
     }
 
     /** Keep the marquee's far corner on the cursor and draw the band while it is pressed. */

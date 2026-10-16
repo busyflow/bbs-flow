@@ -43,6 +43,7 @@ import mchorse.bbs_mod.ui.film.audio.UIAudioRecorder;
 import mchorse.bbs_mod.ui.film.controller.UIFilmController;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditor;
 import mchorse.bbs_mod.ui.film.utils.UIFilmUndoHandler;
+import mchorse.bbs_mod.ui.film.utils.shader.UIShaderPanel;
 import mchorse.bbs_mod.ui.film.utils.undo.UIUndoHistoryOverlay;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.onboarding.TourAnchors;
@@ -57,6 +58,7 @@ import mchorse.bbs_mod.ui.framework.elements.overlay.UINumberOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIPromptOverlayPanel;
 import mchorse.bbs_mod.ui.utils.Area;
+import mchorse.bbs_mod.ui.utils.Scale;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.context.ContextMenuManager;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
@@ -79,6 +81,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
+import org.joml.Vector2d;
 import org.joml.Vector2i;
 import org.joml.Vector3d;
 
@@ -101,6 +104,8 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     private int lastRestartCursor = -1;
     private final Position position = new Position(0, 0, 0, 0, 0);
     private final Position lastPosition = new Position(0, 0, 0, 0, 0);
+    /** Whether the current flight started in a mode whose FOV is the editor setting */
+    private boolean flightOverOrbit;
 
 
     public UIElement main;
@@ -108,6 +113,8 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     public UIDockLayout dock;
     public UIFilmRecorder recorder;
     public UIFilmPreview preview;
+    /** The shader panel, which the picked curve clip shows in its properties */
+    public UIShaderPanel shader;
 
     public UIIcon duplicateFilm;
 
@@ -146,6 +153,8 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     private boolean newFilm;
     private double timelineXMin = Double.NaN;
     private double timelineXMax = Double.NaN;
+    /* The timelines' own views (min and max tick) while a video export lays its range over them */
+    private final List<Vector2d> exportTimelineViews = new ArrayList<>();
     /* Vertical timeline scrolls per film id, so switching film tabs restores where each one was left */
     private final ScrollMemory<String> cameraScrolls = new ScrollMemory<>();
     private final ScrollMemory<String> actionScrolls = new ScrollMemory<>();
@@ -180,9 +189,10 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         this.main = new UIElement();
         this.editArea = new UIElement();
         this.preview = new UIFilmPreview(this);
+        this.shader = new UIShaderPanel(this);
 
         /* Editors */
-        this.cameraEditor = new UIClipsPanel(this, BBSMod.getFactoryCameraClips()).target(this.editArea);
+        this.cameraEditor = new UIClipsPanel(this, BBSMod.getCameraClipPalette()).target(this.editArea);
         this.cameraEditor.full(this.main);
 
         this.cameraEditor.clips.context((menu) ->
@@ -192,7 +202,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         this.replayEditor = new UIReplaysEditor(this);
         this.replayEditor.full(this.main).setVisible(false);
-        this.actionEditor = new UIClipsPanel(this, BBSMod.getFactoryActionClips()).target(this.editArea);
+        this.actionEditor = new UIClipsPanel(this, BBSMod.getActionClipPalette()).target(this.editArea);
         this.actionEditor.setVisible(false);
         this.replayEditor.attachActionTimeline(this.actionEditor);
 
@@ -593,12 +603,14 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
     /**
      * Preferred placement for the recording panels when an older layout, saved before they existed,
-     * is loaded: the replay list under the edit area, its properties to the right of the list.
+     * is loaded: the replay list under the edit area, its properties to the right of the list. A
+     * panel the user hid stays hidden.
      */
     private EditorLayoutNode ensureFilmLayoutPanels(EditorLayoutNode root)
     {
         HashSet<String> ids = new HashSet<>();
         EditorLayoutNode.collectPanelIds(root, ids);
+        ids.addAll(this.getFilmLayoutSettings().getHiddenPanels(this.currentLayoutId()));
 
         boolean hasList = ids.contains(PANEL_REPLAYS_LIST_ID);
         boolean hasProps = ids.contains(PANEL_REPLAY_PROPS_ID);
@@ -1549,7 +1561,14 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         {
             if (!flight)
             {
-                this.persistFlightFov();
+                /* Only a flight over the editor's own view hands its FOV to the setting: flying
+                 * the film's camera sets the clip's FOV, and the orbit keeps its own. Checked at
+                 * both ends, so switching modes mid-flight doesn't carry it across either. */
+                if (this.isFlying() && this.flightOverOrbit && this.controller.orbit.enabled)
+                {
+                    this.persistFlightFov();
+                }
+
                 if (this.undoHandler != null)
                 {
                     this.undoHandler.getUndoManager().markLastUndoNoMerging();
@@ -1561,6 +1580,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             }
             else
             {
+                this.flightOverOrbit = this.controller.orbit.enabled;
                 this.lastPosition.set(Position.ZERO);
                 this.dashboard.orbit.apply(this.position);
             }
@@ -1993,12 +2013,60 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         this.runner.toggle(this.getCursor());
         this.lastRunning = this.runner.isRunning();
 
-        if (this.runner.isRunning())
+        /* While exporting, the timelines show the whole exported range instead */
+        if (this.runner.isRunning() && !this.recorder.isExporting())
         {
-            this.cameraEditor.clips.getXAxis().shiftIntoMiddle(this.getCursor());
-
-            this.replayEditor.getActiveTimeline().getXAxis().shiftIntoMiddle(this.getCursor());
+            for (Scale axis : this.getTimelineAxes())
+            {
+                axis.shiftIntoMiddle(this.getCursor());
+            }
         }
+    }
+
+    /**
+     * The time axes that show the playhead: the camera clips and the replays' active timeline.
+     */
+    private Scale[] getTimelineAxes()
+    {
+        return new Scale[] {this.cameraEditor.clips.getXAxis(), this.replayEditor.getActiveTimeline().getXAxis()};
+    }
+
+    /**
+     * Lay the exported range over the whole width of the timelines, so the playhead crosses
+     * them edge to edge while the video records. {@link #restoreTimelineViews()} brings back
+     * the views they had.
+     */
+    public void fitTimelinesToExport(int start, int end)
+    {
+        this.exportTimelineViews.clear();
+
+        if (end <= start)
+        {
+            return;
+        }
+
+        for (Scale axis : this.getTimelineAxes())
+        {
+            this.exportTimelineViews.add(new Vector2d(axis.getMinValue(), axis.getMaxValue()));
+            axis.view(start, end);
+        }
+    }
+
+    public void restoreTimelineViews()
+    {
+        Scale[] axes = this.getTimelineAxes();
+
+        for (int i = 0; i < Math.min(axes.length, this.exportTimelineViews.size()); i++)
+        {
+            Vector2d view = this.exportTimelineViews.get(i);
+
+            if (view.x < view.y)
+            {
+                axes[i].view(view.x, view.y);
+            }
+        }
+
+        this.exportTimelineViews.clear();
     }
 
     public boolean canUseKeybinds()

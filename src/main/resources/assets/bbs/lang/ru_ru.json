@@ -1,5 +1,6 @@
 {
 	"block.bbs.model": "Блок-модель",
+	"block.bbs.model.tooltip.convert": "Alt + ПКМ по блоку — превратить в блок-модель",
 	"block.bbs.chroma_red": "Красный хрома",
 	"block.bbs.chroma_green": "Зелёный хрома",
 	"block.bbs.chroma_blue": "Синий хрома",

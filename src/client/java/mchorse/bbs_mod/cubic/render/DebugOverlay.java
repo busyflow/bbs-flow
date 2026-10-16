@@ -42,11 +42,16 @@ public final class DebugOverlay
      * and made every handle jump the moment a chain's length changed.
      *
      * <p>Rest, never the posed skeleton: a pose-derived scale would breathe with
-     * the animation, which is the same complaint one step further out. Read
-     * straight off the rig's relative bone offsets — cubic pivots are in the
-     * model's pixel space, so they come back to blocks the way the renderer takes
-     * them ({@code ICubicRenderer.moveToGroupPivot}), while BOBJ rest matrices are
-     * already in the overlay's space.
+     * the animation, which is the same complaint one step further out. A bone's
+     * length is its pivot's offset from its parent's: cubic pivots are absolute,
+     * in the model's pixel space, so taken on their own they measured how far
+     * a bone sits from the model's origin — handles on bones high up (hair on
+     * a head) came out oversized. They come back to blocks the way the renderer
+     * takes them ({@code ICubicRenderer.moveToGroupPivot}). BOBJ heads come off
+     * the bind matrices, already in the overlay's space; the parent-relative
+     * matrix would not do — it is in the parent's local frame, which carries the
+     * armature's scale (a Mixamo rig's 0.01 inflated the unit a hundredfold).
+     * Top-level bones have no parent to measure from and are left out.
      */
     public static float modelUnit(IModel model)
     {
@@ -57,7 +62,12 @@ public final class DebugOverlay
         {
             for (ModelGroup group : cubic.getAllGroups())
             {
-                float length = group.initial.translate.length() / 16F;
+                if (group.parent == null)
+                {
+                    continue;
+                }
+
+                float length = group.initial.translate.distance(group.parent.initial.translate) / 16F;
 
                 if (length > EPS)
                 {
@@ -70,7 +80,12 @@ public final class DebugOverlay
         {
             for (BOBJBone bone : bobj.getAllBOBJBones())
             {
-                float length = bone.relBoneMat.getTranslation(new Vector3f()).length();
+                if (bone.parentBone == null)
+                {
+                    continue;
+                }
+
+                float length = bone.boneMat.getTranslation(new Vector3f()).distance(bone.parentBone.boneMat.getTranslation(new Vector3f()));
 
                 if (length > EPS)
                 {

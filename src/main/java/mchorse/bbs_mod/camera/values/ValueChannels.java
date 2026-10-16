@@ -33,11 +33,17 @@ public class ValueChannels extends ValueGroup
     {
         KeyframeChannel<T> channel = new KeyframeChannel<>(id, factory);
 
+        this.addChannel(channel);
+
+        return channel;
+    }
+
+    /** Adds a channel along with the keyframes it already has, as one change */
+    public void addChannel(KeyframeChannel<?> channel)
+    {
         this.preNotify();
         this.add(channel);
         this.postNotify();
-
-        return channel;
     }
 
     public void removeChannel(KeyframeChannel<?> channel)
