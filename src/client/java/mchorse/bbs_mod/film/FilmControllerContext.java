@@ -48,6 +48,7 @@ public class FilmControllerContext
     public TransformSpace space2 = TransformSpace.LOCAL;
 
     public String nameTag = "";
+    public float nameTagHeight = 0F;
     public boolean relative;
 
     private FilmControllerContext()
@@ -64,6 +65,7 @@ public class FilmControllerContext
         this.bone2 = null;
         this.space2 = TransformSpace.LOCAL;
         this.nameTag = "";
+        this.nameTagHeight = 0F;
         this.relative = false;
     }
 
@@ -166,6 +168,13 @@ public class FilmControllerContext
     public FilmControllerContext nameTag(String nameTag)
     {
         this.nameTag = nameTag;
+
+        return this;
+    }
+
+    public FilmControllerContext nameTagHeight(float nameTagHeight)
+    {
+        this.nameTagHeight = nameTagHeight;
 
         return this;
     }

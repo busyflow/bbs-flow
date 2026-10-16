@@ -52,15 +52,27 @@ public class MobPoseApplier
 
         for (Map.Entry<String, PoseTransform> entry : overlay.transforms.entrySet())
         {
+            boolean had = merged.transforms.containsKey(entry.getKey());
             PoseTransform poseTransform = merged.getOrCreate(entry.getKey());
             PoseTransform value = entry.getValue();
             poseTransform.visible &= value.visible;
 
             if (value.fix != 0)
             {
-                poseTransform.translate.lerp(value.translate, value.fix);
-                poseTransform.scale.lerp(value.scale, value.fix);
-                poseTransform.lerpRotation(value, value.fix);
+                if (had)
+                {
+                    poseTransform.translate.lerp(value.translate, value.fix);
+                    poseTransform.scale.lerp(value.scale, value.fix);
+                    poseTransform.lerpRotation(value, value.fix);
+                }
+                else
+                {
+                    poseTransform.translate.set(value.translate);
+                    poseTransform.scale.set(value.scale);
+                    poseTransform.copyRotation(value);
+                }
+
+                poseTransform.fix = Math.max(poseTransform.fix, value.fix);
             }
             else
             {

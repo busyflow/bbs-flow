@@ -148,6 +148,11 @@ public class FormTranslucentQueue
         if (uniform != null)
         {
             uniform.set(mode);
+
+            if (ModelVAORenderer.isShaderBound(shader))
+            {
+                uniform.upload();
+            }
         }
     }
 

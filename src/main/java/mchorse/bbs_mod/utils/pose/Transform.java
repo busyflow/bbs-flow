@@ -211,6 +211,13 @@ public class Transform implements IMapSerializable
         }
     }
 
+    public void copyRotation(Transform transform)
+    {
+        this.rotate.set(transform.rotate);
+        this.quat.set(transform.quat);
+        this.rotationMode = transform.rotationMode;
+    }
+
     public void identity()
     {
         this.translate.set(0, 0, 0);

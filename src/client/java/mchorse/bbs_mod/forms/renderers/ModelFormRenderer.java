@@ -227,15 +227,27 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
     {
         for (Map.Entry<String, PoseTransform> entry : pose.transforms.entrySet())
         {
+            boolean had = targetPose.transforms.containsKey(entry.getKey());
             PoseTransform poseTransform = targetPose.getOrCreate(entry.getKey());
             PoseTransform value = entry.getValue();
             poseTransform.visible &= value.visible;
 
             if (!Operation.equals(value.fix, 0))
             {
-                poseTransform.translate.lerp(value.translate, value.fix);
-                poseTransform.scale.lerp(value.scale, value.fix);
-                poseTransform.lerpRotation(value, value.fix);
+                if (had)
+                {
+                    poseTransform.translate.lerp(value.translate, value.fix);
+                    poseTransform.scale.lerp(value.scale, value.fix);
+                    poseTransform.lerpRotation(value, value.fix);
+                }
+                else
+                {
+                    poseTransform.translate.set(value.translate);
+                    poseTransform.scale.set(value.scale);
+                    poseTransform.copyRotation(value);
+                }
+
+                poseTransform.fix = Math.max(poseTransform.fix, value.fix);
             }
             else
             {

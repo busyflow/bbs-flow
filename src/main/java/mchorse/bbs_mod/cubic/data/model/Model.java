@@ -279,61 +279,90 @@ public class Model implements IMapSerializable, IModel
                 continue;
             }
 
-            if (transform.fix > 0F)
+            this.applyGroupPose(group, transform);
+
+            String clothingKey = this.getClothingLayerKey(entry.getKey());
+            if (clothingKey != null && !pose.transforms.containsKey(clothingKey))
             {
-                group.current.lerp(group.initial, transform.fix);
-
-                /* fix blends toward the bind pose, so any composed orientation from earlier layers no longer
-                 * applies — drop it and let composeOrient below re-seed from the fix-lerped euler. */
-                group.orient = null;
-            }
-
-            group.lighting = transform.lighting;
-            group.poseVisible &= transform.visible;
-            group.color.copy(transform.color);
-            group.overlay.copy(transform.overlay);
-            group.current.translate.add(transform.translate);
-            group.current.scale.add(transform.scale).sub(1, 1, 1);
-
-            if (transform.rotationMode == Transform.RotationMode.QUATERNION)
-            {
-                /* Quaternion pose: seed orient from the euler accumulated so far
-                 * (rest + prior layers) if needed, then compose the pose quaternion
-                 * straight in — no euler decomposition, so the render stays gimbal-
-                 * free. The euler readback into current.rotate is only kept for the
-                 * gizmo/IK sampling, not the render (which follows orient). */
-                if (group.orient == null)
+                ModelGroup clothingGroup = this.getGroup(clothingKey);
+                if (clothingGroup != null && clothingGroup.parent != group)
                 {
-                    group.orient = Matrices.toLocalRotationZYXDegrees(group.current.rotate);
+                    this.applyGroupPose(clothingGroup, transform);
                 }
-
-                group.orient.mul(transform.createRotation());
-
-                Vector3f euler = Matrices.toEulerZYXRadians(transform.quat, new Vector3f());
-
-                group.current.rotate.add(
-                    (float) Math.toDegrees(euler.x),
-                    (float) Math.toDegrees(euler.y),
-                    (float) Math.toDegrees(euler.z)
-                );
-            }
-            else
-            {
-                group.current.rotate.add(
-                    (float) Math.toDegrees(transform.rotate.x),
-                    (float) Math.toDegrees(transform.rotate.y),
-                    (float) Math.toDegrees(transform.rotate.z)
-                );
-
-                /* Compose the pose rotation into the orientation quaternion.
-                 * The euler readback above is kept for gizmo/IK; orient is the render truth past the first layer. */
-                group.composeOrient(Matrices.toQuaternionZYXDegrees(
-                    (float) Math.toDegrees(transform.rotate.x),
-                    (float) Math.toDegrees(transform.rotate.y),
-                    (float) Math.toDegrees(transform.rotate.z)
-                ));
             }
         }
+    }
+
+    private void applyGroupPose(ModelGroup group, PoseTransform transform)
+    {
+        if (transform.fix > 0F)
+        {
+            group.current.lerp(group.initial, transform.fix);
+
+            /* fix blends toward the bind pose, so any composed orientation from earlier layers no longer
+             * applies — drop it and let composeOrient below re-seed from the fix-lerped euler. */
+            group.orient = null;
+        }
+
+        group.lighting = transform.lighting;
+        group.poseVisible &= transform.visible;
+        group.color.copy(transform.color);
+        group.overlay.copy(transform.overlay);
+        group.current.translate.add(transform.translate);
+        group.current.scale.add(transform.scale).sub(1, 1, 1);
+
+        if (transform.rotationMode == Transform.RotationMode.QUATERNION)
+        {
+            /* Quaternion pose: seed orient from the euler accumulated so far
+             * (rest + prior layers) if needed, then compose the pose quaternion
+             * straight in — no euler decomposition, so the render stays gimbal-
+             * free. The euler readback into current.rotate is only kept for the
+             * gizmo/IK sampling, not the render (which follows orient). */
+            if (group.orient == null)
+            {
+                group.orient = Matrices.toLocalRotationZYXDegrees(group.current.rotate);
+            }
+
+            group.orient.mul(transform.createRotation());
+
+            Vector3f euler = Matrices.toEulerZYXRadians(transform.quat, new Vector3f());
+
+            group.current.rotate.add(
+                (float) Math.toDegrees(euler.x),
+                (float) Math.toDegrees(euler.y),
+                (float) Math.toDegrees(euler.z)
+            );
+        }
+        else
+        {
+            group.current.rotate.add(
+                (float) Math.toDegrees(transform.rotate.x),
+                (float) Math.toDegrees(transform.rotate.y),
+                (float) Math.toDegrees(transform.rotate.z)
+            );
+
+            /* Compose the pose rotation into the orientation quaternion.
+             * The euler readback above is kept for gizmo/IK; orient is the render truth past the first layer. */
+            group.composeOrient(Matrices.toQuaternionZYXDegrees(
+                (float) Math.toDegrees(transform.rotate.x),
+                (float) Math.toDegrees(transform.rotate.y),
+                (float) Math.toDegrees(transform.rotate.z)
+            ));
+        }
+    }
+
+    private String getClothingLayerKey(String parentName)
+    {
+        return switch (parentName)
+        {
+            case "left_arm" -> this.getGroup("left_sleeve") != null ? "left_sleeve" : (this.getGroup("leftSleeve") != null ? "leftSleeve" : null);
+            case "right_arm" -> this.getGroup("right_sleeve") != null ? "right_sleeve" : (this.getGroup("rightSleeve") != null ? "rightSleeve" : null);
+            case "left_leg" -> this.getGroup("left_pants") != null ? "left_pants" : (this.getGroup("leftPants") != null ? "leftPants" : null);
+            case "right_leg" -> this.getGroup("right_pants") != null ? "right_pants" : (this.getGroup("rightPants") != null ? "rightPants" : null);
+            case "body" -> this.getGroup("jacket") != null ? "jacket" : null;
+            case "head" -> this.getGroup("headwear") != null ? "headwear" : (this.getGroup("hat") != null ? "hat" : null);
+            default -> null;
+        };
     }
 
     @Override

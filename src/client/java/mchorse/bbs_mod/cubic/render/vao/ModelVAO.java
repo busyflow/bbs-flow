@@ -92,6 +92,8 @@ public class ModelVAO implements IModelVAO
         this.count = data.vertices().length / 3;
     }
 
+    private boolean shadersEnabledState;
+
     @Override
     public void render(VertexFormat format, float r, float g, float b, float a, int light, int overlay)
     {
@@ -105,6 +107,22 @@ public class ModelVAO implements IModelVAO
             GL30.glVertexAttrib4f(Attributes.COLOR, r, g, b, a);
             GL30.glVertexAttribI2i(Attributes.OVERLAY_UV, overlay & '\uffff', overlay >> 16 & '\uffff');
             GL30.glVertexAttribI2i(Attributes.LIGHTMAP_UV, light & '\uffff', light >> 16 & '\uffff');
+
+            if (hasShaders != this.shadersEnabledState)
+            {
+                this.shadersEnabledState = hasShaders;
+
+                if (hasShaders)
+                {
+                    GL30.glEnableVertexAttribArray(Attributes.MID_TEXTURE_UV);
+                    GL30.glEnableVertexAttribArray(Attributes.TANGENTS);
+                }
+                else
+                {
+                    GL30.glDisableVertexAttribArray(Attributes.MID_TEXTURE_UV);
+                    GL30.glDisableVertexAttribArray(Attributes.TANGENTS);
+                }
+            }
         }
         else
         {
@@ -112,14 +130,12 @@ public class ModelVAO implements IModelVAO
             GL30.glVertexAttrib4f(3, r, g, b, a);
         }
 
-        if (hasShaders) GL30.glEnableVertexAttribArray(Attributes.MID_TEXTURE_UV);
-        else GL30.glDisableVertexAttribArray(Attributes.MID_TEXTURE_UV);
-
-        if (hasShaders) GL30.glEnableVertexAttribArray(Attributes.TANGENTS);
-        else GL30.glDisableVertexAttribArray(Attributes.TANGENTS);
-
         GL30.glDrawArrays(GL30.GL_TRIANGLES, 0, this.count);
-        GL30.glBindVertexArray(0);
+
+        if (!ModelVAORenderer.isInPass())
+        {
+            GL30.glBindVertexArray(0);
+        }
     }
 
     public static boolean isShadersEnabled()

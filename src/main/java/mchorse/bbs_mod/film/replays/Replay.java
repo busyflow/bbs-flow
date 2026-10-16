@@ -45,6 +45,7 @@ public class Replay extends ValueGroup
     public final ValueString category = new ValueString("category", "");
     public final ValueString label = new ValueString("label", "");
     public final ValueString nameTag = new ValueString("name_tag", "");
+    public final ValueFloat nameTagHeight = new ValueFloat("name_tag_height", 0F);
     public final ValueBoolean shadow = new ValueBoolean("shadow", true);
     public final ValueFloat shadowSize = new ValueFloat("shadow_size", 0.5F);
     /** When enabled, the shadow follows the form's perceived position (anchor/transform motion). */
@@ -77,6 +78,7 @@ public class Replay extends ValueGroup
         this.add(this.category);
         this.add(this.label);
         this.add(this.nameTag);
+        this.add(this.nameTagHeight);
         this.add(this.shadow);
         this.add(this.shadowSize);
         this.add(this.shadowFollow);

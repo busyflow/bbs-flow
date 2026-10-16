@@ -739,7 +739,16 @@ public class ModelInstance implements IModelInstance
         int defaultTexture = RenderSystem.getShaderTexture(0);
         Texture defaultTextureObject = BBSModClient.getTextures().getLastBound();
 
-        CubicRenderer.processRenderModel(renderProcessor, null, stack, model);
+        ModelVAORenderer.beginPass(drawShader);
+
+        try
+        {
+            CubicRenderer.processRenderModel(renderProcessor, null, stack, model);
+        }
+        finally
+        {
+            ModelVAORenderer.endPass();
+        }
 
         boolean hasGeometry = entry != null ? entry.hasGeometry : builder != null;
 
@@ -950,7 +959,16 @@ public class ModelInstance implements IModelInstance
                 CubicVAORenderer renderProcessor = new CubicVAORenderer(shader, this, light, overlay, stencilMap, keys, textureResolver);
 
                 renderProcessor.setColor(color.r, color.g, color.b, color.a);
-                CubicRenderer.processRenderModel(renderProcessor, null, stack, model);
+                ModelVAORenderer.beginPass(shader);
+
+                try
+                {
+                    CubicRenderer.processRenderModel(renderProcessor, null, stack, model);
+                }
+                finally
+                {
+                    ModelVAORenderer.endPass();
+                }
             }
             else
             {

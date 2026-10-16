@@ -297,7 +297,7 @@ public class FilmEntityRenderer
             stack.push();
             stack.translate(position.x - cx, position.y - cy, position.z - cz);
 
-            renderNameTag(entity, Text.literal(StringUtils.processColoredText(context.nameTag)), stack, context.consumers, light);
+            renderNameTag(entity, Text.literal(StringUtils.processColoredText(context.nameTag)), stack, context.consumers, light, context.nameTagHeight);
 
             stack.pop();
         }
@@ -477,10 +477,10 @@ public class FilmEntityRenderer
         stack.pop();
     }
 
-    static void renderNameTag(IEntity entity, Text text, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light)
+    static void renderNameTag(IEntity entity, Text text, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, float heightOffset)
     {
         boolean sneaking = !entity.isSneaking();
-        float hitboxH = (float) entity.getPickingHitbox().h + 0.5F;
+        float hitboxH = (float) entity.getPickingHitbox().h + 0.5F + heightOffset;
 
         matrices.push();
         matrices.translate(0F, hitboxH, 0F);

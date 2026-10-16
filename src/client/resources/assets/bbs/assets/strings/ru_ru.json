@@ -1043,6 +1043,7 @@
 	"bbs.ui.film.replay.looping": "Зацикленность",
 	"bbs.ui.film.replay.looping-tooltip": "0 отключает цикл; положительное значение включает. Длительность фильма не меняется.",
 	"bbs.ui.film.replay.name_tag": "Именной тэг",
+	"bbs.ui.film.replay.name_tag_height": "Высота именного тэга",
 	"bbs.ui.film.replay.orbit.camera": "Камера",
 	"bbs.ui.film.replay.orbit.first_person": "Первое лицо",
 	"bbs.ui.film.replay.orbit.free": "Свободная",

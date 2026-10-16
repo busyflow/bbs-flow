@@ -105,6 +105,16 @@ public final class CemNames
             }
         }
 
+        if (name.equals("steve") || name.startsWith("steve_"))
+        {
+            return "player";
+        }
+
+        if (name.equals("alex") || name.startsWith("alex_"))
+        {
+            return "player_slim";
+        }
+
         return name;
     }
 

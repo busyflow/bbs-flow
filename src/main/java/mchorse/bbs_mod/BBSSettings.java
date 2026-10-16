@@ -225,6 +225,7 @@ public class BBSSettings {
 	public static ValueInt recordingTransformOverlays;
 	public static ValueBoolean recordingCameraPreview;
 	public static ValueBoolean recordingTeleport;
+	public static ValueBoolean unlimitedReplayRenderDistance;
 
 	public static ValueBoolean renderAllModelBlocks;
 	public static ValueBoolean clickModelBlocks;
@@ -902,6 +903,7 @@ public class BBSSettings {
 		recordingTransformOverlays = builder.getInt("transform_overlays", 0, 0, 42);
 		recordingCameraPreview = builder.getBoolean("camera_preview", true);
 		recordingTeleport = builder.getBoolean("teleport", true);
+		unlimitedReplayRenderDistance = builder.getBoolean("unlimited_replay_render_distance", false);
 
 		/* Output */
 		/* Ordered by how often it gets touched: the resolution first, then the

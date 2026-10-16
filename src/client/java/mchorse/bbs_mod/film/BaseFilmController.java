@@ -558,6 +558,11 @@ public abstract class BaseFilmController
      */
     private boolean isCulled(Frustum frustum, Replay replay, IEntity entity)
     {
+        if (BBSSettings.unlimitedReplayRenderDistance.get())
+        {
+            return false;
+        }
+
         Form form = entity.getForm();
 
         if (form == null || FilmMatrices.getAnchor(entity) != null && FilmMatrices.getAnchor(entity).hasTarget())
@@ -643,6 +648,7 @@ public abstract class BaseFilmController
             .setup(this.entities, entity, replay, context)
             .shadow(replay.shadow.get(), replay.shadowSize.get())
             .nameTag(replay.nameTag.get())
+            .nameTagHeight(replay.nameTagHeight.get())
             .relative(replay.relative.get());
     }
 
