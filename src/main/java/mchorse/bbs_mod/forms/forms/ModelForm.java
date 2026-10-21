@@ -10,6 +10,7 @@ import mchorse.bbs_mod.cubic.physics.WindControl;
 import mchorse.bbs_mod.cubic.spline.ValueSplineIKs;
 import mchorse.bbs_mod.data.types.BaseType;
 import mchorse.bbs_mod.data.types.MapType;
+import mchorse.bbs_mod.forms.forms.utils.FormBone;
 import mchorse.bbs_mod.forms.forms.utils.ValueBones;
 import mchorse.bbs_mod.forms.forms.utils.ValueMaterials;
 import mchorse.bbs_mod.forms.values.ValueActionsConfig;
@@ -219,6 +220,33 @@ public class ModelForm extends Form implements IPosedForm
             if (map.getMap("ik").has("ik")) this.ik.fromData(map.getMap("ik"));
             if (map.getMap("physics").has("physics")) this.physics.fromData(map.getMap("physics"));
             if (map.has("spline_ik")) this.splineIK.fromData(map.getMap("spline_ik"));
+
+            this.readLegacyShake(map.getMap("bones"));
+        }
+    }
+
+    /**
+     * Forms saved while a bone kept its shake's numbers on itself: the switch stays on the bone,
+     * the numbers move into the form's shake controls next to the strength they were saved with.
+     */
+    private void readLegacyShake(MapType bones)
+    {
+        for (String id : bones.keys())
+        {
+            MapType data = bones.getMap(id);
+            FormBone bone = this.bones.getBone(id);
+
+            if (bone == null || !data.has("shake", BaseType.TYPE_MAP) || !data.getMap("shake").getBool("enabled", false))
+            {
+                continue;
+            }
+
+            ShakeControl control = this.shake.getOriginalValue().get(id);
+            float strength = control.strength;
+
+            control.fromData(data.getMap("shake"));
+            control.strength = strength;
+            bone.shake.set(true);
         }
     }
 

@@ -45,7 +45,6 @@ import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.context.MenuVerb;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.presets.UICopyPasteController;
-import mchorse.bbs_mod.ui.utils.renderers.TimelineRulerRenderer;
 import mchorse.bbs_mod.utils.CollectionUtils;
 import mchorse.bbs_mod.utils.Direction;
 import mchorse.bbs_mod.utils.MathUtils;
@@ -109,6 +108,9 @@ public class UIKeyframes extends UITimelineCanvas
 
     public final Area graphArea = new Area();
 
+    /** Room over the tracks for the ruler; none while another timeline's ruler right above serves, see {@link #setRuler} */
+    private int topMargin = IUIKeyframeGraph.TOP_MARGIN;
+
     private final List<UIKeyframeSheet> sheets = new ArrayList<>();
     private final UIKeyframeDopeSheet dopeSheet = new UIKeyframeDopeSheet(this);
     private final UIKeyframeGraph curveGraph = new UIKeyframeGraph(this);
@@ -129,6 +131,9 @@ public class UIKeyframes extends UITimelineCanvas
 
     /** The picked key's track: the value panel edits it and the graph draws it on top. */
     public UIKeyframeSheet getPickedSheet() { return this.dopeSheet.getSheet(this.pickedKeyframe); }
+
+    /** The key the value panel was opened for, even once it is no longer selected. */
+    public Keyframe getPickedKeyframe() { return this.pickedKeyframe; }
 
     public boolean isGraphTrack(UIKeyframeSheet sheet) { return this.graphTracks.contains(sheet); }
 
@@ -1218,6 +1223,40 @@ public class UIKeyframes extends UITimelineCanvas
         return this;
     }
 
+    /**
+     * Without the ruler the tracks start at the very top: the time is read off a timeline right
+     * above this one, and scrubbing is done there too.
+     */
+    public void setRuler(boolean ruler)
+    {
+        int margin = ruler ? IUIKeyframeGraph.TOP_MARGIN : 0;
+
+        if (margin == this.topMargin)
+        {
+            return;
+        }
+
+        this.topMargin = margin;
+        this.dopeSheet.updateScrollSize();
+
+        if (this.area.w > 0)
+        {
+            this.resize();
+        }
+    }
+
+    /** How much the tracks and the graph are pushed down from the top, by the ruler. */
+    public int getTopMargin()
+    {
+        return this.topMargin;
+    }
+
+    /** Where the tracks and the graph begin: under the ruler, or at the very top without one. */
+    public int getRulerBottom()
+    {
+        return Math.min(this.graphArea.ey(), this.graphArea.y + this.topMargin);
+    }
+
     public UIKeyframes duration(Supplier<Integer> duration)
     {
         this.duration = duration;
@@ -1258,12 +1297,6 @@ public class UIKeyframes extends UITimelineCanvas
     public Float getAutoKeyframeTick()
     {
         return null;
-    }
-
-    /** Pause a manual value edit at the playhead; continued dragging edits its new key. */
-    public boolean stopPlaybackOnValueChange()
-    {
-        return false;
     }
 
     public boolean isRunning()
@@ -1428,7 +1461,7 @@ public class UIKeyframes extends UITimelineCanvas
         if (this.hasCursor() && !this.scaling && !this.stacking && context.mouseButton == 0
             && !Window.isAltPressed() && !Window.isCtrlPressed()
             && this.graphArea.isInside(context)
-            && context.mouseY < TimelineRulerRenderer.getRulerBottom(this.area))
+            && context.mouseY < Math.min(this.area.ey(), this.area.y + this.topMargin))
         {
             this.scrubbing = true;
             this.moveNoKeyframes(context);

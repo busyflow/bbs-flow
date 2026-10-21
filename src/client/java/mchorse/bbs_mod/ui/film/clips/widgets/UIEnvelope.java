@@ -110,6 +110,11 @@ public class UIEnvelope extends UIElement
 
         this.add(this.keyframes);
 
+        if (toggled)
+        {
+            this.add(this.panel.keyFields(this.channel));
+        }
+
         if (this.hasParent())
         {
             this.panel.panels.resize();

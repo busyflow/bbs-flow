@@ -174,14 +174,16 @@ public class UIGeneralFormPanel extends UIFormPanel
         Set<String> disabled = this.form.disabledTracks.get();
         Set<String> keys = new LinkedHashSet<>();
         Map<String, Integer> keyToColor = new HashMap<>();
+        Map<String, IKey> keyToTitle = new HashMap<>();
 
         for (TrackDescriptor track : TrackCatalog.of(this.form))
         {
             keys.add(track.filterKey());
             keyToColor.put(track.filterKey(), track.color());
+            keyToTitle.put(track.filterKey(), track.title());
         }
 
-        UIKeyframeSheetFilterOverlayPanel panel = new UIKeyframeSheetFilterOverlayPanel(disabled, keys, keyToColor);
+        UIKeyframeSheetFilterOverlayPanel panel = new UIKeyframeSheetFilterOverlayPanel(disabled, keys, keyToColor, keyToTitle);
 
         UIOverlay.addOverlay(this.getContext(), panel, 240, 0.9F);
 

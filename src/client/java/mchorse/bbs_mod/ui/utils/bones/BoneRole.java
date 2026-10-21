@@ -4,6 +4,9 @@ import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.utils.colors.Colors;
 
+import java.util.IdentityHashMap;
+import java.util.Map;
+
 /**
  * One mark a bone list can put next to a bone name, and the one place every list takes its
  * marks from — so a colour means the same thing on every tab: yellow is a chain, cyan a target,
@@ -37,6 +40,7 @@ public final class BoneRole
     public final IKey label;
 
     private BoneRole off;
+    private Map<IKey, BoneRole> named;
 
     private BoneRole(int color, Shape shape, IKey label)
     {
@@ -55,6 +59,17 @@ public final class BoneRole
         }
 
         return this.off;
+    }
+
+    /** The same mark under another name, for a list that says whose mark it is. */
+    public BoneRole named(IKey label)
+    {
+        if (this.named == null)
+        {
+            this.named = new IdentityHashMap<>();
+        }
+
+        return this.named.computeIfAbsent(label, (key) -> new BoneRole(this.color, this.shape, key));
     }
 
     public boolean isOff()

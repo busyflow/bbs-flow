@@ -2,6 +2,7 @@ package mchorse.bbs_mod.ui.framework.elements.input.drag;
 
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.ui.utils.GizmoDrag;
+import mchorse.bbs_mod.ui.utils.GizmoLocks;
 import mchorse.bbs_mod.utils.Axis;
 import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.joml.Matrices;
@@ -195,6 +196,15 @@ public class RingRotateDrag extends DragStrategy
          * into ZYX and can put part of it in the roll channel, which such a target has to
          * drop — the actor would then settle somewhere the sweep never pointed. */
         boolean channelOnly = this.ctx.rotationChannelOnly() && !this.quatMode;
+
+        /* A bone whose limits lock some of its channels turns the ring's own channel in its own
+         * frames (LOCAL, PARENT), where the rings are named after the channels: the free one moves
+         * alone and exactly, the locked ones never feel it — Blender's gimbal ring. In a scene
+         * frame the ring keeps its world axis, and the writes hold the locked channels instead. */
+        if (GizmoLocks.axes(this.ctx.axisLocks(), TransformOp.ROTATE) != 0 && (this.space == TransformSpace.LOCAL || this.space == TransformSpace.PARENT))
+        {
+            channelOnly = true;
+        }
 
         if (!this.channelPath)
         {

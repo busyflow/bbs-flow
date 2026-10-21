@@ -70,6 +70,12 @@ public class BoneRoles
      */
     public void chain(List<String> bones, BoneRole link)
     {
+        this.chain(bones, link, 0);
+    }
+
+    /** The same, with the links marked in {@code slot} — a list keeping a column per kind of chain. */
+    public void chain(List<String> bones, BoneRole link, int slot)
+    {
         if (bones == null || bones.isEmpty())
         {
             return;
@@ -81,7 +87,7 @@ public class BoneRoles
         {
             String bone = bones.get(i);
 
-            this.mark(bone, 0, link);
+            this.mark(bone, slot, link);
 
             if (i > 0)
             {

@@ -16,6 +16,7 @@ import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.Timer;
 import mchorse.bbs_mod.ui.utils.UIUtils;
+import mchorse.bbs_mod.utils.repos.IRepository;
 
 import java.io.File;
 import java.util.Map;
@@ -25,6 +26,14 @@ public abstract class UIDataDashboardPanel <T extends ValueGroup> extends UICRUD
     public UIIcon saveIcon;
 
     protected T data;
+
+    /**
+     * Where the open document came from, and so where it is written back to. Asking the content
+     * type again at save time is not the same: while the game takes a world down it already says
+     * there is no world, and the save of an editor closed on the way out - closing the game with a
+     * film open - went to the shared library outside of any world.
+     */
+    private IRepository<? extends ValueGroup> dataRepository;
 
     private Timer savingTimer = new Timer(0);
 
@@ -201,6 +210,7 @@ public abstract class UIDataDashboardPanel <T extends ValueGroup> extends UICRUD
     public void fill(T data)
     {
         this.data = data;
+        this.dataRepository = data == null ? null : this.getType().getRepository();
 
         this.tabs.setOpenId(data == null ? null : data.getId());
         this.syncLanding();
@@ -269,7 +279,7 @@ public abstract class UIDataDashboardPanel <T extends ValueGroup> extends UICRUD
 
     public void forceSave()
     {
-        this.getType().getRepository().save(this.data.getId(), this.data.toData().asMap());
+        this.dataRepository.save(this.data.getId(), this.data.toData().asMap());
     }
 
     @Override

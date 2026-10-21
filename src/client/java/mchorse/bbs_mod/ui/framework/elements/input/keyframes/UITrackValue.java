@@ -30,9 +30,14 @@ public class UITrackValue<T>
      */
     public T getValue()
     {
-        Keyframe<T> key = this.editor.getAutoKeyframeTick() == null ? this.getKeyframe() : null;
+        if (this.editor.getAutoKeyframeTick() != null)
+        {
+            return (T) this.sheet.sample(this.editor.getTick());
+        }
 
-        return key != null ? this.getFactory().copy(key.getValue()) : (T) this.sheet.sample(this.editor.getTick());
+        Keyframe<T> key = this.getKeyframe();
+
+        return key != null ? this.getFactory().copy(key.getValue()) : this.getFactory().createEmpty();
     }
 
     /** The tick {@link #getValue} reads at: the selected key's, or the playhead's. */
@@ -43,14 +48,23 @@ public class UITrackValue<T>
         return key != null ? key.getTick() : this.editor.getTick();
     }
 
-    /** The picked key when it is on this track, otherwise the track's first selected key. */
+    /**
+     * The picked key when it is on this track, otherwise the track's first selected key. With
+     * nothing selected here the panel keeps showing the key it was opened for, never the track
+     * at the playhead.
+     */
     private Keyframe<T> getKeyframe()
     {
         Keyframe selected = this.editor.getSelectedKeyframe();
 
         if (selected != null && selected.getParent() == this.sheet.channel) return selected;
 
-        return (Keyframe<T>) this.sheet.selection.getFirst();
+        Keyframe<T> first = (Keyframe<T>) this.sheet.selection.getFirst();
+        if (first != null) return first;
+
+        Keyframe picked = this.editor.getPickedKeyframe();
+
+        return picked != null && picked.getParent() == this.sheet.channel ? picked : null;
     }
 
     /** Every track holding this kind of value that has selected keys, this one included. */
@@ -96,7 +110,6 @@ public class UITrackValue<T>
         if (targets.isEmpty()) return;
         /* Auto-keyframing lands the edit on each track's key at the playhead. */
         boolean cursor = this.editor.getAutoKeyframeTick() != null;
-        boolean stopped = this.editor.stopPlaybackOnValueChange();
 
         for (UIKeyframeSheet target : targets)
         {
@@ -107,12 +120,6 @@ public class UITrackValue<T>
 
                 for (Keyframe<T> key : keys)
                 {
-                    if (stopped)
-                    {
-                        target.selection.clear();
-                        target.selection.add(key);
-                    }
-
                     if (edit != null) edit.accept(key.getValue());
                     else if (cursor && target == this.sheet) key.setValue(this.getFactory().copy(value), false);
                     else target.setValueOn(key, value, before, false);

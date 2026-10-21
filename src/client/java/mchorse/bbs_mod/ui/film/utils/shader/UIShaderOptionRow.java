@@ -1,14 +1,11 @@
 package mchorse.bbs_mod.ui.film.utils.shader;
 
-import mchorse.bbs_mod.BBSSettings;
-import mchorse.bbs_mod.camera.clips.misc.CurveClip;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UICirculate;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
-import mchorse.bbs_mod.ui.framework.elements.input.UINumericInput;
 import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.resizers.layout.LabelRowResizer;
@@ -20,8 +17,8 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /**
- * One option of the shader panel: the name the pack's translations give it, and on the right a
- * control that suits it, the way Iris picks one.
+ * One option of the shader pack's settings: the name the pack's translations give it, and on the
+ * right a control that suits it, the way Iris picks one.
  *
  * <ul>
  *     <li>on/off &mdash; a switch;</li>
@@ -31,10 +28,8 @@ import java.util.function.Consumer;
  *     right click back).</li>
  * </ul>
  *
- * <p>While a film curve sets the option at the playhead, the name turns accent, and the control
- * shows the curve's value and is locked. A change that waits for the pack to reload turns the name
- * orange. Right click on the row offers a reset to the pack's default, and for an option
- * that can be animated, a curve for it in the clip (or taking the clip's curve out).</p>
+ * <p>A change that waits for the pack to reload turns the name orange. Right click on the row
+ * offers a reset to the pack's default.</p>
  */
 public class UIShaderOptionRow extends UIElement
 {
@@ -43,7 +38,7 @@ public class UIShaderOptionRow extends UIElement
 
     private static final int TOGGLE_WIDTH = 24;
 
-    private final UIShaderPanel panel;
+    private final UIShaderOptionsPanel panel;
     private final ShaderMenu.Cell cell;
     private final String optionId;
     private final String label;
@@ -56,7 +51,7 @@ public class UIShaderOptionRow extends UIElement
     /**
      * @param where for a search hit, the screen the option lives on; null otherwise
      */
-    public UIShaderOptionRow(UIShaderPanel panel, ShaderMenu.Cell cell, String where)
+    public UIShaderOptionRow(UIShaderOptionsPanel panel, ShaderMenu.Cell cell, String where)
     {
         this.panel = panel;
         this.cell = cell;
@@ -103,12 +98,10 @@ public class UIShaderOptionRow extends UIElement
         name.tooltip((IKey) this::tooltip);
         this.context((menu) ->
         {
-            if (this.panel.curveValue(this.optionId) == null && this.cell.defaultValue != null && !this.cell.defaultValue.equals(this.panel.value(this.optionId)))
+            if (this.cell.defaultValue != null && !this.cell.defaultValue.equals(this.panel.value(this.optionId)))
             {
                 menu.action(Icons.REFRESH, UIKeys.GENERAL_RESET, () -> this.panel.set(this.optionId, this.cell.defaultValue));
             }
-
-            this.panel.curveActions(menu, CurveClip.SHADER_CURVES_PREFIX + this.optionId, this.panel.isCurvable(this.optionId));
         });
 
         LabelRowResizer.apply(this, width, true);
@@ -124,22 +117,18 @@ public class UIShaderOptionRow extends UIElement
         }
     }
 
-    /** Puts the control on the option's value, or on the curve's while one sets it. */
+    /** Puts the control on the option's value. */
     private void update()
     {
-        Double curve = this.panel.curveValue(this.optionId);
         String value = this.panel.value(this.optionId);
-        int index = curve == null ? this.values.indexOf(value) : this.nearest(curve);
+        int index = this.values.indexOf(value);
 
         if (this.toggle != null)
         {
-            this.toggle.setEnabled(curve == null);
-            this.toggle.setValue(curve == null ? "true".equals(value) : curve >= 0.5D);
+            this.toggle.setValue("true".equals(value));
         }
         else if (this.slider != null)
         {
-            this.slider.setEnabled(curve == null);
-
             if (!this.slider.isUserEditing() && index >= 0)
             {
                 this.slider.setValue(index);
@@ -147,54 +136,21 @@ public class UIShaderOptionRow extends UIElement
         }
         else if (this.circulate != null && !this.values.isEmpty())
         {
-            this.circulate.setEnabled(curve == null);
-
             if (index >= 0)
             {
                 this.circulate.setValue(index);
             }
-
-            if (curve != null || index < 0)
+            else
             {
                 this.circulate.label = IKey.constant(this.valueText());
             }
         }
     }
 
-    /** The name is accent while a curve sets the option, orange while a change waits for a reload */
+    /** The name is orange while a change waits for a reload */
     private int nameColor()
     {
-        if (this.panel.curveValue(this.optionId) != null)
-        {
-            return Colors.A100 | BBSSettings.primaryColor.get();
-        }
-
         return this.panel.isPending(this.optionId) ? Colors.A100 | Colors.ORANGE : Colors.WHITE;
-    }
-
-    /** The allowed value closest to a curve's, for the control to stand on */
-    private int nearest(double curve)
-    {
-        int nearest = -1;
-        double distance = Double.MAX_VALUE;
-
-        for (int i = 0; i < this.values.size(); i++)
-        {
-            try
-            {
-                double d = Math.abs(Double.parseDouble(this.values.get(i)) - curve);
-
-                if (d < distance)
-                {
-                    distance = d;
-                    nearest = i;
-                }
-            }
-            catch (NumberFormatException e)
-            {}
-        }
-
-        return nearest;
     }
 
     private String valueLabel(String value)
@@ -202,17 +158,10 @@ public class UIShaderOptionRow extends UIElement
         return this.panel.getBrowser().valueLabel(this.optionId, value, this.cell.booleanOption);
     }
 
-    /** What the control reads: the curve's value while one sets the option, the option's otherwise */
+    /** What the control reads: the option's value */
     private String valueText()
     {
-        Double curve = this.panel.curveValue(this.optionId);
-
-        if (curve == null)
-        {
-            return this.valueLabel(this.panel.value(this.optionId));
-        }
-
-        return this.cell.booleanOption ? this.valueLabel(Boolean.toString(curve >= 0.5D)) : UINumericInput.format(curve);
+        return this.valueLabel(this.panel.value(this.optionId));
     }
 
     private String tooltip()
@@ -225,11 +174,7 @@ public class UIShaderOptionRow extends UIElement
             builder.append("\n").append(comment);
         }
 
-        if (this.panel.curveValue(this.optionId) != null)
-        {
-            builder.append("\n").append(UIKeys.FILM_SHADER_CURVE.get());
-        }
-        else if (!this.panel.isCurvable(this.optionId))
+        if (!this.panel.isCurvable(this.optionId))
         {
             builder.append("\n").append(UIKeys.FILM_SHADER_RELOAD.get());
         }

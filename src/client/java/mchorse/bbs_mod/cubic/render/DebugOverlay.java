@@ -6,7 +6,6 @@ import mchorse.bbs_mod.cubic.data.model.Model;
 import mchorse.bbs_mod.cubic.data.model.ModelGroup;
 import mchorse.bbs_mod.cubic.model.bobj.BOBJModel;
 import mchorse.bbs_mod.graphics.Draw;
-import mchorse.bbs_mod.settings.values.ui.ValueDebugElement;
 import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.colors.Colors;
 import net.minecraft.client.render.BufferBuilder;
@@ -15,9 +14,9 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 /**
- * The shared drawing language of the model debug overlays (IK and physics):
- * lines that can be hairline or volumetric, solid or dashed, and markers in
- * the {@link ValueDebugElement} shapes. Everything is emitted in the overlay's
+ * The drawing language of the rig's debug overlay: lines that can be hairline
+ * or volumetric, solid or dashed, and its two markers — diamonds for handles
+ * (goals, poles, controllers), squares for joints. Everything is emitted in the overlay's
  * drawing space through the given matrix — no Euler orientation anywhere
  * ({@code Draw.fillBoxTo}'s camera-convention angles diverge under the model
  * stack and tubes fly off the joints), thick lines and shapes are built from
@@ -180,40 +179,28 @@ public final class DebugOverlay
         quad(builder, matrix, c5, c6, c7, c8, col, a);
     }
 
-    /** A marker of the element's shape at {@code p}. The factors even out the shapes' visual footprint at equal sizes. */
-    public static void marker(BufferBuilder builder, MatrixStack stack, int shape, Vector3f p, float radius, float[] col, float a)
+    /** A diamond at {@code p}: a handle — a chain's goal or pole, a controller. */
+    public static void diamond(BufferBuilder builder, MatrixStack stack, Vector3f p, float radius, float[] col, float a)
     {
         stack.push();
         stack.translate(p.x, p.y, p.z);
+        octahedron(builder, stack, radius * 1.3F, col, a);
+        stack.pop();
+    }
 
-        if (shape == ValueDebugElement.SHAPE_CUBE)
-        {
-            float s = radius * 0.8F;
+    /** A square (a cube seen from any side) at {@code p}: a chain's joint. */
+    public static void square(BufferBuilder builder, MatrixStack stack, Vector3f p, float radius, float[] col, float a)
+    {
+        float s = radius * 0.8F;
 
-            Draw.fillBox(builder, stack, -s, -s, -s, s, s, s, col[0], col[1], col[2], a);
-        }
-        else if (shape == ValueDebugElement.SHAPE_DIAMOND)
-        {
-            diamond(builder, stack, radius * 1.3F, col, a);
-        }
-        else if (shape == ValueDebugElement.SHAPE_RING)
-        {
-            ring(builder, stack, radius * 1.05F, radius * 0.22F, col, a);
-        }
-        else if (shape == ValueDebugElement.SHAPE_CROSS)
-        {
-            cross(builder, stack, radius, col, a);
-        }
-        else
-        {
-            Draw.sphere(builder, stack, radius, 9, 9, col[0], col[1], col[2], a);
-        }
-
+        stack.push();
+        stack.translate(p.x, p.y, p.z);
+        Draw.fillBox(builder, stack, -s, -s, -s, s, s, s, col[0], col[1], col[2], a);
         stack.pop();
     }
 
     /** An octahedron with apexes at {@code s} along every axis. */
-    private static void diamond(BufferBuilder builder, MatrixStack stack, float s, float[] col, float a)
+    private static void octahedron(BufferBuilder builder, MatrixStack stack, float s, float[] col, float a)
     {
         Matrix4f m = stack.peek().getPositionMatrix();
 
@@ -225,51 +212,6 @@ public final class DebugOverlay
         tri(builder, m, 0, -s, 0, -s, 0, 0, 0, 0, s, col, a);
         tri(builder, m, 0, -s, 0, 0, 0, -s, -s, 0, 0, col, a);
         tri(builder, m, 0, -s, 0, s, 0, 0, 0, 0, -s, col, a);
-    }
-
-    /** A thin torus around the Y axis. */
-    private static void ring(BufferBuilder builder, MatrixStack stack, float radius, float tube, float[] col, float a)
-    {
-        Matrix4f m = stack.peek().getPositionMatrix();
-        int segU = 20;
-        int segV = 8;
-
-        for (int iu = 0; iu < segU; iu++)
-        {
-            float u1 = MathUtils.PI * 2F * iu / segU;
-            float u2 = MathUtils.PI * 2F * (iu + 1) / segU;
-
-            for (int iv = 0; iv < segV; iv++)
-            {
-                float v1 = MathUtils.PI * 2F * iv / segV;
-                float v2 = MathUtils.PI * 2F * (iv + 1) / segV;
-
-                Vector3f p11 = torusPoint(radius, tube, u1, v1);
-                Vector3f p12 = torusPoint(radius, tube, u1, v2);
-                Vector3f p21 = torusPoint(radius, tube, u2, v1);
-                Vector3f p22 = torusPoint(radius, tube, u2, v2);
-
-                quad(builder, m, p11, p12, p22, p21, col, a);
-            }
-        }
-    }
-
-    private static Vector3f torusPoint(float radius, float tube, float u, float v)
-    {
-        float ring = radius + tube * (float) Math.cos(v);
-
-        return new Vector3f(ring * (float) Math.cos(u), tube * (float) Math.sin(v), ring * (float) Math.sin(u));
-    }
-
-    /** Three thin axis-aligned bars through the centre, Blender's plain-axes empty. */
-    private static void cross(BufferBuilder builder, MatrixStack stack, float radius, float[] col, float a)
-    {
-        float l = radius * 1.4F;
-        float t = radius * 0.16F;
-
-        Draw.fillBox(builder, stack, -l, -t, -t, l, t, t, col[0], col[1], col[2], a);
-        Draw.fillBox(builder, stack, -t, -l, -t, t, l, t, col[0], col[1], col[2], a);
-        Draw.fillBox(builder, stack, -t, -t, -l, t, t, l, col[0], col[1], col[2], a);
     }
 
     private static void quad(BufferBuilder builder, Matrix4f matrix, Vector3f p1, Vector3f p2, Vector3f p3, Vector3f p4, float[] col, float a)

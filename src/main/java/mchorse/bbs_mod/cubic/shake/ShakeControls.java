@@ -3,7 +3,7 @@ package mchorse.bbs_mod.cubic.shake;
 import mchorse.bbs_mod.cubic.chains.ChainControls;
 
 /**
- * The shake track's keyframe value: {@link ShakeControl} strengths keyed by the shaking bone.
+ * The shake track's keyframe value: each shaking bone's {@link ShakeControl}, keyed by the bone.
  */
 public class ShakeControls extends ChainControls<ShakeControl, ShakeControls>
 {

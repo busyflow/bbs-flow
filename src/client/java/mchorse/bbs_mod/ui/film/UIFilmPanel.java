@@ -43,7 +43,6 @@ import mchorse.bbs_mod.ui.film.audio.UIAudioRecorder;
 import mchorse.bbs_mod.ui.film.controller.UIFilmController;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditor;
 import mchorse.bbs_mod.ui.film.utils.UIFilmUndoHandler;
-import mchorse.bbs_mod.ui.film.utils.shader.UIShaderPanel;
 import mchorse.bbs_mod.ui.film.utils.undo.UIUndoHistoryOverlay;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.onboarding.TourAnchors;
@@ -113,8 +112,6 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     public UIDockLayout dock;
     public UIFilmRecorder recorder;
     public UIFilmPreview preview;
-    /** The shader panel, which the picked curve clip shows in its properties */
-    public UIShaderPanel shader;
 
     public UIIcon duplicateFilm;
 
@@ -189,10 +186,9 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         this.main = new UIElement();
         this.editArea = new UIElement();
         this.preview = new UIFilmPreview(this);
-        this.shader = new UIShaderPanel(this);
 
         /* Editors */
-        this.cameraEditor = new UIClipsPanel(this, BBSMod.getCameraClipPalette()).target(this.editArea);
+        this.cameraEditor = new UIClipsPanel(this, BBSMod.getCameraClipPalette()).target(this.editArea).withKeys();
         this.cameraEditor.full(this.main);
 
         this.cameraEditor.clips.context((menu) ->

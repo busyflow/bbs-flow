@@ -6,6 +6,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.camera.clips.overwrite.KeyframeClip;
 import mchorse.bbs_mod.film.replays.tracks.TrackId;
 import mchorse.bbs_mod.film.replays.tracks.TrackKind;
+import mchorse.bbs_mod.film.replays.tracks.TrackStyle;
 import mchorse.bbs_mod.data.DataStorageUtils;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.l10n.keys.IKey;
@@ -185,7 +186,7 @@ public class UIKeyframeEditor extends UITimelinePanel
         {
             KeyframeChannel channel = clip.channels[i];
 
-            this.view.addSheet(new UIKeyframeSheet(COLORS[i], channel, null));
+            this.view.addSheet(new UIKeyframeSheet(COLORS[i], channel, null).icon(TrackStyle.icon(channel.getId())));
         }
 
         this.refreshSelection();

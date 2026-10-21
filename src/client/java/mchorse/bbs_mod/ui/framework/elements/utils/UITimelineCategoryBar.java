@@ -14,6 +14,7 @@ public class UITimelineCategoryBar extends UIElement
     private static final int SEPARATOR_HEIGHT = 7;
 
     private final int bottomSpace;
+    private boolean separated = true;
 
     public UITimelineCategoryBar(int bottomSpace)
     {
@@ -21,9 +22,22 @@ public class UITimelineCategoryBar extends UIElement
         this.w(BUTTON_SIZE).h(1F);
     }
 
+    /** Lay the buttons out evenly, without setting the first one apart with a gap and a line. */
+    public UITimelineCategoryBar noSeparator()
+    {
+        this.separated = false;
+
+        return this;
+    }
+
+    private int separatorHeight()
+    {
+        return this.separated ? SEPARATOR_HEIGHT : 0;
+    }
+
     public int getWidthForHeight(int height)
     {
-        int required = this.getChildren(UIIcon.class).size() * BUTTON_SIZE + SEPARATOR_HEIGHT + this.bottomSpace;
+        int required = this.getChildren(UIIcon.class).size() * BUTTON_SIZE + this.separatorHeight() + this.bottomSpace;
 
         if (height >= required) return BUTTON_SIZE;
 
@@ -45,7 +59,7 @@ public class UITimelineCategoryBar extends UIElement
 
             if (columns == 1 && i > 0)
             {
-                y += SEPARATOR_HEIGHT;
+                y += this.separatorHeight();
             }
 
             buttons.get(i).relative(this).x((i % columns) * BUTTON_SIZE).y(y).wh(BUTTON_SIZE, BUTTON_SIZE);
@@ -57,7 +71,7 @@ public class UITimelineCategoryBar extends UIElement
     {
         this.area.render(context.batcher, BBSSettings.chromeSurface());
 
-        if (this.area.w == BUTTON_SIZE)
+        if (this.separated && this.area.w == BUTTON_SIZE)
         {
             int y = this.area.y + BUTTON_SIZE + SEPARATOR_HEIGHT / 2;
 

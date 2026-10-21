@@ -39,8 +39,8 @@ import java.util.Properties;
 import java.util.Set;
 
 /**
- * Reads the Iris options menu into a neutral snapshot for the shader panel of the curve clip, and
- * sets the pack's options for the panel and for Iris' own menu (applying animatable ones without
+ * Reads the Iris options menu into a neutral snapshot for the curve picker and the pack's
+ * settings, and sets the pack's options for the settings and for Iris' own menu (applying animatable ones without
  * a reload). Only call after checking that Iris is loaded;
  * UI classes do not link Iris types. Adapted from qualet's BBS Curve Fixer (see
  * docs/third-party/curvefixer.md).
@@ -56,7 +56,7 @@ public final class IrisShaderMenu
      * Raw merged shader-pack translations (en_us fallback overlaid with {@code language}), without the
      * breadcrumb path expansion {@code IrisUtils.getShadersLanguageMap} applies. Exposes the original
      * keys: {@code option.<id>}, {@code screen.<id>}, {@code value.<id>.<val>}, {@code prefix.<id>},
-     * {@code suffix.<id>}, etc. — used by the shader panel to label rows with their short names.
+     * {@code suffix.<id>}, etc. — used by the shader UI to label rows with their short names.
      */
     public static Map<String, String> getShadersRawLanguageMap(String language)
     {
@@ -90,7 +90,7 @@ public final class IrisShaderMenu
      * cells of their own.
      *
      * <p>Returns {@code null} when no pack is loaded. The snapshot is only valid for the pack it was
-     * taken from: the shader panel takes a new one after every load.</p>
+     * taken from: the pack's settings take a new one after every load.</p>
      */
     public static ShaderMenu buildShaderMenu()
     {

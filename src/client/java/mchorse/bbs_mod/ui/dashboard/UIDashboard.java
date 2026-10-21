@@ -143,13 +143,7 @@ public class UIDashboard extends UIBaseMenu
                 }
             }
         }).category(category);
-        this.overlay.keys().register(Keys.TOGGLE_DEBUG, () ->
-        {
-            boolean enabled = !(BBSSettings.ikDebug.enabled.get() || BBSSettings.physicsDebug.enabled.get());
-
-            BBSSettings.ikDebug.enabled.set(enabled);
-            BBSSettings.physicsDebug.enabled.set(enabled);
-        }).category(category);
+        this.overlay.keys().register(Keys.TOGGLE_DEBUG, () -> BBSSettings.debugOverlay.toggle()).category(category);
         this.overlay.keys().register(Keys.OPEN_SETTINGS, () ->
         {
             if (UIOverlay.has(this.context))

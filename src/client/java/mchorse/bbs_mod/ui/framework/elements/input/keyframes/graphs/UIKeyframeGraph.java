@@ -348,8 +348,8 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
         double max = Double.isNaN(this.pendingMin) ? this.yAxis.getMaxValue() : this.pendingMax;
         this.pendingMin = Double.NaN;
         this.plotArea.copy(this.keyframes.graphArea);
-        this.plotArea.y += TOP_MARGIN;
-        this.plotArea.h = Math.max(1, this.plotArea.h - TOP_MARGIN);
+        this.plotArea.y += this.keyframes.getTopMargin();
+        this.plotArea.h = Math.max(1, this.plotArea.h - this.keyframes.getTopMargin());
         if (this.initialized && max > min) this.yAxis.view(min, max);
         this.keyframes.getDopeSheet().resize();
         this.initializeView();

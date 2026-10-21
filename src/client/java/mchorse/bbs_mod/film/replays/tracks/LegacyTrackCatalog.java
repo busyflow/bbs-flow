@@ -3,7 +3,6 @@ package mchorse.bbs_mod.film.replays.tracks;
 import mchorse.bbs_mod.film.replays.FormProperties;
 import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.forms.Form;
-import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.colors.Colors;
 
@@ -22,7 +21,7 @@ final class LegacyTrackCatalog
             if (!legacy) return;
             Form owner = FormUtils.getForm(root, id.formPath());
             if (owner == null) return;
-            tracks.add(new TrackDescriptor(id, channel, owner, IKey.constant(id.label()), Icons.CURVES, Colors.GRAY,
+            tracks.add(new TrackDescriptor(id, channel, owner, TrackStyle.label(id), Icons.CURVES, Colors.GRAY,
                 id.kind() == TrackKind.PROPERTY ? FormUtils.getProperty(root, id.toKey()) : null));
         });
     }

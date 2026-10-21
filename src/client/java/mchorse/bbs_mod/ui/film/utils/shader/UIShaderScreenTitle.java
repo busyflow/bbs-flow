@@ -8,9 +8,9 @@ import mchorse.bbs_mod.utils.colors.Colors;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * The line over the shader panel's options, in one line however narrow the panel: on a sub-screen
- * the way back and where it is ("‹ Lighting"), a click going one screen up; while searching, a grey
- * note of what was found.
+ * The line over the options of the shader pack's settings, in one line however narrow: on a
+ * sub-screen the way back and where it is ("‹ Lighting"), a click going one screen up; while
+ * searching, a grey note of what was found.
  */
 public class UIShaderScreenTitle extends UIElement
 {

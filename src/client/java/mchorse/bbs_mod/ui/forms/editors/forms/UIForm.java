@@ -84,6 +84,18 @@ public abstract class UIForm <T extends Form> extends UIPanelBase<UIFormPanel<T>
         return button;
     }
 
+    @Override
+    public void setPanel(UIFormPanel<T> panel)
+    {
+        super.setPanel(panel);
+
+        /* The body parts may be docked under the options of whichever panel is open */
+        if (this.editor != null)
+        {
+            this.editor.dockParts();
+        }
+    }
+
     public UIPropTransform getEditableTransform()
     {
         if (this.view instanceof FormEditorTool tool && tool.getGizmoTransform() != null)

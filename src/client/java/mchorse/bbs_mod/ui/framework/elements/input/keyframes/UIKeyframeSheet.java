@@ -35,12 +35,38 @@ public class UIKeyframeSheet
     /**
      * Display-only grouping: never a channel, selection, or entry in the track filters. A section may
      * sit inside another one (a part's Pose inside the part's heading); folding the outer one hides both.
+     *
+     * <p>The timeline no longer draws a heading's icon — its fold arrow stands there — but the icon
+     * stays: addons (BBSFP, physics, IRLights) build their own sections with one, and a constructor
+     * without it would crash them.</p>
+     *
+     * <p>An owner heading — the recording, a form, one of its parts — is what everything under it
+     * belongs to; the headings inside it only group its tracks.</p>
      */
-    public record Section(String id, IKey title, Icon icon, int color, Section parent)
+    public record Section(String id, IKey title, Icon icon, int color, Section parent, boolean owner)
     {
+        /** Owners are told apart by their filled cell, so they share one neutral colour. */
+        public static final int OWNER_COLOR = 0x9ca3af;
+
         public Section(String id, IKey title, Icon icon, int color)
         {
-            this(id, title, icon, color, null);
+            this(id, title, icon, color, null, false);
+        }
+
+        public Section(String id, IKey title, Icon icon, int color, Section parent)
+        {
+            this(id, title, icon, color, parent, false);
+        }
+
+        public static Section owner(String id, IKey title, Icon icon)
+        {
+            return new Section(id, title, icon, OWNER_COLOR, null, true);
+        }
+
+        /** The same heading hung under another one; its id, and with it its fold, stays. */
+        public Section under(Section parent)
+        {
+            return new Section(this.id, this.title, this.icon, this.color, parent, this.owner);
         }
 
         /** How many headings this one sits under. */

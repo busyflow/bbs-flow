@@ -6,12 +6,11 @@ import mchorse.bbs_mod.cubic.IModel;
 import mchorse.bbs_mod.cubic.render.CubicRenderer.PivotFrame;
 import mchorse.bbs_mod.cubic.render.DebugOverlay;
 import mchorse.bbs_mod.cubic.render.ModelPivotFrames;
+import mchorse.bbs_mod.cubic.rig.RigHandles;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.forms.utils.FormBone;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
-import mchorse.bbs_mod.settings.values.ui.ValueDebugElement;
-import mchorse.bbs_mod.settings.values.ui.ValueIKDebug;
 import mchorse.bbs_mod.ui.framework.elements.utils.StencilMap;
 import mchorse.bbs_mod.utils.MathUtils;
 import net.minecraft.client.render.BufferBuilder;
@@ -26,31 +25,57 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * Minimal IK overlay: each chain is a clean run of wires through joint
- * markers, the effector picked out in a cool accent, and the target bridged to
- * the chain's tip by a dashed relationship line. Every part's look —
- * visibility, colour, size, shape, line thickness, dashing, opacity, drawing
- * through the model — comes from {@link ValueIKDebug}
- * ({@code BBSSettings.ikDebug}), which also holds the overlay's toggle. It
- * reads the model-local pivot frames the renderer already produced — IK is
- * applied to the rig before this runs, so the frames are the solved chain
- * (re-solving would double-apply the pole angle).
+ * The rig's overlay: each IK chain's goal and pole as diamonds bridged to the chain by dashed
+ * relationship lines, and the form's controller bones as cubes in their own colour (gold unless
+ * set). A spline's points are edited on the screen overlay instead ({@code SplineOverlay}). The
+ * look is fixed; the two settings are how solid and how big it draws
+ * ({@code BBSSettings.debugOpacity}, {@code debugSize}), and it always draws through the
+ * model. It reads the model-local pivot frames the renderer already produced — IK is applied to
+ * the rig before this runs, so the frames are the solved chain (re-solving would double-apply the
+ * pole angle).
  *
- * <p>{@link #renderStencil} mirrors the goal markers into the picking pass so a
- * click on a target selects its bone, exactly as if its (often mesh-less)
- * bone had been clicked directly. The pick geometry is the same shape and size
- * as the visible marker — no oversized hitboxes in the hover highlight, and
- * hidden markers are not pickable at all.
+ * <p>The chains show with the rig's debug switch ({@code BBSSettings.debugOverlay}, also F5); the
+ * handles — goals, poles and controllers — show with it too, and on their own while the form is
+ * open on the rig tab ({@link RigHandles}), to be clicked without the debug.
+ *
+ * <p>{@link #prepareStencil} mirrors the handles into the picking pass so a click on one selects
+ * its bone, exactly as if its (often mesh-less) bone had been clicked directly. The pick geometry
+ * is the visible marker's own shape and size.
  */
 public final class ModelIKDebug
 {
+    /* The fixed look; sizes are fractions of the model's average rest bone length. */
+    private static final int POLE_COLOR = 0xff8c26;
+    private static final float LINES_SIZE = 0.02F;
+    private static final float TARGET_SIZE = 0.09F;
+    private static final float POLE_SIZE = 0.07F;
+    private static final float CONTROLLER_SIZE = 0.1F;
+
+    /** A marker on a bone: a diamond at a chain's goal or pole, a cube at a controller. */
+    private record Handle(String bone, float size, int color, boolean cube)
+    {
+        void draw(BufferBuilder builder, MatrixStack stack, Vector3f point, float unit, float[] color, float a)
+        {
+            if (this.cube)
+            {
+                DebugOverlay.square(builder, stack, point, unit * this.size, color, a);
+            }
+            else
+            {
+                DebugOverlay.diamond(builder, stack, point, unit * this.size, color, a);
+            }
+        }
+    }
+
     private ModelIKDebug()
     {
     }
@@ -62,37 +87,32 @@ public final class ModelIKDebug
      * model re-poses it: the frames are read here, never at draw time. Null when there is
      * nothing to draw.
      */
-    public static Runnable prepare(MatrixStack stack, IModel model, ModelForm form, String selectedTip)
+    public static Runnable prepare(MatrixStack stack, IModel model, ModelForm form)
     {
-        ValueIKDebug config = BBSSettings.ikDebug;
+        boolean overlay = BBSSettings.debugOverlay.get();
 
-        if (!config.enabled.get() || model == null || form == null)
+        if ((!overlay && !RigHandles.shown(form)) || model == null || form == null)
         {
             return null;
         }
 
-        ModelIKCache.Compiled compiled = ModelIKCache.compile(model, form);
-        List<ModelIKCache.CompiledChain> chains = compiled == null ? List.of() : compiled.chains();
-        Set<String> controllers = collectControllers(model, form, chains, config);
+        List<ModelIKCache.CompiledChain> enabled = enabledChains(model, form);
+        Map<String, Handle> handles = handles(model, form, enabled);
+        List<ModelIKCache.CompiledChain> chains = overlay ? enabled : List.of();
 
-        if (chains.isEmpty() && controllers.isEmpty())
+        if (chains.isEmpty() && handles.isEmpty())
         {
             return null;
         }
 
-        Map<String, PivotFrame> frames = collectFrames(model, chains, controllers);
+        Map<String, PivotFrame> frames = collectFrames(model, chains, handles.keySet());
 
-        return () -> render(stack, model, form, chains, controllers, frames, selectedTip, config);
+        return () -> render(stack, model, chains, handles, frames);
     }
 
-    private static void render(MatrixStack stack, IModel model, ModelForm form, List<ModelIKCache.CompiledChain> chains,
-        Set<String> controllers, Map<String, PivotFrame> frames, String selectedTip, ValueIKDebug config)
+    private static void render(MatrixStack stack, IModel model, List<ModelIKCache.CompiledChain> chains, Map<String, Handle> handles, Map<String, PivotFrame> frames)
     {
-        if (config.xray.get())
-        {
-            RenderSystem.disableDepthTest();
-        }
-
+        RenderSystem.disableDepthTest();
         RenderSystem.disableCull();
         RenderSystem.enableBlend();
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
@@ -104,38 +124,28 @@ public final class ModelIKDebug
             stack.multiply(RotationAxis.POSITIVE_Y.rotation(MathUtils.PI));
         }
 
-        float unit = DebugOverlay.modelUnit(model);
+        float unit = DebugOverlay.modelUnit(model) * BBSSettings.debugSize.get();
+        float opacity = BBSSettings.debugOpacity.get();
+        BufferBuilder builder = Tessellator.getInstance().getBuffer();
+
+        builder.begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
 
         for (ModelIKCache.CompiledChain chain : chains)
         {
-            FormBone bone = form.bones.getBone(chain.tip());
-
-            if (bone == null || !form.ik.get().get(chain.tip()).enabled)
-            {
-                continue;
-            }
-
-            drawChain(stack, frames, chain, selectedTip, config, unit);
+            drawChain(builder, stack, frames, handles, chain, unit, opacity);
         }
 
-        if (!controllers.isEmpty())
+        for (Handle handle : handles.values())
         {
-            BufferBuilder builder = Tessellator.getInstance().getBuffer();
-            builder.begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
+            Vector3f point = position(frames, handle.bone());
 
-            for (String controller : controllers)
+            if (point != null)
             {
-                Vector3f point = position(frames, controller);
-
-                if (point != null)
-                {
-                    DebugOverlay.marker(builder, stack, config.target.shape.get(), point,
-                        unit * config.target.size.get(), DebugOverlay.rgb(config.target.color.get()), config.opacity.get());
-                }
+                handle.draw(builder, stack, point, unit, DebugOverlay.rgb(handle.color()), opacity);
             }
-
-            BufferRenderer.drawWithGlobalProgram(builder.end());
         }
+
+        BufferRenderer.drawWithGlobalProgram(builder.end());
 
         stack.pop();
 
@@ -143,45 +153,69 @@ public final class ModelIKDebug
         RenderSystem.enableDepthTest();
     }
 
-    /** Reuse the target style; an existing visible IK marker already selects the same bone. */
-    private static Set<String> collectControllers(IModel model, ModelForm form,
-        List<ModelIKCache.CompiledChain> chains, ValueIKDebug config)
+    /** The compiled chains whose IK is switched on. */
+    private static List<ModelIKCache.CompiledChain> enabledChains(IModel model, ModelForm form)
     {
-        Set<String> controllers = new HashSet<>();
+        List<ModelIKCache.CompiledChain> chains = new ArrayList<>();
+        ModelIKCache.Compiled compiled = ModelIKCache.compile(model, form);
 
-        if (!config.target.visible.get())
+        if (compiled == null)
         {
-            return controllers;
+            return chains;
+        }
+
+        for (ModelIKCache.CompiledChain chain : compiled.chains())
+        {
+            if (form.bones.getBone(chain.tip()) != null && form.ik.get().get(chain.tip()).enabled)
+            {
+                chains.add(chain);
+            }
+        }
+
+        return chains;
+    }
+
+    /**
+     * Every handle, one per bone: the chains' goals (in the colour each chain gives its goal) and
+     * poles, then the controllers — a bone that is both a controller and a goal or a pole is the
+     * controller's cube.
+     */
+    private static Map<String, Handle> handles(IModel model, ModelForm form, List<ModelIKCache.CompiledChain> chains)
+    {
+        Map<String, Handle> handles = new LinkedHashMap<>();
+
+        for (ModelIKCache.CompiledChain chain : chains)
+        {
+            handles.put(chain.target(), new Handle(chain.target(), TARGET_SIZE, targetColor(form, chain.tip()), false));
+
+            if (chain.poleTarget() != null && !chain.poleTarget().isEmpty())
+            {
+                handles.putIfAbsent(chain.poleTarget(), new Handle(chain.poleTarget(), POLE_SIZE, POLE_COLOR, false));
+            }
         }
 
         for (BaseValue value : form.bones.getAll())
         {
-            if (value instanceof FormBone bone && bone.boneController.get()
-                && model.getAllGroupKeys().contains(bone.getId()))
+            if (value instanceof FormBone bone && bone.boneController.get() && model.getAllGroupKeys().contains(bone.getId()))
             {
-                controllers.add(bone.getId());
+                handles.put(bone.getId(), new Handle(bone.getId(), CONTROLLER_SIZE, bone.boneControllerColor.get(), true));
             }
         }
 
-        for (ModelIKCache.CompiledChain chain : chains)
-        {
-            if (form.ik.get().get(chain.tip()).enabled)
-            {
-                controllers.remove(chain.target());
-
-                if (config.pole.visible.get())
-                {
-                    controllers.remove(chain.poleTarget());
-                }
-            }
-        }
-
-        return controllers;
+        return handles;
     }
 
-    private static Map<String, PivotFrame> collectFrames(IModel model, List<ModelIKCache.CompiledChain> chains, Set<String> controllers)
+    /** The colour the chain on the tip gives the marker at its goal. */
+    private static int targetColor(ModelForm form, String tip)
     {
-        Set<String> wanted = new HashSet<>(controllers);
+        FormBone formBone = form.bones.getBone(tip);
+
+        return formBone == null ? FormBone.TARGET_COLOR : formBone.ikTargetColor.get();
+    }
+
+    private static Map<String, PivotFrame> collectFrames(IModel model, List<ModelIKCache.CompiledChain> chains, Set<String> bones)
+    {
+        Set<String> wanted = new HashSet<>(bones);
 
         for (ModelIKCache.CompiledChain chain : chains)
         {
@@ -202,49 +236,34 @@ public final class ModelIKDebug
     }
 
     /**
-     * Mirrors the goals into the picking pass: a pickable marker at each goal,
-     * registered under the chain's target bone. Must run after the model's bones
-     * are registered — the marker encodes {@code stencilMap.objectIndex} as its
-     * colour and {@code addPicking} then claims that same id. The matrix matches
-     * the visual overlay's, and so does the timing: read now, drawn after the body
-     * parts (see {@link #prepare}), so a goal shown over a part is clickable there.
+     * Mirrors the handles into the picking pass: a pickable diamond at each, registered under
+     * its bone. Must run after the model's bones are registered — the marker encodes {@code
+     * stencilMap.objectIndex} as its colour and {@code addPicking} then claims that same id.
+     * The matrix matches the visual overlay's, and so does the timing: read now, drawn after
+     * the body parts (see {@link #prepare}), so a handle shown over a part is clickable there.
      */
     public static Runnable prepareStencil(MatrixStack stack, IModel model, ModelForm modelForm, StencilMap stencilMap, Form form)
     {
-        ValueIKDebug config = BBSSettings.ikDebug;
-        boolean targets = config.target.visible.get();
-        boolean poles = config.pole.visible.get();
-
-        if (!config.enabled.get() || (!targets && !poles) || model == null || modelForm == null || stencilMap == null)
+        if ((!BBSSettings.debugOverlay.get() && !RigHandles.shown(modelForm)) || model == null || modelForm == null || stencilMap == null)
         {
             return null;
         }
 
-        ModelIKCache.Compiled compiled = ModelIKCache.compile(model, modelForm);
-        List<ModelIKCache.CompiledChain> chains = compiled == null ? List.of() : compiled.chains();
-        Set<String> controllers = collectControllers(model, modelForm, chains, config);
+        Map<String, Handle> handles = handles(model, modelForm, enabledChains(model, modelForm));
 
-        if (chains.isEmpty() && controllers.isEmpty())
+        if (handles.isEmpty())
         {
             return null;
         }
 
-        Map<String, PivotFrame> frames = collectFrames(model, chains, controllers);
+        Map<String, PivotFrame> frames = collectFrames(model, List.of(), handles.keySet());
 
-        return () -> renderStencil(stack, model, modelForm, stencilMap, form, chains, controllers, frames, config);
+        return () -> renderStencil(stack, model, stencilMap, form, handles.values(), frames);
     }
 
-    private static void renderStencil(MatrixStack stack, IModel model, ModelForm modelForm, StencilMap stencilMap, Form form,
-        List<ModelIKCache.CompiledChain> chains, Set<String> controllers, Map<String, PivotFrame> frames, ValueIKDebug config)
+    private static void renderStencil(MatrixStack stack, IModel model, StencilMap stencilMap, Form form, Collection<Handle> handles, Map<String, PivotFrame> frames)
     {
-        boolean targets = config.target.visible.get();
-        boolean poles = config.pole.visible.get();
-
-        if (config.xray.get())
-        {
-            RenderSystem.disableDepthTest();
-        }
-
+        RenderSystem.disableDepthTest();
         RenderSystem.disableCull();
         RenderSystem.setShader(GameRenderer::getPositionColorProgram);
 
@@ -258,46 +277,19 @@ public final class ModelIKDebug
         BufferBuilder builder = Tessellator.getInstance().getBuffer();
         builder.begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
 
-        float unit = DebugOverlay.modelUnit(model);
+        float unit = DebugOverlay.modelUnit(model) * BBSSettings.debugSize.get();
 
-        for (ModelIKCache.CompiledChain chain : chains)
+        for (Handle handle : handles)
         {
-            FormBone bone = modelForm.bones.getBone(chain.tip());
+            Vector3f point = position(frames, handle.bone());
 
-            if (bone == null || !modelForm.ik.get().get(chain.tip()).enabled)
+            if (point == null)
             {
                 continue;
             }
 
-            if (targets)
-            {
-                Vector3f goal = position(frames, chain.target());
-
-                if (goal != null)
-                {
-                    pickMarker(builder, stack, stencilMap, form, config.target, goal, unit, chain.target());
-                }
-            }
-
-            if (poles && chain.poleTarget() != null && !chain.poleTarget().isEmpty())
-            {
-                Vector3f pole = position(frames, chain.poleTarget());
-
-                if (pole != null)
-                {
-                    pickMarker(builder, stack, stencilMap, form, config.pole, pole, unit, chain.poleTarget());
-                }
-            }
-        }
-
-        for (String controller : controllers)
-        {
-            Vector3f point = position(frames, controller);
-
-            if (point != null)
-            {
-                pickMarker(builder, stack, stencilMap, form, config.target, point, unit, controller);
-            }
+            handle.draw(builder, stack, point, unit, pickColor(stencilMap), 1F);
+            stencilMap.addPicking(form, handle.bone());
         }
 
         BufferRenderer.drawWithGlobalProgram(builder.end());
@@ -308,18 +300,8 @@ public final class ModelIKDebug
         RenderSystem.enableDepthTest();
     }
 
-    /** Draws one pickable marker — the element's own shape and size — encoding the next stencil id, and claims it for {@code bone}. */
-    private static void pickMarker(BufferBuilder builder, MatrixStack stack, StencilMap stencilMap, Form form, ValueDebugElement element, Vector3f p, float unit, String bone)
-    {
-        int id = stencilMap.objectIndex;
-        float[] col = {(id & 0xFF) / 255F, (id >> 8 & 0xFF) / 255F, (id >> 16 & 0xFF) / 255F};
-
-        DebugOverlay.marker(builder, stack, element.shape.get(), p, unit * element.size.get(), col, 1F);
-
-        stencilMap.addPicking(form, bone);
-    }
-
-    private static void drawChain(MatrixStack stack, Map<String, PivotFrame> frames, ModelIKCache.CompiledChain chain, String selectedTip, ValueIKDebug config, float unit)
+    /** Dashed bridges from the chain to its goal and pole, in their handles' colours. */
+    private static void drawChain(BufferBuilder builder, MatrixStack stack, Map<String, PivotFrame> frames, Map<String, Handle> handles, ModelIKCache.CompiledChain chain, float unit, float a)
     {
         List<String> ids = chain.chainRootToEffector();
         int n = ids.size();
@@ -331,9 +313,9 @@ public final class ModelIKDebug
 
         List<Vector3f> pts = new ArrayList<>(n);
 
-        for (int i = 0; i < n; i++)
+        for (String id : ids)
         {
-            Vector3f p = position(frames, ids.get(i));
+            Vector3f p = position(frames, id);
 
             if (p == null)
             {
@@ -351,102 +333,24 @@ public final class ModelIKDebug
         }
 
         Vector3f pole = chain.poleTarget() == null || chain.poleTarget().isEmpty() ? null : position(frames, chain.poleTarget());
-        Vector3f tip = pts.get(n - 1);
-
-        boolean sel = selectedTip == null || selectedTip.isEmpty() || chain.tip().equals(selectedTip);
-        float a = (sel ? 1F : 0.4F) * config.opacity.get();
-
-        boolean joints = config.joints.visible.get();
-        boolean tipDot = config.tip.visible.get();
-        boolean targetDot = config.target.visible.get();
-        boolean poleDot = pole != null && config.pole.visible.get();
-
-        boolean anyLine = config.lines.visible.get() || targetDot || poleDot;
-        float thickness = unit * config.lines.size.get();
-        boolean boxes = anyLine && thickness > 0F;
-        boolean anyDot = joints || tipDot || targetDot || poleDot;
-
         Matrix4f matrix = stack.peek().getPositionMatrix();
+        float thickness = unit * LINES_SIZE;
         float dash = unit * 0.12F;
 
-        /* Lines: hairline GL lines by default, boxes once a thickness is set. */
-        if (anyLine && !boxes)
+        DebugOverlay.segment(builder, matrix, thickness, true, dash, pts.get(n - 1), target, DebugOverlay.rgb(handles.get(chain.target()).color()), 0.4F * a);
+
+        if (pole != null)
         {
-            BufferBuilder lines = Tessellator.getInstance().getBuffer();
-            lines.begin(VertexFormat.DrawMode.DEBUG_LINES, VertexFormats.POSITION_COLOR);
-
-            emitLines(lines, matrix, 0F, dash, pts, target, pole, a, config);
-
-            BufferRenderer.drawWithGlobalProgram(lines.end());
+            DebugOverlay.segment(builder, matrix, thickness, true, dash, pts.get(1), pole, DebugOverlay.rgb(handles.get(chain.poleTarget()).color()), 0.4F * a);
         }
-
-        if (!anyDot && !boxes)
-        {
-            return;
-        }
-
-        /* Solid geometry: joint/accent markers, plus the thick lines. */
-        BufferBuilder dots = Tessellator.getInstance().getBuffer();
-        dots.begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR);
-
-        if (boxes)
-        {
-            emitLines(dots, matrix, thickness, dash, pts, target, pole, a, config);
-        }
-
-        if (joints)
-        {
-            float[] color = DebugOverlay.rgb(config.joints.color.get());
-            float radius = unit * config.joints.size.get();
-            int shape = config.joints.shape.get();
-
-            for (int i = 0; i < n - 1; i++)
-            {
-                DebugOverlay.marker(dots, stack, shape, pts.get(i), radius, color, a);
-            }
-        }
-
-        if (tipDot)
-        {
-            DebugOverlay.marker(dots, stack, config.tip.shape.get(), tip, unit * config.tip.size.get(), DebugOverlay.rgb(config.tip.color.get()), a);
-        }
-
-        if (targetDot)
-        {
-            DebugOverlay.marker(dots, stack, config.target.shape.get(), target, unit * config.target.size.get(), DebugOverlay.rgb(config.target.color.get()), a);
-        }
-
-        if (poleDot)
-        {
-            DebugOverlay.marker(dots, stack, config.pole.shape.get(), pole, unit * config.pole.size.get(), DebugOverlay.rgb(config.pole.color.get()), a);
-        }
-
-        BufferRenderer.drawWithGlobalProgram(dots.end());
     }
 
-    /** The chain's wires plus the bridges to the goal and the pole — the bridges are always dashed relationship lines. */
-    private static void emitLines(BufferBuilder builder, Matrix4f matrix, float thickness, float dash, List<Vector3f> pts, Vector3f target, Vector3f pole, float a, ValueIKDebug config)
+    /** The colour the picking pass reads back as the stencil's next id. */
+    private static float[] pickColor(StencilMap stencilMap)
     {
-        if (config.lines.visible.get())
-        {
-            float[] wire = DebugOverlay.rgb(config.lines.color.get());
-            boolean dashed = config.dashed.get();
+        int id = stencilMap.objectIndex;
 
-            for (int i = 0; i < pts.size() - 1; i++)
-            {
-                DebugOverlay.segment(builder, matrix, thickness, dashed, dash, pts.get(i), pts.get(i + 1), wire, 0.9F * a);
-            }
-        }
-
-        if (config.target.visible.get())
-        {
-            DebugOverlay.segment(builder, matrix, thickness, true, dash, pts.get(pts.size() - 1), target, DebugOverlay.rgb(config.target.color.get()), 0.4F * a);
-        }
-
-        if (pole != null && config.pole.visible.get())
-        {
-            DebugOverlay.segment(builder, matrix, thickness, true, dash, pts.get(1), pole, DebugOverlay.rgb(config.pole.color.get()), 0.4F * a);
-        }
+        return new float[] {(id & 0xFF) / 255F, (id >> 8 & 0xFF) / 255F, (id >> 16 & 0xFF) / 255F};
     }
 
     private static Vector3f position(Map<String, PivotFrame> frames, String bone)

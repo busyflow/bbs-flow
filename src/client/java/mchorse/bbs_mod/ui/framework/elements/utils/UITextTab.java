@@ -27,7 +27,8 @@ public class UITextTab extends UIElement
     public void render(UIContext context)
     {
         FontRenderer font = context.batcher.getFont();
-        String text = this.label.get();
+        /* Cut to the tab, so a word wider than a tab sharing a narrow strip stays out of its neighbours. */
+        String text = font.limitToWidth(this.label.get(), this.area.w - 4);
         int color = this.area.isInside(context) ? this.hoverColor : this.color;
 
         context.batcher.text(text, this.area.mx(font.getWidth(text)), this.area.my(font.getHeight() - 1), color);

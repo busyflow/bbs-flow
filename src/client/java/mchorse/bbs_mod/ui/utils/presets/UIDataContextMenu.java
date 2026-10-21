@@ -13,9 +13,13 @@ import mchorse.bbs_mod.ui.framework.elements.input.list.UISearchList;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UIStringList;
 import mchorse.bbs_mod.ui.utils.context.MenuIcon;
 import mchorse.bbs_mod.ui.utils.context.MenuVerb;
+import mchorse.bbs_mod.ui.utils.icons.Icon;
+import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.presets.DataManager;
 
+import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -47,6 +51,9 @@ public class UIDataContextMenu extends UIContextMenu
     private String copyGroup = "_CopyPose";
     private boolean scrolledToCurrent;
 
+    /** What a saved entry is marked with at the end of its row, or null for plain rows. */
+    private Function<MapType, List<Icon>> icons;
+
     public UIDataContextMenu(DataManager manager, String group, Supplier<MapType> supplier, Consumer<MapType> callback)
     {
         this.manager = manager;
@@ -77,7 +84,20 @@ public class UIDataContextMenu extends UIContextMenu
         this.bar.register(this.reset);
         this.bar.register(this.save);
 
-        this.entries = new UISearchList<>(new UIStringList((l) -> this.send(this.data.getMap(l.get(0)))));
+        this.entries = new UISearchList<>(new UIStringList((l) -> this.send(this.data.getMap(l.get(0))))
+        {
+            @Override
+            protected String elementToString(UIContext context, int i, String element)
+            {
+                return UIDataContextMenu.this.manager.getLabel(UIDataContextMenu.this.group, element);
+            }
+
+            @Override
+            public void renderPostListElement(UIContext context, String element, int i, int x, int y, boolean hover, boolean selected)
+            {
+                UIDataContextMenu.this.renderIcons(context, element, x, y);
+            }
+        });
         this.entries.search.filename();
         this.entries.search.placeholder(UIKeys.POSE_CONTEXT_NAME);
 
@@ -99,6 +119,31 @@ public class UIDataContextMenu extends UIContextMenu
         this.entries.search.placeholder(name);
 
         return this;
+    }
+
+    /** Marks every saved entry's row with icons, right to left from its end — what the entry holds. */
+    public UIDataContextMenu icons(Function<MapType, List<Icon>> icons)
+    {
+        this.icons = icons;
+
+        return this;
+    }
+
+    private void renderIcons(UIContext context, String element, int x, int y)
+    {
+        if (this.icons == null)
+        {
+            return;
+        }
+
+        List<Icon> icons = this.icons.apply(this.data.getMap(element));
+        int right = x + this.entries.list.area.w - 2;
+
+        for (int i = icons.size() - 1; i >= 0; i--)
+        {
+            context.batcher.icon(icons.get(i), Colors.WHITE, right, y + UIStringList.DEFAULT_HEIGHT / 2, 1F, 0.5F);
+            right -= icons.get(i).w;
+        }
     }
 
     private void saveCurrent()

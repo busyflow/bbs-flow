@@ -5,11 +5,12 @@ import mchorse.bbs_mod.camera.clips.misc.CurveClip;
 import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
+import mchorse.bbs_mod.ui.utils.icons.Icon;
+import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.colors.Color;
 import mchorse.bbs_mod.utils.iris.ShaderCurves;
 import net.minecraft.client.MinecraftClient;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -20,8 +21,12 @@ import java.util.function.Supplier;
  */
 public class WorldCurve
 {
+    /** The curves of the world, in the order the curve picker lists them */
+    public static final List<WorldCurve> ALL = create();
+
     public final String id;
     public final IKey label;
+    public final Icon icon;
 
     /** The world's current value in the curve's own units, which a new curve starts from */
     public Supplier<Double> value;
@@ -29,30 +34,43 @@ public class WorldCurve
     /** For a colour curve: the current colour, shown as a swatch instead of a value */
     public IntSupplier color;
 
-    /** The curves of the world, in the order the shader panel lists them */
-    public static List<WorldCurve> all()
+    private static List<WorldCurve> create()
     {
         MinecraftClient mc = MinecraftClient.getInstance();
-        List<WorldCurve> curves = new ArrayList<>();
 
-        curves.add(new WorldCurve(ShaderCurves.SUN_ROTATION, UIKeys.CAMERA_PANELS_CURVES_SUN_ROTATION)
-            .value(() -> mc.world == null ? null : (mc.world.getTimeOfDay() % 24000L) / 1000D));
-        curves.add(new WorldCurve(ShaderCurves.SUN_HORIZONTAL_ROTATION, UIKeys.CAMERA_PANELS_CURVES_SUN_HORIZONTAL_ROTATION)
-            .value(() -> (double) BBSRendering.getSunHorizontalRotation()));
-        curves.add(new WorldCurve(ShaderCurves.WEATHER, UIKeys.CAMERA_PANELS_CURVES_WEATHER)
-            .value(() -> mc.world == null ? null : (double) mc.world.getRainGradient(1F)));
-        curves.add(new WorldCurve(ShaderCurves.BRIGHTNESS, UIKeys.CAMERA_PANELS_CURVES_BRIGHTNESS)
-            .value(() -> mc.options.getGamma().getValue()));
-        curves.add(new WorldCurve(CurveClip.CHROMA_SKY_COLOR, UIKeys.CAMERA_PANELS_CURVES_CHROMA_SKY_COLOR)
-            .color(() -> BBSSettings.chromaSkyColor.get()));
-
-        return curves;
+        return List.of(
+            new WorldCurve(ShaderCurves.SUN_ROTATION, UIKeys.CAMERA_PANELS_CURVES_SUN_ROTATION, Icons.SUN)
+                .value(() -> mc.world == null ? null : (mc.world.getTimeOfDay() % 24000L) / 1000D),
+            new WorldCurve(ShaderCurves.SUN_HORIZONTAL_ROTATION, UIKeys.CAMERA_PANELS_CURVES_SUN_HORIZONTAL_ROTATION, Icons.ORBIT)
+                .value(() -> (double) BBSRendering.getSunHorizontalRotation()),
+            new WorldCurve(ShaderCurves.WEATHER, UIKeys.CAMERA_PANELS_CURVES_WEATHER, Icons.DROP)
+                .value(() -> mc.world == null ? null : (double) mc.world.getRainGradient(1F)),
+            new WorldCurve(ShaderCurves.BRIGHTNESS, UIKeys.CAMERA_PANELS_CURVES_BRIGHTNESS, Icons.LIGHT)
+                .value(() -> mc.options.getGamma().getValue()),
+            new WorldCurve(CurveClip.CHROMA_SKY_COLOR, UIKeys.CAMERA_PANELS_CURVES_CHROMA_SKY_COLOR, Icons.COLOR)
+                .color(() -> BBSSettings.chromaSkyColor.get())
+        );
     }
 
-    public WorldCurve(String id, IKey label)
+    /** The curve of the world with the given channel id, or null */
+    public static WorldCurve get(String id)
+    {
+        for (WorldCurve curve : ALL)
+        {
+            if (curve.id.equals(id))
+            {
+                return curve;
+            }
+        }
+
+        return null;
+    }
+
+    public WorldCurve(String id, IKey label, Icon icon)
     {
         this.id = id;
         this.label = label;
+        this.icon = icon;
     }
 
     public WorldCurve value(Supplier<Double> value)

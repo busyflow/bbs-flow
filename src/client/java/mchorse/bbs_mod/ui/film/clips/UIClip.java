@@ -68,6 +68,8 @@ import mchorse.bbs_mod.ui.film.clips.actions.UISwipeActionClip;
 import mchorse.bbs_mod.ui.film.clips.actions.UIUseBlockItemActionClip;
 import mchorse.bbs_mod.ui.film.clips.actions.UIUseItemActionClip;
 import mchorse.bbs_mod.ui.film.clips.widgets.UIEnvelope;
+import mchorse.bbs_mod.ui.film.clips.widgets.UIKeyFields;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeEditor;
 import mchorse.bbs_mod.ui.film.clips.widgets.UIPlacement;
 import mchorse.bbs_mod.ui.forms.editors.panels.widgets.UIItemStack;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
@@ -106,6 +108,8 @@ public abstract class UIClip <T extends Clip> extends UIElement
 
     /** How each bound widget reads its property back - see {@link #bind(Object, Runnable)}. */
     private final List<Runnable> fillers = new ArrayList<>();
+    /** Where each of this clip's keys put the picked key's fields while they are open under the clips */
+    private final Map<UIKeyframeEditor, UIKeyFields> keyFields = new HashMap<>();
 
     /**
      * Fills the registry. Called by BBS while it initialises, and followed by the event that
@@ -231,6 +235,30 @@ public abstract class UIClip <T extends Clip> extends UIElement
     protected void addEnvelopes()
     {
         this.panels.add(this.section(UIKeys.CAMERA_PANELS_ENVELOPES_TITLE, this.envelope));
+    }
+
+    /**
+     * The spot for the picked key's fields while these keys are open under the clips: it goes in
+     * the section of the button that opens them, right under it. Not there at all until a key is
+     * picked.
+     */
+    public UIKeyFields keyFields(UIKeyframeEditor keys)
+    {
+        return this.keyFields.computeIfAbsent(keys, (k) -> new UIKeyFields());
+    }
+
+    /** Where these keys put the picked key's fields: under their button, or at the bottom of the panel. */
+    public UIKeyFields getKeyFields(UIKeyframeEditor keys)
+    {
+        UIKeyFields fields = this.keyFields.get(keys);
+
+        if (fields == null)
+        {
+            fields = this.keyFields(keys);
+            this.panels.add(fields);
+        }
+
+        return fields;
     }
 
     /**

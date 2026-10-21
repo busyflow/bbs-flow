@@ -45,6 +45,8 @@ public abstract class UIKeyframeFactory <T> extends UIElement
     protected final UITrackValue<T> track;
     protected UIKeyframes editor;
     private float displayTick = Float.NaN;
+    private boolean dirty = true;
+    private boolean following;
 
     /**
      * Fills the registry. Called by BBS while it initialises, and followed by the event that
@@ -186,7 +188,7 @@ public abstract class UIKeyframeFactory <T> extends UIElement
 
     public void requestUpdate()
     {
-        this.displayTick = Float.NaN;
+        this.dirty = true;
     }
 
     @Override
@@ -196,12 +198,22 @@ public abstract class UIKeyframeFactory <T> extends UIElement
         if (this.isUserEditing())
         {
             /* Re-read once the edit ends, even if the playhead did not move. */
-            this.displayTick = Float.NaN;
+            this.dirty = true;
         }
-        else if (Float.compare(tick, this.displayTick) != 0)
+        else
         {
-            this.displayTick = tick;
-            this.update();
+            /* The fields show the selected key, so only auto-keyframing, which shows the
+             * playhead's value, has to follow the playhead. Toggling it re-reads once. */
+            boolean following = this.editor.getAutoKeyframeTick() != null;
+            boolean moved = following && Float.compare(tick, this.displayTick) != 0;
+
+            if (this.dirty || moved || following != this.following)
+            {
+                this.dirty = false;
+                this.following = following;
+                this.displayTick = tick;
+                this.update();
+            }
         }
         super.render(context);
     }

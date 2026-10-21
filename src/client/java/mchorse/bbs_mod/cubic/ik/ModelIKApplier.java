@@ -3,14 +3,16 @@ package mchorse.bbs_mod.cubic.ik;
 import mchorse.bbs_mod.bobj.BOBJBone;
 import mchorse.bbs_mod.cubic.IModel;
 import mchorse.bbs_mod.cubic.RigBone;
+import mchorse.bbs_mod.cubic.constraints.BoneConstraint;
 import mchorse.bbs_mod.cubic.data.model.Model;
 import mchorse.bbs_mod.cubic.data.model.ModelGroup;
 import mchorse.bbs_mod.cubic.ik.solver.IKJoint;
 import mchorse.bbs_mod.cubic.ik.solver.IKTree;
 import mchorse.bbs_mod.cubic.ik.solver.IKTreeSolver;
-import mchorse.bbs_mod.cubic.model.bobj.BOBJModel;
 import mchorse.bbs_mod.cubic.render.CubicRenderer.PivotFrame;
 import mchorse.bbs_mod.cubic.render.ModelPivotFrames;
+import mchorse.bbs_mod.cubic.rig.BonePassport;
+import mchorse.bbs_mod.cubic.rig.RigWriter;
 import mchorse.bbs_mod.utils.joml.Matrices;
 import mchorse.bbs_mod.utils.pose.Transform;
 import org.joml.Quaternionf;
@@ -27,16 +29,15 @@ import java.util.Set;
 
 /**
  * Directs the compiled IK chains onto a model, cubic and BOBJ alike, through
- * the channel-space tree solver: overlapping chains merge and negotiate,
- * disjoint chains solve independently ancestor-first. Both bone flavours meet
- * the same frame convention — a pivot frame's parentRotation carries
- * everything before the bone's own channel rotation (for BOBJ that includes
- * its rest {@code relBoneMat}), so {@code worldRot = parentRot · Rz·Ry·Rx} and
- * the solver never needs to know which model it is posing. What differs is
- * only reads and writes: cubic channels are degrees on {@link ModelGroup},
- * BOBJ channels are radians on {@link BOBJBone} — both write the result to
- * their {@code orient} (the constraint-stack contract; channels stay the
- * read-only FK truth).
+ * the tree solver: overlapping chains merge and negotiate, disjoint chains
+ * solve independently ancestor-first. Both bone flavours meet the same frame
+ * convention — a pivot frame's parentRotation carries everything before the
+ * bone's own rotation (for BOBJ that includes its rest {@code relBoneMat}), so
+ * {@code worldRot = parentRot · local} and the solver never needs to know which
+ * model it is posing. What differs is only reads and writes: cubic channels are
+ * degrees on {@link ModelGroup}, BOBJ channels are radians on {@link BOBJBone} —
+ * both write the result to their {@code orient} (the constraint-stack contract;
+ * channels stay the read-only FK truth).
  */
 final class ModelIKApplier
 {
@@ -139,7 +140,7 @@ final class ModelIKApplier
     {
     }
 
-    public static void apply(IModel model, List<ModelIKCache.CompiledChain> chains, Map<String, JointDoF> jointDoF, Map<String, Vector3f> controllerTargets, Map<String, Vector3f> poleTargets, Map<String, Float> targetWeights, Map<String, Float> poleWeights, Map<String, IKControl> controls)
+    public static void apply(IModel model, List<ModelIKCache.CompiledChain> chains, Map<String, BoneConstraint> jointDoF, Map<String, Vector3f> controllerTargets, Map<String, Vector3f> poleTargets, Map<String, Float> targetWeights, Map<String, Float> poleWeights, Map<String, IKControl> controls)
     {
         if (model == null || chains == null || chains.isEmpty())
         {
@@ -409,21 +410,20 @@ final class ModelIKApplier
     }
 
     /* ------------------------------------------------------------------ */
-    /* The channel-space damped-least-squares solve over a merged tree     */
+    /* The damped-least-squares solve over a merged tree                   */
     /* ------------------------------------------------------------------ */
 
     /**
      * The solve for one group of overlapping chains: capture the union of
-     * their directed bones into the channel-space tree ({@link IKTree}), one
-     * effector per chain, soften each goal against its own chain's reach, run
-     * the DLS solve (with Blender's pole per chain and the tip orientation
-     * task), and write each bone's solved local rotation to its {@code orient}
-     * blended against the FK base by the IK weight. The channels are never
-     * touched — they stay the read-only FK truth (the constraint-stack
-     * contract), and the solved angles START from them, so the twist the
-     * animator posed survives into the solve by construction.
+     * their directed bones into the tree ({@link IKTree}), one effector per
+     * chain, soften each goal against its own chain's reach, run the DLS solve
+     * (with Blender's pole per chain), and write each bone's solved local
+     * rotation to its {@code orient} blended against the FK base by the IK
+     * weight. The channels are never touched — they stay the read-only FK truth
+     * (the constraint-stack contract), and the solve STARTS from them, so the
+     * twist the animator posed survives into the solve by construction.
      */
-    private static void applyGroup(IModel model, List<ModelIKCache.CompiledChain> group, Map<String, PivotFrame> frames, Map<String, JointDoF> jointDoF, Map<String, Vector3f> controllerTargets, Map<String, Vector3f> poleTargets, Map<String, Float> targetWeights, Map<String, Float> poleWeights, Map<String, IKControl> controls)
+    private static void applyGroup(IModel model, List<ModelIKCache.CompiledChain> group, Map<String, PivotFrame> frames, Map<String, BoneConstraint> jointDoF, Map<String, Vector3f> controllerTargets, Map<String, Vector3f> poleTargets, Map<String, Float> targetWeights, Map<String, Float> poleWeights, Map<String, IKControl> controls)
     {
         List<ResolvedChain> resolved = new ArrayList<>(group.size());
 
@@ -479,15 +479,18 @@ final class ModelIKApplier
             joint.startWorldRotation.set(frame.worldRotation());
             tree.startParentRotation[i].set(frame.parentRotation());
 
-            if (sourceAngles(model, nodes.get(i), joint.startAngles) == null)
+            Quaternionf evaluated = evaluatedRotation(model, nodes.get(i));
+
+            if (evaluated == null || sourceAngles(model, nodes.get(i), joint.startAngles) == null)
             {
                 return;
             }
 
+            joint.local.set(evaluated);
             joint.angles.set(joint.startAngles);
             tree.parentIndex[i] = nearestAncestor(model, nodes.get(i), nodeIndex);
 
-            JointDoF dof = jointDoF == null ? null : jointDoF.get(nodes.get(i));
+            BoneConstraint dof = jointDoF == null ? null : jointDoF.get(nodes.get(i));
 
             if (dof != null)
             {
@@ -522,24 +525,10 @@ final class ModelIKApplier
 
             effector.goal.set(IKTreeSolver.softGoal(rootPosition, reach, r.target(), r.softness()));
 
-            /* Tip follows target, in-solver half: ask the chain to orient its LAST
-             * directed bone so the tip, keeping its natural FK local pose, would
-             * already face the controller — the chain shares the turn instead of
-             * the wrist absorbing all of it. The exact tip snap after the solve
-             * (writeTree) then has almost nothing left to correct. One radian of
-             * orientation error is worth reach/π length units, so a half turn
-             * weighs about as much as a full-reach position miss. */
-            if (r.tipTarget() != null)
-            {
-                Quaternionf tipLocal = evaluatedRotation(model, workIds.get(workIds.size() - 1));
-
-                if (tipLocal != null)
-                {
-                    effector.orientGoal = new Quaternionf(r.tipTarget()).mul(tipLocal.conjugate());
-                    effector.orientWeight = reach / (float) Math.PI;
-                }
-            }
-
+            /* "Tip follows target" is not the chain's business: the chain reaches,
+             * and the tip bone copies the controller's orientation afterwards
+             * (writeTree). Letting the target's orientation into the solve would
+             * let it pick how the chain bends, and the pole owns that. */
             Vector3f polePoint = r.polePoint();
 
             if (r.pole() && polePoint == null)
@@ -547,9 +536,14 @@ final class ModelIKApplier
                 polePoint = restVirtualPole(model, workIds, tree.startParentRotation[rootJoint], rootPosition, reach);
             }
 
-            Vector3f materialUp = polePoint == null ? null : poleMaterialUp(model, workIds, r.chain().poleTarget(), tree.startParentRotation[rootJoint], tree.joints[rootJoint].startWorldRotation);
+            Vector3f planeNormal = polePoint == null ? null : polePlaneNormal(model, workIds, r.chain().poleTarget(), tree.startParentRotation[rootJoint], tree.joints[rootJoint].startWorldRotation);
 
-            poles[e] = polePoint == null || materialUp == null ? null : new IKTreeSolver.Pole(rootJoint, polePoint, r.poleAngle(), materialUp);
+            if (planeNormal != null)
+            {
+                Vector3f bendNormal = restBendNormal(model, workIds, tree.startParentRotation[rootJoint], tree.joints[rootJoint].startWorldRotation);
+
+                poles[e] = new IKTreeSolver.Pole(rootJoint, polePoint, r.poleAngle(), planeNormal, bendNormal == null ? planeNormal : bendNormal);
+            }
         }
 
         IKTreeSolver.Result result = IKTreeSolver.solve(tree, poles, IKTreeSolver.Params.DEFAULT);
@@ -647,23 +641,8 @@ final class ModelIKApplier
         return bone == null ? null : bone.evaluatedRotation();
     }
 
-    /** Writes the solved local rotation to the bone's {@code orient}; false when it does not exist. */
-    private static boolean writeOrient(IModel model, String id, Quaternionf orient)
-    {
-        RigBone bone = model.getBone(id);
-
-        if (bone == null)
-        {
-            return false;
-        }
-
-        bone.setOrient(orient);
-
-        return true;
-    }
-
-    /** Copies the config's per-bone freedom onto a solver joint; limits are authored in degrees. */
-    private static void applyDoF(IKJoint joint, JointDoF dof)
+    /** Copies the bone's limits onto a solver joint; the angles are authored in degrees. */
+    private static void applyDoF(IKJoint joint, BoneConstraint dof)
     {
         float toRad = (float) (Math.PI / 180.0);
 
@@ -699,12 +678,11 @@ final class ModelIKApplier
     }
 
     /**
-     * Loads a chain's rest geometry. Cubic rest geometry lives in the
-     * authored pivots (absolute model coordinates), and the lift is the DELTA
-     * of the chain root's current parent frame from its rest orientation;
-     * BOBJ rest geometry lives in the bind matrices, and the lift subtracts
-     * the bind frame the same way (BOBJ ancestors carry authored rest
-     * rotations, so the raw parent frame alone would double-count them).
+     * Loads a chain's rest geometry: the bones' rest positions ({@link
+     * BonePassport#restPosition} — a cubic pivot where the renderer draws it,
+     * a BOBJ bind position), and the lift — the DELTA of the chain root's
+     * current parent frame from its rest orientation ({@link
+     * BonePassport#restParentRotation}).
      * {@code null} when the chain is too short or a bone is missing. A chain of
      * one directed bone has no interior joint, so it loads with a null elbow
      * rather than not at all: the elbow is what a virtual pole needs (which side
@@ -719,48 +697,31 @@ final class ModelIKApplier
             return null;
         }
 
+        BonePassport passport = BonePassport.of(model);
+
+        if (passport == null)
+        {
+            return null;
+        }
+
         boolean bent = workIds.size() >= 3;
+        Vector3f root = passport.restPosition(workIds.get(0));
+        Vector3f elbow = bent ? passport.restPosition(workIds.get(1)) : null;
+        Vector3f effector = passport.restPosition(workIds.get(workIds.size() - 1));
 
-        if (model instanceof Model cubic)
+        if (root == null || effector == null || (bent && elbow == null))
         {
-            ModelGroup root = cubic.getGroup(workIds.get(0));
-            ModelGroup elbow = bent ? cubic.getGroup(workIds.get(1)) : null;
-            ModelGroup effector = cubic.getGroup(workIds.get(workIds.size() - 1));
-
-            if (root == null || effector == null || (bent && elbow == null))
-            {
-                return null;
-            }
-
-            /* To carry a rest direction into the current pose it must ride the
-             * DELTA of the root's parent frame from its REST orientation, exactly
-             * as the BOBJ branch subtracts the bind frame below: lifting by the
-             * raw current parent frame would double-count any rest rotation the
-             * chain's ancestors carry, tilting the result even in rest pose. */
-            Quaternionf restParent = cubicRestParentRotation(cubic, workIds.get(0));
-
-            return new RestChain(root.initial.translate, elbow == null ? null : elbow.initial.translate, effector.initial.translate, new Quaternionf(rootParentRotation).mul(restParent.conjugate()));
-        }
-        else if (model instanceof BOBJModel bobj)
-        {
-            Map<String, BOBJBone> bones = bobj.getArmature().bones;
-            BOBJBone root = bones.get(workIds.get(0));
-            BOBJBone elbow = bent ? bones.get(workIds.get(1)) : null;
-            BOBJBone effector = bones.get(workIds.get(workIds.size() - 1));
-
-            if (root == null || effector == null || (bent && elbow == null))
-            {
-                return null;
-            }
-
-            /* In bind pose (zero channels) the root's parent frame IS its bind
-             * rotation, so the current-vs-bind delta is the exact world lift. */
-            Quaternionf bindParent = root.boneMat.getUnnormalizedRotation(new Quaternionf());
-
-            return new RestChain(root.boneMat.getTranslation(new Vector3f()), elbow == null ? null : elbow.boneMat.getTranslation(new Vector3f()), effector.boneMat.getTranslation(new Vector3f()), new Quaternionf(rootParentRotation).mul(bindParent.conjugate()));
+            return null;
         }
 
-        return null;
+        /* To carry a rest direction into the current pose it must ride the DELTA
+         * of the root's parent frame from its REST orientation: lifting by the raw
+         * current parent frame would double-count any rest rotation the chain's
+         * ancestors carry (for BOBJ, the bind frames), tilting the result even in
+         * rest pose. */
+        Quaternionf restParent = passport.restParentRotation(workIds.get(0));
+
+        return new RestChain(root, elbow, effector, new Quaternionf(rootParentRotation).mul(restParent.conjugate()));
     }
 
     /**
@@ -809,25 +770,23 @@ final class ModelIKApplier
     }
 
     /**
-     * The calibrated pole-plane anchor for a chain, in the ROOT joint's local
+     * The chain's reference bend plane, as its normal in the ROOT joint's local
      * rotation frame. Blender anchors its pole plane to the root bone's own
-     * basis — the pole_angle knob picks which bone axis faces the pole — so
-     * the plane never degenerates however straight the chain solves; the knob
-     * here is turned automatically to ZERO TWIST IN REST POSE: the axis is
-     * the direction from the rest chain axis to the POLE BONE's authored rest
-     * spot (noise-free data, needed once — exactly what a rigger dials in; a
-     * film-driven pole then twists the plane from that zero). Without an
-     * authored pole bone the axis is the rest bend's bulge — the auto pole
-     * point sits on that side by construction, so the zero-twist property
-     * holds there too. NEVER the bulge when a pole bone exists: a chain bent
-     * only at its elbow bulges BACKWARD of its root→tip chord even though it
-     * visibly bends forward, and calibrating on the bulge turned such an arm
-     * a permanent half-turn against its own pole. Falls back to a
-     * deterministic rest-space perpendicular when everything above sits on
-     * the chain axis. {@code null} when the chain is too short or a bone is
-     * missing.
+     * basis — the pole_angle knob picks which way the plane faces — so the plane
+     * never degenerates however straight the chain solves; the knob here is
+     * turned automatically to ZERO TWIST IN REST POSE: the plane holds the rest
+     * chain axis and the POLE BONE's authored rest spot (noise-free data, needed
+     * once — exactly what a rigger dials in; a film-driven pole then turns the
+     * plane from that zero). Without an authored pole bone the plane holds the
+     * rest bend's bulge — the auto pole point sits on that side by construction,
+     * so the zero-twist property holds there too. NEVER the bulge when a pole
+     * bone exists: a chain bent only at its elbow bulges BACKWARD of its
+     * root→tip chord even though it visibly bends forward, and calibrating on the
+     * bulge turned such an arm a permanent half-turn against its own pole. Falls
+     * back to a deterministic rest-space plane when everything above sits on the
+     * chain axis. {@code null} when the chain is too short or a bone is missing.
      */
-    private static Vector3f poleMaterialUp(IModel model, List<String> workIds, String poleTarget, Quaternionf rootParentRotation, Quaternionf rootStartWorldRotation)
+    private static Vector3f polePlaneNormal(IModel model, List<String> workIds, String poleTarget, Quaternionf rootParentRotation, Quaternionf rootStartWorldRotation)
     {
         RestChain rest = restChain(model, workIds, rootParentRotation);
 
@@ -868,71 +827,71 @@ final class ModelIKApplier
             side.normalize();
         }
 
-        rest.lift().transform(side);
+        /* The reference plane holds the rest chain axis and the side; its normal,
+         * signed so that normal × axis = side, is what the solver turns onto the
+         * pole plane. */
+        Vector3f normal = new Vector3f(axis).cross(side).normalize();
 
-        return new Quaternionf(rootStartWorldRotation).conjugate().transform(side);
+        rest.lift().transform(normal);
+
+        return new Quaternionf(rootStartWorldRotation).conjugate().transform(normal);
     }
 
-    /** A bone's authored rest position in model rest space; {@code null} when absent. */
-    private static Vector3f restPosition(IModel model, String id)
+    /**
+     * The plane the chain bends in at rest, as its normal in the ROOT joint's
+     * local rotation frame, signed so that normal × axis points to where the
+     * first interior joint bulges out of the rest root-to-effector line. {@code
+     * null} for a chain authored straight (a bulge under a hundredth of the first
+     * segment — the pole plane stands in) or too short to bend.
+     */
+    private static Vector3f restBendNormal(IModel model, List<String> workIds, Quaternionf rootParentRotation, Quaternionf rootStartWorldRotation)
     {
-        if (id == null || id.isEmpty())
+        RestChain rest = restChain(model, workIds, rootParentRotation);
+
+        if (rest == null || rest.elbow() == null)
         {
             return null;
         }
 
-        RigBone bone = model.getBone(id);
+        Vector3f axis = new Vector3f(rest.effector()).sub(rest.root());
+        Vector3f segment = new Vector3f(rest.elbow()).sub(rest.root());
 
-        return bone == null ? null : bone.getRestTranslation();
-    }
-
-    /**
-     * The rest-pose world rotation of the chain root's PARENT — the product of
-     * every ancestor's authored rest rotation ({@code initial.rotate}, degrees,
-     * ZYX), in the same unmirrored model space {@link ModelPivotFrames} captures.
-     * Identity when the root sits at the model top or its ancestors carry no rest
-     * rotation (the common case, where the auto-pole lift is unchanged). This is
-     * the cubic counterpart of BOBJ's bind parent frame.
-     */
-    private static Quaternionf cubicRestParentRotation(Model cubic, String rootId)
-    {
-        Quaternionf rest = new Quaternionf();
-        String id = cubic.getParentGroupKey(rootId);
-        int guard = 0;
-
-        while (id != null && !id.isEmpty() && guard++ < 256)
+        if (axis.lengthSquared() < EPS * EPS || segment.lengthSquared() < EPS * EPS)
         {
-            ModelGroup bone = cubic.getGroup(id);
-
-            if (bone == null)
-            {
-                break;
-            }
-
-            /* World order is root-most first; walking up, each ancestor pre-multiplies. */
-            rest = Matrices.toLocalRotationZYXDegrees(bone.initial.rotate).mul(rest);
-
-            String parent = cubic.getParentGroupKey(id);
-
-            if (parent == null || parent.equals(id))
-            {
-                break;
-            }
-
-            id = parent;
+            return null;
         }
 
-        return rest;
+        axis.normalize();
+
+        Vector3f bulge = new Vector3f(segment).fma(-segment.dot(axis), axis);
+
+        if (bulge.length() < 0.01F * segment.length())
+        {
+            return null;
+        }
+
+        Vector3f normal = new Vector3f(axis).cross(bulge).normalize();
+
+        rest.lift().transform(normal);
+
+        return new Quaternionf(rootStartWorldRotation).conjugate().transform(normal);
+    }
+
+    /** A bone's rest position ({@link BonePassport#restPosition}); {@code null} when absent. */
+    private static Vector3f restPosition(IModel model, String id)
+    {
+        BonePassport passport = BonePassport.of(model);
+
+        return id == null || id.isEmpty() || passport == null ? null : passport.restPosition(id);
     }
 
     /**
-     * Writes the solved tree onto the bones: each node's local rotation is
-     * composed from its solved channel angles and written raw to its
-     * {@code orient}, blended against the FK base (the bone's evaluated
-     * rotation) by the strongest weight of the chains running through it. The
-     * blended world frames advance the same rigid way the solve did — the
-     * frames the renderer establishes — so each chain's tip target lands in
-     * the right frame at any weight.
+     * Writes the solved tree onto the bones: each node's solved local rotation
+     * is written raw to its {@code orient}, blended against the FK base (the
+     * bone's evaluated rotation) by the strongest weight of the chains running
+     * through it. The blended world frames advance the same rigid way the solve
+     * did — the frames the renderer establishes — so each chain's tip target
+     * lands in the right frame at any weight.
      */
     private static void writeTree(IModel model, List<String> nodes, IKTree tree, List<ResolvedChain> resolved, Map<String, PivotFrame> frames)
     {
@@ -957,20 +916,14 @@ final class ModelIKApplier
 
         for (int i = 0; i < n; i++)
         {
-            Quaternionf evaluated = evaluatedRotation(model, nodes.get(i));
+            RigBone bone = model.getBone(nodes.get(i));
 
-            if (evaluated == null)
+            if (bone == null)
             {
                 return;
             }
 
-            Quaternionf solvedLocal = Matrices.toLocalRotationZYXRadians(tree.joints[i].angles);
-            Quaternionf applied = nodeWeight[i] >= 1F - EPS ? solvedLocal : evaluated.slerp(solvedLocal, nodeWeight[i]);
-
-            if (!writeOrient(model, nodes.get(i), applied))
-            {
-                return;
-            }
+            Quaternionf applied = RigWriter.blend(bone, new Quaternionf(tree.joints[i].local), nodeWeight[i]);
 
             /* Blended world walk, rigid-model style: the parent frame is the captured
              * one carried by how far the nearest captured ancestor's BLENDED world
@@ -1031,15 +984,14 @@ final class ModelIKApplier
 
             Quaternionf lastDelta = new Quaternionf(blendedWorld[lastJoint]).mul(new Quaternionf(tree.joints[lastJoint].startWorldRotation).conjugate());
             Quaternionf tipParent = lastDelta.mul(new Quaternionf(tipFrame.parentRotation()));
-            Quaternionf tipLocal = tipParent.conjugate().mul(r.tipTarget());
-            Quaternionf evaluated = evaluatedRotation(model, tipId);
+            RigBone tip = model.getBone(tipId);
 
-            if (evaluated == null)
+            if (tip == null)
             {
                 continue;
             }
 
-            writeOrient(model, tipId, r.weight() >= 1F - EPS ? tipLocal : evaluated.slerp(tipLocal, r.weight()));
+            RigWriter.blend(tip, tipParent.conjugate().mul(r.tipTarget()), r.weight());
         }
 
         for (ResolvedChain r : resolved)
@@ -1361,11 +1313,10 @@ final class ModelIKApplier
             .append(" err ").append(result.error())
             .append(" iters ").append(result.iterations()).append('\n');
 
-        /* The pole twists the ROOT about the root-to-goal line by an angle read
-         * off the chain's own bend direction — so when the chain is near
-         * straight, or the pole sits near that line, the angle is computed from
-         * noise. These two numbers say how degenerate each of those is: small
-         * values here explain a root that swings wildly between frames. */
+        /* The pole turns the chain about the root-to-goal line, so a pole sitting
+         * near that line (small angle-off-axis) leaves the plane undefined — the
+         * one genuine pole singularity — and the last pole pass correcting a lot
+         * means the iterations drifted the plane. */
         if (poles != null && poles.length > 0 && poles[0] != null && poles[0].polePoint() != null)
         {
             IKTreeSolver.Pole pole = poles[0];
@@ -1391,7 +1342,7 @@ final class ModelIKApplier
         {
             LOG.append("  ").append(nodes.get(i))
                 .append(" in ").append(fmtDeg(tree.joints[i].startAngles))
-                .append(" out ").append(fmtDeg(tree.joints[i].angles)).append('\n');
+                .append(" out ").append(fmtDeg(Matrices.toCompatibleEulerZYXRadians(tree.joints[i].local, tree.joints[i].startAngles, new Vector3f()))).append('\n');
         }
     }
 

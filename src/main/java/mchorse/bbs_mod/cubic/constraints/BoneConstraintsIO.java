@@ -8,10 +8,10 @@ import mchorse.bbs_mod.forms.forms.utils.ValueBones;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 
 /**
- * The constraints exchange format: {@code {bones: {name: {enabled, min: [x,y,z], max: [x,y,z]}}}}.
- * It is what constraint presets are saved as, and what forms saved before the bones group stored
- * in their {@code constraints} blob — one reader serves both. The form itself now persists
- * constraints inside {@link ValueBones}, not in this format.
+ * The constraints exchange format: {@code {bones: {name: {enabled, limits, min: [x,y,z], max: [x,y,z],
+ * lock, stiffness}}}}. It is what constraint presets are saved as, and what forms saved before the
+ * bones group stored in their {@code constraints} blob — one reader serves both. The form itself
+ * now persists constraints inside {@link ValueBones}, not in this format.
  */
 public final class BoneConstraintsIO
 {
@@ -30,12 +30,9 @@ public final class BoneConstraintsIO
         {
             for (BaseValue value : bones.getAll())
             {
-                if (value instanceof FormBone bone && bone.constraints.get().isActive())
+                if (value instanceof FormBone bone && !bone.constraints.get().isDefault())
                 {
-                    BoneConstraint neutral = bone.constraints.get().copy();
-
-                    neutral.identity();
-                    bone.constraints.set(neutral);
+                    bone.constraints.set(new BoneConstraint());
                 }
             }
         }
@@ -74,12 +71,18 @@ public final class BoneConstraintsIO
             constraint.maxX = getFloat(entry.getList("max"), 0, BoneConstraint.DEFAULT_MAX);
             constraint.maxY = getFloat(entry.getList("max"), 1, BoneConstraint.DEFAULT_MAX);
             constraint.maxZ = getFloat(entry.getList("max"), 2, BoneConstraint.DEFAULT_MAX);
+            constraint.lockX = entry.getList("lock").getBool(0, false);
+            constraint.lockY = entry.getList("lock").getBool(1, false);
+            constraint.lockZ = entry.getList("lock").getBool(2, false);
+            constraint.stiffnessX = getFloat(entry.getList("stiffness"), 0, 0F);
+            constraint.stiffnessY = getFloat(entry.getList("stiffness"), 1, 0F);
+            constraint.stiffnessZ = getFloat(entry.getList("stiffness"), 2, 0F);
 
             bones.getOrCreate(key).constraints.set(constraint);
         }
     }
 
-    /** Writes every enabled constraint in the exchange format; an empty result means none are. */
+    /** Writes every bone's limits that aren't neutral in the exchange format; an empty result means none are. */
     public static MapType write(ValueBones bones)
     {
         MapType root = new MapType();
@@ -94,7 +97,7 @@ public final class BoneConstraintsIO
 
             BoneConstraint c = bone.constraints.get();
 
-            if (!c.isActive())
+            if (c.isDefault())
             {
                 continue;
             }
@@ -124,6 +127,26 @@ public final class BoneConstraintsIO
 
             entry.put("min", min);
             entry.put("max", max);
+
+            if (c.lockX || c.lockY || c.lockZ)
+            {
+                ListType lock = new ListType();
+
+                lock.addBool(c.lockX);
+                lock.addBool(c.lockY);
+                lock.addBool(c.lockZ);
+                entry.put("lock", lock);
+            }
+
+            if (c.stiffnessX > 0F || c.stiffnessY > 0F || c.stiffnessZ > 0F)
+            {
+                ListType stiffness = new ListType();
+
+                stiffness.addFloat(c.stiffnessX);
+                stiffness.addFloat(c.stiffnessY);
+                stiffness.addFloat(c.stiffnessZ);
+                entry.put("stiffness", stiffness);
+            }
 
             boneMap.put(bone.getId(), entry);
         }

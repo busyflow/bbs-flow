@@ -48,9 +48,22 @@ public class RenderFrame
 
     private static long epoch;
 
+    /** Frames proper: only {@link #nextFrame()} counts them, never {@link #invalidate()}. */
+    private static long frame;
+
     public static long getEpoch()
     {
         return epoch;
+    }
+
+    /**
+     * The frame being drawn. Unlike the epoch it doesn't move for an out-of-band pass (the onion
+     * skin, the gizmo's probes), so an answer that only has to be fresh once a frame — and again
+     * after an edit, through the form's pose version — can be kept across them.
+     */
+    public static long getFrame()
+    {
+        return frame;
     }
 
     public static boolean isEnabled()
@@ -62,6 +75,7 @@ public class RenderFrame
     public static void nextFrame()
     {
         epoch += 1;
+        frame += 1;
         ENTRIES.clear();
         FILM_TICKS.clear();
         CARRIERS.clear();

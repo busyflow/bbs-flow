@@ -42,10 +42,11 @@ public abstract class UIFormPanel <T extends Form> extends UIElement
 
         /* Match the tree's default share; keep earlier fractional and pixel settings separate. */
         this.draggable = UISplitter.fraction("form_panel_fraction." + this.getClass().getSimpleName(), DEFAULT_OPTIONS_WIDTH, 0F, 0.5F);
+        /* The whole panel, so what the form editor docks under the options follows their width too */
         this.draggable.measure(this, this::getParent).fromEnd().onChange(() ->
         {
-            this.options.w(this.draggable.getValue()).resize();
-            this.draggable.resize();
+            this.options.w(this.draggable.getValue());
+            this.resize();
         });
 
         this.options = UI.scrollView(UIConstants.MARGIN, UIConstants.SCROLL_PADDING);
@@ -65,7 +66,15 @@ public abstract class UIFormPanel <T extends Form> extends UIElement
      */
     protected UISection section(IKey title, String id, boolean defaultExpanded)
     {
-        return new UISection(title).remember(sectionFolds, id, defaultExpanded);
+        return this.remember(new UISection(title), id, defaultExpanded);
+    }
+
+    /** The same fold memory for a section of a kind of its own. */
+    protected <S extends UISection> S remember(S section, String id, boolean defaultExpanded)
+    {
+        section.remember(sectionFolds, id, defaultExpanded);
+
+        return section;
     }
 
     public void startEdit(T form)

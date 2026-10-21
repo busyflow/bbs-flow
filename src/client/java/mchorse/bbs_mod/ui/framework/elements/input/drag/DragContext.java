@@ -60,6 +60,16 @@ public interface DragContext
         return false;
     }
 
+    /**
+     * The channels the edited bones lock in their limits, three bits per operation
+     * ({@link mchorse.bbs_mod.ui.utils.GizmoLocks}): the gesture's writes hold them
+     * still, and a ring in the bone's own frames turns its channel alone.
+     */
+    default int axisLocks()
+    {
+        return 0;
+    }
+
     /** Diagnostic only: which editor owns this gesture, for the drag log. */
     default String targetName()
     {

@@ -26,10 +26,10 @@ import java.util.function.Consumer;
  */
 public class UISection extends UIElement
 {
-    private static final int HEADER_HEIGHT = 10;
-    private static final int ARROW_SIZE = 8;
+    protected static final int HEADER_HEIGHT = 10;
+    protected static final int ARROW_SIZE = 8;
     /** Icon column of a header that has one: 16px icon plus the gap to the title. */
-    private static final int ICON_WIDTH = 20;
+    protected static final int ICON_WIDTH = 20;
     /** Inset of the card's contents, and so the padding the header strip reclaims around itself. */
     private static final int PADDING = 4;
 
@@ -193,7 +193,8 @@ public class UISection extends UIElement
         }
     }
 
-    private void renderHeader(UIContext context, UILabel title)
+    /** Draws the header strip; a section that says more in its header than a title draws it here. */
+    protected void renderHeader(UIContext context, UILabel title)
     {
         Area header = title.area;
 

@@ -72,6 +72,7 @@ public class UIParticleSchemeGeneralSection extends UIParticleSchemeSection
         this.material.add(Icons.SQUARE, UIKeys.SNOWSTORM_GENERAL_PARTICLES_OPAQUE);
         this.material.add(Icons.DROP, UIKeys.SNOWSTORM_GENERAL_PARTICLES_ALPHA);
         this.material.add(Icons.FADING, UIKeys.SNOWSTORM_GENERAL_PARTICLES_BLEND);
+        this.material.add(Icons.LIGHT, UIKeys.SNOWSTORM_GENERAL_PARTICLES_ADD);
 
         this.facing = new UIIcons((b) ->
         {

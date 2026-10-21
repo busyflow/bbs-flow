@@ -15,12 +15,10 @@ import mchorse.bbs_mod.settings.values.numeric.ValueFloat;
 import mchorse.bbs_mod.settings.values.numeric.ValueInt;
 import mchorse.bbs_mod.settings.values.ui.ValueColors;
 import mchorse.bbs_mod.settings.values.ui.ValueEditorLayout;
-import mchorse.bbs_mod.settings.values.ui.ValueIKDebug;
 import mchorse.bbs_mod.settings.values.ui.ValueKeyframeStyle;
 import mchorse.bbs_mod.settings.values.ui.ValueLanguage;
 import mchorse.bbs_mod.settings.values.ui.ValueMotionPath;
 import mchorse.bbs_mod.settings.values.ui.ValueOnionSkin;
-import mchorse.bbs_mod.settings.values.ui.ValuePhysicsDebug;
 import mchorse.bbs_mod.settings.values.ui.ValueOrder;
 import mchorse.bbs_mod.settings.values.ui.ValueStringKeys;
 import mchorse.bbs_mod.settings.values.ui.ValueTrackStyles;
@@ -59,6 +57,7 @@ public class BBSSettings {
 	public static ValueBoolean morphingFocusSearch;
 	public static ValueBoolean hideMorphModels;
 	public static ValueBoolean hideMorphParticles;
+	public static ValueBoolean formEditorPartsRight;
 	public static ValueInt formCellSize;
 	public static ValueInt textureCellSize;
 	public static ValueString textureSort;
@@ -173,8 +172,11 @@ public class BBSSettings {
 	public static ValueBoolean editorPlayerFollowsCamera;
 	public static ValueEditorLayout editorLayoutSettings;
 	public static ValueOnionSkin editorOnionSkin;
-	public static ValueIKDebug ikDebug;
-	public static ValuePhysicsDebug physicsDebug;
+	/** The rig's debug overlay: switched by the rig tab and F5, no row in the settings. */
+	public static ValueBoolean debugOverlay;
+	public static ValueFloat debugOpacity;
+	/** One scale for every marker and line of the rig's debug overlay. */
+	public static ValueFloat debugSize;
 	public static ValueBoolean profilerOverlay;
 	/** Emergency switch for the per-frame pose caches; invisible, on by default. */
 	public static ValueBoolean framePoseCache;
@@ -695,6 +697,9 @@ public class BBSSettings {
 		hideMorphParticles = builder.getBoolean("hide_morph_particles", false);
 		hideMorphModels.invisible();
 		hideMorphParticles.invisible();
+		/* Switched by the form editor's own layout button */
+		formEditorPartsRight = builder.getBoolean("form_editor_parts_right", false);
+		formEditorPartsRight.invisible();
 		formCellSize = builder.getInt("form_cell_size", 60, 40, 140).slider();
 		textureCellSize = builder.getInt("texture_cell_size", 80, 40, 200).slider();
 		textureSort = builder.getString("texture_sort", "name");
@@ -841,10 +846,12 @@ public class BBSSettings {
 		editorPreviewSelectionHud = builder.getBoolean("preview_selection_hud", true);
 		builder.register(editorOnionSkin = new ValueOnionSkin("onion_skin"));
 		builder.register(editorMotionPath = new ValueMotionPath("motion_path"));
-		/* Overlays drawn over the preview which are edited through the gear in the
-		 * IK and physics panels - stored here, no row of their own in the settings */
-		builder.register(ikDebug = new ValueIKDebug("ik_debug"));
-		builder.register(physicsDebug = new ValuePhysicsDebug("physics_debug"));
+		/* The rig's debug overlay: its switch lives on the rig tab (and F5), its look is fixed
+		 * but for how solid and how big it draws */
+		debugOverlay = builder.getBoolean("debug_overlay", false);
+		debugOverlay.invisible();
+		debugOpacity = builder.getFloat("debug_opacity", 0.5F, 0.05F, 1F).slider();
+		debugSize = builder.getFloat("debug_size", 1F, 0.25F, 4F).slider();
 
 		/* Everything that trades work for frames: what the editor renders at all, at what
 		 * resolution and how often, what it computes in parallel, plus the counters that

@@ -20,6 +20,9 @@ public record PhysicsCarrier(Vector3f position, Quaternionf rotation, float feel
 {
     public static PhysicsCarrier of(Matrix4f frame, float feel)
     {
-        return new PhysicsCarrier(frame.getTranslation(new Vector3f()), frame.getNormalizedRotation(new Quaternionf()), feel);
+        /* Unnormalized: the frame carries the target's scale (a resized car, a scaled anchor), which
+         * getNormalizedRotation is not valid for and snaps on as the target turns — see the note in
+         * CubicRenderer#collectPivotFrames. */
+        return new PhysicsCarrier(frame.getTranslation(new Vector3f()), frame.getUnnormalizedRotation(new Quaternionf()), feel);
     }
 }

@@ -6,6 +6,7 @@ import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.client.BBSShaders;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
+import mchorse.bbs_mod.ui.film.utils.shader.UIShaderOptionsPanel;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.UIScrollView;
@@ -20,6 +21,7 @@ import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.utils.RowStyle;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIText;
 import mchorse.bbs_mod.ui.utils.UI;
+import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
@@ -38,6 +40,7 @@ public class UIUtilityOverlayPanel extends UIOverlayPanel
     private final UISliderTrackpad time;
     private final UIStringList shaders;
     private final UIText shaderStatus;
+    private final UIButton shaderOptions;
     private final boolean iris = FabricLoader.getInstance().isModLoaded("iris");
     private boolean focused;
     private int pendingTime = -1;
@@ -108,14 +111,17 @@ public class UIUtilityOverlayPanel extends UIOverlayPanel
                 return element.isEmpty() ? UIKeys.UTILITY_SHADERS_OFF.get() : element;
             }
         };
-        this.shaders.relative(right).xy(10, 35).w(1F, -20).h(1F, -45);
+        this.shaders.relative(right).xy(10, 35).w(1F, -20).h(1F, -45 - UIConstants.CONTROL_HEIGHT - UIConstants.MARGIN);
         this.shaders.scroll.scrollItemSize = 18;
         this.shaders.background(BBSSettings.inputSurface());
         this.shaderStatus = new UIText().text(UIKeys.UTILITY_IRIS_REQUIRED);
         this.shaderStatus.relative(right).xy(15, 40).w(1F, -30).h(1F, -50);
         this.shaderStatus.setVisible(!this.iris);
         this.shaders.setEnabled(this.iris);
-        right.add(header, this.shaders, this.shaderStatus);
+        this.shaderOptions = new UIButton(UIKeys.UTILITY_SHADER_OPTIONS, b -> UIOverlay.addOverlay(this.getContext(), new UIShaderOptionsPanel(), 300, 0.8F));
+        this.shaderOptions.relative(right).x(10).y(1F, -10 - UIConstants.CONTROL_HEIGHT).w(1F, -20).h(UIConstants.CONTROL_HEIGHT);
+        this.shaderOptions.setEnabled(false);
+        right.add(header, this.shaders, this.shaderStatus, this.shaderOptions);
         this.content.add(this.view, right);
         this.refreshShaders();
     }
@@ -230,6 +236,7 @@ public class UIUtilityOverlayPanel extends UIOverlayPanel
         MinecraftClient mc = MinecraftClient.getInstance();
         boolean focused = mc.isWindowFocused();
         if (focused && !this.focused) this.refreshShaders();
+        this.shaderOptions.setEnabled(this.iris && !ShaderOptions.currentPack().isEmpty());
         this.focused = focused;
         if (!this.time.isDragging() && !this.time.isFocused() && mc.world != null)
         {

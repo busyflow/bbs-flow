@@ -48,7 +48,7 @@ public class IrisMixin
     /**
      * A pack that doesn't build with its options as uniforms is reloaded going less far. Building
      * reads the programs of a dimension with programs of its own for the first time, and they can
-     * turn more options into uniforms, so the editor's shader panel looks again either way.
+     * turn more options into uniforms, so the shader pack's settings look again either way.
      */
     @WrapOperation(method = "createPipeline", at = @At(value = "NEW", target = "(Lnet/irisshaders/iris/shaderpack/programs/ProgramSet;)Lnet/irisshaders/iris/pipeline/IrisRenderingPipeline;"), remap = false)
     private static IrisRenderingPipeline onCreatePipeline(ProgramSet programs, Operation<IrisRenderingPipeline> original)

@@ -59,6 +59,7 @@ import mchorse.bbs_mod.ui.forms.editors.forms.UIStructureForm;
 import mchorse.bbs_mod.ui.forms.editors.forms.UITrailForm;
 import mchorse.bbs_mod.ui.forms.editors.forms.UIVanillaParticleForm;
 import mchorse.bbs_mod.ui.forms.editors.forms.UIVideoForm;
+import mchorse.bbs_mod.ui.forms.editors.panels.UIFormPanel;
 import mchorse.bbs_mod.ui.forms.editors.states.UIAnimationStatesOverlayPanel;
 import mchorse.bbs_mod.ui.forms.editors.states.keyframes.UIAnimationStateEditor;
 import mchorse.bbs_mod.ui.forms.editors.utils.UIPickableFormRenderer;
@@ -68,6 +69,7 @@ import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
+import mchorse.bbs_mod.ui.framework.elements.layout.UIDockLayout;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIUndoKeys;
 import mchorse.bbs_mod.ui.framework.elements.utils.EventPropagation;
@@ -134,6 +136,14 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
 
     private static Map<Class, Supplier<UIForm>> panels = new HashMap<>();
 
+    /** The strip of add/gizmo/copy/paste/remove icons over the body parts list. */
+    private static final int TOOLBAR_HEIGHT = 20;
+
+    /** Whether the body part's section is left open, per layout, for the session. Docked under
+     *  the options it starts folded: the room there is what the options give up. */
+    private static boolean partOpenInSidebar = true;
+    private static boolean partOpenDocked = false;
+
     /* Palette for picking a form for body parts */
     public UIFormPalette palette;
 
@@ -167,6 +177,7 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
     public UIElement icons;
     public UIIcon finish;
     public UIIcon openStateEditor;
+    public UIIcon partsLayout;
 
     public Form form;
 
@@ -184,6 +195,13 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
 
     /** Upper part of the sidebar (toolbar + forms list); shrinks by the body part editor's height. */
     private UIElement listSection;
+
+    /** Width grip of the left sidebar; hidden while the body parts are docked on the right. */
+    private UISplitter treeSplitter;
+
+    /** Content heights the body parts were last fitted to (see {@link #resizeSidebar}). */
+    private int fittedList = -1;
+    private int fittedEditor = -1;
 
     /**
      * Fills the registry. Called by BBS while it initialises, and followed by the event that
@@ -275,10 +293,10 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         this.forms = new UIElement();
 
         /* The tree's share is of the whole editor, measured from its left edge. */
-        UISplitter draggable = UISplitter.fraction("form_editor.tree", 0.1F, 0F, 0.5F);
-        draggable.measure(this.forms, this).onChange(() -> this.forms.w(draggable.getValue()).resize());
+        this.treeSplitter = UISplitter.fraction("form_editor.tree", 0.1F, 0F, 0.5F);
+        this.treeSplitter.measure(this.forms, this).onChange(() -> this.forms.w(this.treeSplitter.getValue()).resize());
 
-        this.forms.relative(this).w(draggable.getValue()).minW(140).h(1F);
+        this.forms.relative(this).w(this.treeSplitter.getValue()).minW(140).h(1F);
 
         this.formsList = new UIForms((l) ->
         {
@@ -315,7 +333,7 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
                 this.area.render(context.batcher, BBSSettings.chromeSurface());
             }
         };
-        listToolbarBg.relative(listSection).xy(0, 0).w(1F).h(20);
+        listToolbarBg.relative(listSection).xy(0, 0).w(1F).h(TOOLBAR_HEIGHT);
         this.addFormList = new UIIcon(Icons.ADD, (b) -> this.addBodyPart(new BodyPart("")));
         this.addFormList.tooltip(UIKeys.FORMS_EDITOR_CONTEXT_ADD);
         this.bodyPartGizmoIcon = new UIIcon(Icons.ALL_DIRECTIONS, (b) -> this.bodyPartGizmo = !this.bodyPartGizmo)
@@ -347,7 +365,7 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         this.removeFormList.tooltip(UIKeys.FORMS_EDITOR_CONTEXT_REMOVE);
 
         UIElement listToolbar = new UIElement();
-        listToolbar.relative(listSection).w(1F).h(20).row(0).padding(0).height(20);
+        listToolbar.relative(listSection).w(1F).h(TOOLBAR_HEIGHT).row(0).padding(0).height(TOOLBAR_HEIGHT);
         for (UIIcon icon : new UIIcon[] {this.addFormList, this.bodyPartGizmoIcon, this.copyFormList, this.pasteFormList, this.removeFormList})
         {
             UIElement cell = new UIElement();
@@ -355,13 +373,18 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
             cell.add(icon);
             listToolbar.add(cell);
         }
-        this.formsList.relative(listSection).y(20).h(1F, -20).w(1F);
+        this.formsList.relative(listSection).y(TOOLBAR_HEIGHT).h(1F, -TOOLBAR_HEIGHT).w(1F);
         listSection.add(listToolbarBg, listToolbar, this.formsList);
 
         /* Pinned to the sidebar's bottom at content height (see resizeSidebar) —
          * the forms list above takes whatever the editor doesn't need. */
         this.bodyPartEditor = new UIBodyPartEditor(this);
         this.bodyPartEditor.relative(this.forms).w(1F).y(1F).h(0).anchorY(1F);
+        this.bodyPartEditor.section.onToggle((section) ->
+        {
+            if (this.getPartsDock() == null) partOpenInSidebar = section.isExpanded();
+            else partOpenDocked = section.isExpanded();
+        });
 
         this.formEditor = new UIElement();
         this.formEditor.full(this);
@@ -421,7 +444,14 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
             }
         };
         this.openStateEditor.tooltip(UIKeys.FORMS_EDITOR_STATES_TOGGLE, Direction.LEFT);
-        this.icons = UI.column(this.openStateEditor, this.finish);
+        this.partsLayout = new UIIcon(Icons.LAYOUT, (b) ->
+        {
+            BBSSettings.formEditorPartsRight.set(!BBSSettings.formEditorPartsRight.get());
+            this.dockParts();
+        });
+        this.partsLayout.highlight(() -> BBSSettings.formEditorPartsRight.get(), Direction.RIGHT);
+        this.partsLayout.tooltip(UIKeys.FORMS_EDITOR_PARTS_RIGHT, Direction.LEFT);
+        this.icons = UI.column(this.partsLayout, this.openStateEditor, this.finish);
         this.icons.relative(this).x(1F, -20).y(1F).w(20).anchorY(1F);
 
         UIRenderable background = new UIRenderable((context) ->
@@ -437,9 +467,9 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
             context.batcher.box(this.area.ex() - 20, this.area.y, this.area.ex(), this.area.ey(), BBSSettings.chromeSurface());
         });
 
-        draggable.relative(this.forms).x(1F).y(0.5F).w(6).h(40).anchor(0.5F, 0.5F);
+        this.treeSplitter.relative(this.forms).x(1F).y(0.5F).w(6).h(40).anchor(0.5F, 0.5F);
 
-        this.forms.add(background, listSection, this.bodyPartEditor, draggable);
+        this.forms.add(background, listSection, this.bodyPartEditor, this.treeSplitter);
         this.formEditor.add(this.forms);
         this.statesEditor.add(backgroundStates, this.openStates, this.plause, this.shiftDuration, this.autoKeyframe, this.statesKeyframes);
         this.add(this.renderer, this.formEditor, this.statesEditor, this.icons);
@@ -557,9 +587,18 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
             return this.statesKeyframes.pickSplinePoint(context) || this.statesKeyframes.clickViewport(context, stencil);
         }
 
+        SplineOverlay.Hit splineHit = context.mouseButton == 0 && this.editor != null ? this.splineOverlay.pick(context.mouseX, context.mouseY) : null;
+
+        /* A model's spline point picked off the rig tab (shown with the rig's debug) opens the tab to edit it. */
+        if (splineHit != null && splineHit.chain() instanceof SplineIK && SplineEditorUtils.owner(splineHit.chain()) == this.editor.form
+            && this.editor instanceof UIModelForm model && this.editor.view != model.rigPanel)
+        {
+            model.setPanel(model.rigPanel);
+        }
+
         if (context.mouseButton == 0 && this.editor != null && this.editor.view instanceof SplineFormTool panel)
         {
-            SplineOverlay.Hit hit = this.splineOverlay.pick(context.mouseX, context.mouseY);
+            SplineOverlay.Hit hit = splineHit;
             if (hit != null && panel.splineSources().contains(hit.chain()))
             {
                 panel.selectSpline(hit.chain());
@@ -611,18 +650,35 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         return super.subKeyPressed(context);
     }
 
-    /** Translation-only handles for a spline control; ordinary form tools retain their mask. */
+    /** Translation-only handles for a spline control; a bone's locked channels drop the handles they hold still. */
     public Gizmo.HandleMask getGizmoHandleMask()
     {
         if (this.statesEditor.isVisible())
         {
-            return SplineEditorUtils.selectedPath(this.statesKeyframes.keyframeEditor) == null ? Gizmo.HandleMask.ALL : SplineEditorUtils.HANDLES;
+            if (SplineEditorUtils.selectedPath(this.statesKeyframes.keyframeEditor) != null)
+            {
+                return SplineEditorUtils.HANDLES;
+            }
+
+            return Gizmo.HandleMask.ALL.locked(this.statesKeyframes.axisLocks(), this.statesKeyframes.getGizmoSpace());
         }
-        if (this.editor != null && this.editor.view instanceof SplineFormTool panel)
+        if (this.editor != null && this.editor.view instanceof SplineFormTool panel && !this.leavesGizmoToPose(panel))
         {
             return panel.getGizmoTransform() == null ? NO_GIZMO_HANDLES : SplineEditorUtils.HANDLES;
         }
-        return Gizmo.HandleMask.ALL;
+
+        UIPropTransform transform = this.editor == null || this.isBodyPartGizmoMode() ? null : this.editor.getEditableTransform();
+
+        return transform == null ? Gizmo.HandleMask.ALL : Gizmo.HandleMask.ALL.locked(transform.axisLocks(), transform.getSpace());
+    }
+
+    /**
+     * Whether a spline tool with no point picked leaves the gizmo to the bones: on a form with a
+     * skeleton (the model's rig tab) it moves the selected bone, on a spline form it does nothing.
+     */
+    private boolean leavesGizmoToPose(SplineFormTool panel)
+    {
+        return panel.getGizmoTransform() == null && this.editor.getPoseEditor() != null;
     }
 
     public void renderSplineOverlay(UIContext context)
@@ -640,7 +696,8 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         var sources = SplineEditorUtils.sourcesInTree(FormUtils.getRoot(this.editor.form));
         for (var chain : sources)
         {
-            if (chain instanceof SplineIK && (panel == null || !panel.splineSources().contains(chain))) continue;
+            /* A model's spline: always on the rig tab that edits it, elsewhere with the rig's debug. */
+            if (chain instanceof SplineIK && (panel == null || !panel.splineSources().contains(chain)) && !BBSSettings.debugOverlay.get()) continue;
             Form owner = SplineEditorUtils.owner(chain);
             Matrix4f parent = SplineEditorUtils.parentMatrix(FormUtils.getRoot(owner), this.renderer.getTargetEntity(), context.getTransition(), owner, chain);
             if (parent == null) continue;
@@ -651,7 +708,6 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
                 panel != null && chain == panel.activeSpline() ? panel.pointEditor().selected() : java.util.Set.of(),
                 panel != null && chain == panel.activeSpline() ? panel.pointEditor().points.hoveredPoint(context) : "");
         }
-        this.splineOverlay.finish(context, this.renderer.area);
         if (panel != null && Window.isCtrlPressed() && !context.isFocused() && !panel.pointEditor().position.isEditing())
             this.splineOverlay.drawInsertionPreview(context, this.renderer.area);
         SplineOverlay.Hit hovered = this.renderer.area.isInside(context) ? this.splineOverlay.pick(context.mouseX, context.mouseY) : null;
@@ -668,7 +724,7 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
     public boolean startGizmo(UIContext context, int stencilIndex)
     {
         if (!this.statesEditor.isVisible() && this.editor != null
-            && this.editor.view instanceof SplineFormTool panel && panel.getGizmoTransform() == null)
+            && this.editor.view instanceof SplineFormTool panel && panel.getGizmoTransform() == null && !this.leavesGizmoToPose(panel))
         {
             return false;
         }
@@ -1143,24 +1199,99 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         this.switchEditor(entry.getForm());
     }
 
+    /** The panel the body parts are docked under, or null while they sit in the left sidebar. */
+    private UIFormPanel getPartsDock()
+    {
+        return BBSSettings.formEditorPartsRight.get() && this.editor != null && this.editor.view instanceof UIFormPanel panel ? panel : null;
+    }
+
     /**
-     * Fit the sidebar around the body part editor's actual content: the editor hugs
-     * the bottom at exactly its content height (capped at half the sidebar, the rest
-     * scrolls), the forms list gets everything above. A hidden editor releases the
-     * whole sidebar to the list — no half reserved for nothing.
+     * Put the body parts where the layout button says: the left sidebar, or under the options of
+     * the open panel at their width. Every panel has options of its own, so a panel switch docks
+     * them again.
+     */
+    public void dockParts()
+    {
+        UIFormPanel dock = this.getPartsDock();
+        UIElement parent = dock == null ? this.formEditor : dock;
+
+        if (this.forms.getParent() != parent)
+        {
+            this.forms.removeFromParent();
+            parent.add(this.forms);
+        }
+
+        this.forms.resetFlex();
+
+        if (dock == null)
+        {
+            this.forms.relative(this).w(this.treeSplitter.getValue()).minW(140).h(1F);
+
+            if (this.editor != null && this.editor.view instanceof UIFormPanel panel)
+            {
+                panel.options.h(1F);
+            }
+        }
+        else
+        {
+            this.forms.relative(dock.options).y(1F).w(1F);
+        }
+
+        this.treeSplitter.setVisible(dock == null);
+        this.bodyPartEditor.section.setExpanded(dock == null ? partOpenInSidebar : partOpenDocked);
+        this.formEditor.resize();
+        this.resizeSidebar();
+    }
+
+    private int listContentHeight()
+    {
+        return this.getPartsDock() == null ? 0 : this.formsList.scroll.scrollSize;
+    }
+
+    private int editorContentHeight()
+    {
+        return this.bodyPartEditor.isVisible() ? this.bodyPartEditor.scroll.scrollSize : 0;
+    }
+
+    /**
+     * Fit the body parts around their actual content. In the sidebar the editor hugs the
+     * bottom at exactly its content height (capped at half the sidebar, the rest scrolls) and
+     * the forms list gets everything above; a hidden editor releases the whole sidebar to the
+     * list — no half reserved for nothing. Docked under the options, the list hugs its rows too
+     * and the block grows into the options, leaving them a squeezed dock panel's height; past
+     * that the list scrolls (down to one row) before the editor does.
      */
     private void resizeSidebar()
     {
-        int h = 0;
+        UIFormPanel dock = this.getPartsDock();
+        int list = this.listContentHeight();
+        int editor = this.editorContentHeight();
+        int h;
 
-        if (this.bodyPartEditor.isVisible())
+        this.fittedList = list;
+        this.fittedEditor = editor;
+
+        if (dock == null)
         {
-            h = Math.min((int) this.bodyPartEditor.scroll.scrollSize, this.forms.area.h / 2);
+            h = Math.min(editor, this.forms.area.h / 2);
+        }
+        else
+        {
+            int room = Math.max(this.area.h - UIDockLayout.MIN_PANEL_SIZE_PX - TOOLBAR_HEIGHT, 0);
+            int listH;
+            int total;
+
+            h = Math.min(editor, Math.max(room - Math.min(list, this.formsList.scroll.scrollItemSize), 0));
+            listH = Math.min(list, room - h);
+            total = TOOLBAR_HEIGHT + listH + h;
+
+            this.forms.h(total);
+            dock.options.h(1F, -total);
         }
 
         this.bodyPartEditor.h(h);
         this.listSection.h(1F, -h);
-        this.forms.resize();
+        (dock == null ? this.forms : dock).resize();
     }
 
     public void openFormList(Form current, Consumer<Form> callback)
@@ -1409,6 +1540,13 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         if (this.undoHandler != null)
         {
             this.undoHandler.submitUndo();
+        }
+
+        /* Parts come and go, the part's section folds, Alt+wheel rescales the rows: refit the
+         * body parts to whatever their content became before they are drawn. */
+        if (this.listContentHeight() != this.fittedList || this.editorContentHeight() != this.fittedEditor)
+        {
+            this.resizeSidebar();
         }
 
         super.render(context);

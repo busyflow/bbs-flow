@@ -2,13 +2,19 @@ package mchorse.bbs_mod.cubic.ik;
 
 import mchorse.bbs_mod.cubic.IModel;
 import mchorse.bbs_mod.cubic.ModelInstance;
-import mchorse.bbs_mod.cubic.spline.ModelSplineRuntime;
+import mchorse.bbs_mod.cubic.rig.RigClaim;
+import mchorse.bbs_mod.cubic.rig.RigClaim.Hold;
+import mchorse.bbs_mod.cubic.rig.RigClaim.Part;
+import mchorse.bbs_mod.cubic.rig.RigOwners;
+import mchorse.bbs_mod.cubic.rig.RigStep;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.forms.utils.FormBone;
+import mchorse.bbs_mod.settings.values.base.BaseValue;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Collections;
@@ -51,8 +57,6 @@ public final class ModelIKRuntime
 
         for (ModelIKCache.CompiledChain chain : chains)
         {
-            FormBone bone = form.bones.getBone(chain.tip());
-
             controls.put(chain.tip(), form.ik.get().get(chain.tip()));
         }
 
@@ -127,61 +131,53 @@ public final class ModelIKRuntime
     }
 
     /**
-     * Whether the bone's ROTATION is owned by an enabled IK chain: the render
-     * follows the solved orientation there, so an FK rotation gesture has no
-     * honest response to offer — the gizmo refuses those and dims its rings.
-     * The FK channels stay editable through the pads (they remain the blend
-     * base and the pose IK falls back to when it's off). The chain tip counts
-     * only when the chain also solves tip rotation. The scalars are read live
-     * from the bone's {@code ik} property, so a film track that disables or
-     * zeroes a chain for the current tick frees its bones automatically.
+     * The IK step's hand on the form's bones (see {@link RigOwners}): every chain the form sets up,
+     * its links and the tip it lives on, its target and, with the pole on, its pole. A chain acts
+     * when it compiles, is switched on and has a weight — the scalars read live, so a film track that
+     * switches a chain off for the current tick frees its bones. It sets the rotation of every bone
+     * of it but the tip, which rides the chain on its own rotation unless the chain solves that too.
      */
-    public static boolean isRotationConstrained(IModel model, ModelForm form, String bone)
+    public static void claim(IModel model, ModelForm form, RigOwners owners)
     {
-        if (model == null || form == null || bone == null || bone.isEmpty())
-        {
-            return false;
-        }
-
-        if (ModelSplineRuntime.isRotationConstrained(model, form, bone))
-        {
-            return true;
-        }
-
         ModelIKCache.Compiled compiled = ModelIKCache.compile(model, form);
+        Set<String> compiling = new HashSet<>();
 
-        if (compiled == null || compiled.chains() == null)
+        if (compiled != null && compiled.chains() != null)
         {
-            return false;
-        }
-
-        for (ModelIKCache.CompiledChain chain : compiled.chains())
-        {
-            if (chain == null || chain.chainRootToEffector() == null)
+            for (ModelIKCache.CompiledChain chain : compiled.chains())
             {
-                continue;
-            }
-
-            FormBone tipBone = form.bones.getBone(chain.tip());
-            IKControl control = tipBone == null ? IKControl.DEFAULT : tipBone.ik.get();
-
-            if (!control.enabled || control.weight <= 0F)
-            {
-                continue;
-            }
-
-            if (!chain.chainRootToEffector().contains(bone))
-            {
-                continue;
-            }
-
-            if (!bone.equals(chain.tip()) || chain.tipRotation())
-            {
-                return true;
+                compiling.add(chain.tip());
             }
         }
 
-        return false;
+        for (BaseValue value : form.bones.getAll())
+        {
+            if (!(value instanceof FormBone bone) || !bone.hasChain())
+            {
+                continue;
+            }
+
+            String tip = bone.getId();
+            IKControl control = bone.ik.get();
+            List<String> chain = ModelIKCache.chainIdsFor(model, tip, bone.ikChainLength.get());
+            boolean on = control.enabled;
+            boolean live = on && control.weight > 0F && compiling.contains(tip);
+
+            for (String id : chain)
+            {
+                boolean home = id.equals(tip);
+                Hold hold = home && !bone.ikTipRotation.get() ? Hold.FOLLOWS : Hold.DRIVES;
+
+                owners.add(new RigClaim(RigStep.IK, id, tip, home ? Part.HOME : Part.LINK, hold, chain, on, live));
+            }
+
+            owners.reads(RigStep.IK, bone.ikTarget.get(), tip, Part.TARGET, chain, on, live);
+
+            if (control.pole)
+            {
+                owners.reads(RigStep.IK, bone.ikPoleTarget.get(), tip, Part.POLE, chain, on, live);
+            }
+        }
     }
 
     /**

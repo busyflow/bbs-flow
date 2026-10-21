@@ -19,7 +19,20 @@ public abstract class DataManager
         this.data = new MapType();
     }
 
+    /** The presets listed for the group: its file's, unless a manager lists more alongside. */
     public MapType getData(String group)
+    {
+        return this.load(group);
+    }
+
+    /** What a listed preset is called in the list: its key, unless a manager keyed it apart from a same-named one. */
+    public String getLabel(String group, String key)
+    {
+        return key;
+    }
+
+    /** The group's own file as loaded: what saving and removing write back. */
+    protected final MapType load(String group)
     {
         MapType newData;
 
@@ -76,7 +89,7 @@ public abstract class DataManager
             return false;
         }
 
-        MapType presets = this.getData(group);
+        MapType presets = this.load(group);
         File file = BBSMod.getProvider().getFile(this.getFile(group));
 
         if (!presets.has(key) || file == null)

@@ -1,8 +1,6 @@
 package mchorse.bbs_mod.ui.utils;
 
-import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.cubic.spline.SplineCurve;
-import mchorse.bbs_mod.cubic.spline.SplineIK;
 import mchorse.bbs_mod.cubic.spline.SplineSource;
 import mchorse.bbs_mod.cubic.spline.SplinePoint;
 import mchorse.bbs_mod.ui.framework.UIContext;
@@ -16,11 +14,21 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Collection;
 import mchorse.bbs_mod.utils.colors.Colors;
-import mchorse.bbs_mod.l10n.L10n;
 
-/** Screen-space spline handles shared by the form, state and film viewports. */
+/**
+ * Screen-space spline handles shared by the form, state and film viewports: the curve as a plain line
+ * and its points as small squares, the picked ones white and the one under the cursor lighter; with
+ * Ctrl over the curve, a square the same as a point marks where a click puts a new one.
+ */
 public class SplineOverlay
 {
+    private static final int LINE_COLOR = 0xFF4A78AD;
+    private static final int POINT_COLOR = 0xFF79BBFF;
+    private static final int HOVER_COLOR = 0xFFB7DCFF;
+    private static final int POINT_SIZE = 3;
+    /** How near the cursor (squared, in pixels) a point answers to it: lights up and takes the click. */
+    private static final float PICK_DISTANCE = 100;
+
     public record Hit(SplineSource chain, SplinePoint point, float x, float y, float depth) {}
     public record CurveHit(SplineSource chain, int after, Vector3f position, float x, float y, float depth, float distance) {}
 
@@ -39,19 +47,13 @@ public class SplineOverlay
         for (Vector3f sample : SplineCurve.sample(points, 20, source.closed()))
         {
             Vector3f current = matrix.transformPosition(new Vector3f(sample));
-            if (previous != null)
-            {
-                line(context, previous, current, 0xAA111820, 2F);
-                line(context, previous, current, 0xFF79BBFF, 0.85F);
-            }
+            if (previous != null) line(context, previous, current, LINE_COLOR, 0.85F);
             previous = current;
         }
         for (Vector3f point : points)
         {
             Vector3f position = matrix.transformPosition(new Vector3f(point));
-            if (!position.isFinite()) continue;
-            context.batcher.box(position.x - 3, position.y - 3, position.x + 3, position.y + 3, 0xFF15212B);
-            context.batcher.box(position.x - 2, position.y - 2, position.x + 2, position.y + 2, 0xFF79BBFF);
+            if (position.isFinite()) square(context, position.x, position.y, POINT_COLOR);
         }
     }
 
@@ -68,10 +70,9 @@ public class SplineOverlay
         /* The shortcut can hide the overlay between its last draw and the next click. */
         if (!UIBaseMenu.shouldRenderAxes()) return null;
         Hit best = null;
-        float distance = 100;
+        float distance = PICK_DISTANCE;
         for (Hit hit : this.handles)
         {
-            if (hit.chain instanceof SplineIK && !BBSSettings.ikDebug.enabled.get()) continue;
             float d = (hit.x - x) * (hit.x - x) + (hit.y - y) * (hit.y - y);
             if (d < distance || (d == distance && best != null && hit.depth < best.depth))
             {
@@ -94,23 +95,16 @@ public class SplineOverlay
     public void draw(UIContext context, Matrix4f parentModelView, Matrix4f projection, Area viewport, SplineSource chain,
         Collection<String> selectedPointIds, String hoveredPointId)
     {
-        if (chain instanceof SplineIK && !BBSSettings.ikDebug.enabled.get()) return;
         Matrix4f matrix = new Matrix4f(projection).mul(parentModelView);
         List<Vector3f> positions = new ArrayList<>();
         for (SplinePoint point : chain.points().getAllTyped()) positions.add(new Vector3f(chain.position(point.getId()).translate));
         if (positions.isEmpty()) return;
-        int color = selectedPointIds.isEmpty() ? 0xFF6599CF : 0xFF79BBFF;
         context.batcher.clip(viewport, context);
         Vector3f previous = null;
-        List<Vector3f> sampled = SplineCurve.sample(positions, 20, chain.closed());
-        for (Vector3f point : sampled)
+        for (Vector3f point : SplineCurve.sample(positions, 20, chain.closed()))
         {
             Vector3f current = project(matrix, viewport, point);
-            if (previous != null && current != null)
-            {
-                line(context, previous, current, 0xAA111820, 2F);
-                line(context, previous, current, color, 0.85F);
-            }
+            if (previous != null && current != null) line(context, previous, current, LINE_COLOR, 0.85F);
             previous = current;
         }
         if (viewport.isInside(context) && positions.size() > 1)
@@ -118,52 +112,23 @@ public class SplineOverlay
             CurveHit hit = findCurveHit(chain, positions, matrix, viewport, context.mouseX, context.mouseY);
             if (hit != null && (this.curveHit == null || hit.distance < this.curveHit.distance
                 || (Math.abs(hit.distance - this.curveHit.distance) < 0.5F && hit.depth < this.curveHit.depth))) this.curveHit = hit;
-            if (hit != null)
-            {
-                int start = hit.after * 20;
-                for (int i = start + 1; i <= Math.min(start + 20, sampled.size() - 1); i++)
-                {
-                    Vector3f a = project(matrix, viewport, sampled.get(i - 1));
-                    Vector3f b = project(matrix, viewport, sampled.get(i));
-                    if (a != null && b != null) line(context, a, b, 0xFFB7DCFF, 1.25F);
-                }
-            }
         }
         for (SplinePoint point : chain.points().getAllTyped())
         {
             Vector3f p = project(matrix, viewport, chain.position(point.getId()).translate);
             if (p == null || !viewport.isInside((int) p.x, (int) p.y)) continue;
-            boolean selected = selectedPointIds.contains(point.getId());
-            boolean hover = point.getId().equals(hoveredPointId);
-            float radius = selected ? 4 : 3;
-            context.batcher.box(p.x - radius - 1, p.y - radius - 1, p.x + radius + 1, p.y + radius + 1, 0xFF15212B);
-            context.batcher.box(p.x - radius, p.y - radius, p.x + radius, p.y + radius, selected ? Colors.WHITE : color);
-            if (selected || hover) context.batcher.outline(p.x - radius - 3, p.y - radius - 3,
-                p.x + radius + 3, p.y + radius + 3, hover ? Colors.WHITE : 0xFF5599FF);
+            float dx = p.x - context.mouseX, dy = p.y - context.mouseY;
+            boolean hover = point.getId().equals(hoveredPointId) || (viewport.isInside(context) && dx * dx + dy * dy < PICK_DISTANCE);
+            square(context, p.x, p.y, selectedPointIds.contains(point.getId()) ? Colors.WHITE : hover ? HOVER_COLOR : POINT_COLOR);
             this.handles.add(new Hit(chain, point, p.x, p.y, p.z));
         }
-        context.batcher.unclip(context);
-    }
-
-    /** All chains have been collected: label the closest handle only. */
-    public void finish(UIContext context, Area viewport)
-    {
-        if (!viewport.isInside(context)) return;
-        Hit hit = this.pick(context.mouseX, context.mouseY);
-        if (hit == null) return;
-        context.batcher.clip(viewport, context);
-        context.batcher.outline(hit.x - 8, hit.y - 8, hit.x + 8, hit.y + 8, Colors.WHITE);
-        String label = SplinePoint.displayName(hit.chain.points().getAllTyped().indexOf(hit.point) + 1);
-        float x = Math.min(hit.x + 13, viewport.ex() - context.batcher.getFont().getWidth(label) - 6);
-        float y = Math.max(viewport.y + 4, hit.y - 18);
-        context.batcher.textShadow(label, x, y, Colors.WHITE);
         context.batcher.unclip(context);
     }
 
     public CurveHit insertionAt(int x, int y)
     {
         if (!UIBaseMenu.shouldRenderAxes()) return null;
-        if (this.curveHit == null || (this.curveHit.chain instanceof SplineIK && !BBSSettings.ikDebug.enabled.get()) || this.pick(x, y) != null) return null;
+        if (this.curveHit == null || this.pick(x, y) != null) return null;
         float dx = this.curveHit.x - x, dy = this.curveHit.y - y;
         return dx * dx + dy * dy <= 64F ? this.curveHit : null;
     }
@@ -174,15 +139,14 @@ public class SplineOverlay
         CurveHit hit = this.insertionAt(context.mouseX, context.mouseY);
         if (hit == null) return;
         context.batcher.clip(viewport, context);
-        context.batcher.box(hit.x - 7, hit.y - 7, hit.x + 7, hit.y + 7, 0xD015212B);
-        context.batcher.outline(hit.x - 7, hit.y - 7, hit.x + 7, hit.y + 7, 0xFF79BBFF);
-        context.batcher.box(hit.x - 4, hit.y - 1, hit.x + 4, hit.y + 1, Colors.WHITE);
-        context.batcher.box(hit.x - 1, hit.y - 4, hit.x + 1, hit.y + 4, Colors.WHITE);
-        String label = L10n.lang("bbs.ui.forms.editors.model.spline.insert_point").get();
-        float x = Math.max(viewport.x + 4, Math.min(hit.x + 13, viewport.ex() - context.batcher.getFont().getWidth(label) - 6));
-        float y = Math.max(viewport.y + 4, hit.y - 18);
-        context.batcher.textShadow(label, x, y, Colors.WHITE);
+        square(context, hit.x, hit.y, POINT_COLOR);
         context.batcher.unclip(context);
+    }
+
+    /** A point's mark: the new point a Ctrl click would put there looks the same as the ones already there. */
+    private static void square(UIContext context, float x, float y, int color)
+    {
+        context.batcher.box(x - POINT_SIZE, y - POINT_SIZE, x + POINT_SIZE, y + POINT_SIZE, color);
     }
 
     /** Search in screen space, but evaluate the returned point on the actual 3D curve. */

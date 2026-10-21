@@ -1,8 +1,11 @@
 package mchorse.bbs_mod.film.replays.tracks;
 
 import java.util.Objects;
+import mchorse.bbs_mod.l10n.L10n;
 import mchorse.bbs_mod.l10n.keys.IKey;
 
+import mchorse.bbs_mod.cubic.rig.RigStep;
+import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.entities.EntityState;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
@@ -13,9 +16,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * What each kind of track looks like in a timeline: its colour and its icon.
+ * What each kind of track looks like in a timeline: its colour, its icon and its name.
  *
- * <p>Both are keyed by the last segment of a track's address — the property's own name — so the same
+ * <p>All three are keyed by the last segment of a track's address — the property's own name — so the same
  * kind of thing wears the same colour and icon wherever it appears, on any form and in any film.
  * These tables used to sit inside the replay editor panel, which made every other timeline ask a
  * panel what a track should look like.</p>
@@ -26,6 +29,9 @@ public class TrackStyle
     private static final Map<String, Icon> ICONS = new HashMap<>();
     private static final Map<String, IKey> LABELS = new HashMap<>();
 
+    /** The overlays a form can stack: the first is named plainly, the ones the settings add get a number. */
+    private static final String[] OVERLAYS = {"pose_overlay", "transform_overlay"};
+
     public static void registerLabel(String property, IKey label)
     {
         LABELS.put(property, Objects.requireNonNull(label));
@@ -34,8 +40,48 @@ public class TrackStyle
     /** Labels never change serialized addresses. IKey remains live across language reloads. */
     public static IKey label(TrackId id)
     {
-        return id.kind() == TrackKind.PROPERTY && LABELS.containsKey(id.subject())
-            ? LABELS.get(id.subject()) : IKey.constant(id.label());
+        return switch (id.kind())
+        {
+            case PROPERTY -> label(id.subject());
+            case MATERIAL_PROP -> materialLabel(id.material(), label(id.property()));
+            case BONE_CONSTRAINT, IK_TARGET, POLE_TARGET, PHYSICS_TARGET -> kindLabel(id.kind()).format(id.subject());
+            case IK_CONTROLS, PHYSICS_CONTROLS, WIND_CONTROLS -> kindLabel(id.kind());
+            default -> IKey.constant(id.label());
+        };
+    }
+
+    /** What a property is called in a timeline, by its own name — the last segment of a track's address. */
+    public static IKey label(String property)
+    {
+        IKey label = LABELS.get(property);
+
+        if (label != null)
+        {
+            return label;
+        }
+
+        for (String overlay : OVERLAYS)
+        {
+            String number = property.startsWith(overlay) ? property.substring(overlay.length()) : "";
+
+            if (number.matches("[0-9]{1,4}"))
+            {
+                return L10n.lang("bbs.ui.timeline." + overlay + "_number").format(Integer.parseInt(number) + 1);
+            }
+        }
+
+        return IKey.constant(property);
+    }
+
+    /** A material's own properties keep its name in front; the whole-form level names nothing. */
+    private static IKey materialLabel(String material, IKey property)
+    {
+        return material.isEmpty() ? property : () -> material + FormUtils.PATH_SEPARATOR + property.get();
+    }
+
+    private static IKey kindLabel(TrackKind kind)
+    {
+        return L10n.lang("bbs.ui.timeline.kind." + kind.key);
     }
 
     /**
@@ -60,12 +106,19 @@ public class TrackStyle
     {
         setupColors();
         setupIcons();
-        register("ik", Icons.IK, Colors.WHITE);
-        register("physics", Icons.PHYSICS, 0x9d6cff);
-        register("wind", Icons.PARTICLE, Colors.ORANGE);
-        /* The camera shake clip's icon and colour: the same thing, done to bones. */
-        register("shake", Icons.EXCHANGE, 0x159e64);
-        register("spline_ik", Icons.GRAPH, Colors.BLUE);
+        setupLabels();
+
+        /* The rig's tracks look the way the rig describes them (the shake wears the camera shake
+         * clip's icon and colour: the same thing, done to bones). */
+        for (RigStep step : RigStep.values())
+        {
+            for (RigStep.Track track : step.tracks)
+            {
+                register(track.id(), track.icon(), track.color());
+                LABELS.put(track.id(), track.label());
+            }
+        }
+
         register("curve", Icons.GRAPH, Colors.BLUE);
     }
 
@@ -170,10 +223,9 @@ public class TrackStyle
         putIcons(Icons.Y, "y", "vY", "offsetY", "offset_y", "anchorY");
         putIcons(Icons.Z, "z", "vZ", "offset_z");
 
-        /* Rotations, by the plane they turn in */
-        /* Two pairs, each pair alike: the actor's own yaw and pitch, then the head's and the body's. */
-        putIcons(Icons.VERTICAL, "yaw", "pitch", "scattering_pitch");
-        putIcons(Icons.HORIZONTAL, "headYaw", "bodyYaw", "scattering_yaw", "max");
+        /* Rotations, by the plane they turn in: every yaw turns sideways, every pitch up and down. */
+        putIcons(Icons.VERTICAL, "pitch", "scattering_pitch");
+        putIcons(Icons.HORIZONTAL, "yaw", "headYaw", "bodyYaw", "scattering_yaw", "max");
         ICONS.put("rotation", Icons.ORBIT);
 
         /* Movement and state of the actor */
@@ -186,6 +238,10 @@ public class TrackStyle
         ICONS.put("velocity", Icons.ARROW_RIGHT);
         ICONS.put("leaning", Icons.ARC);
         ICONS.put("roll", Icons.ORBIT);
+
+        /* The camera: its view cone, and how far it backs off from the point it looks at */
+        ICONS.put("fov", Icons.FRUSTUM);
+        ICONS.put("distance", Icons.MOVE_TO);
 
         /* The form itself */
         ICONS.put("visible", Icons.VISIBLE);
@@ -252,6 +308,59 @@ public class TrackStyle
 
         /* Not an item but the pointer at one */
         ICONS.put("selected_slot", Icons.POINTER);
+    }
+
+    /**
+     * The built-in names, keyed like the colours and icons so a property is called the same on every
+     * form. An addon's {@link #registerLabel(String, IKey)} comes after and may rename any of them.
+     */
+    private static void setupLabels()
+    {
+        putLabels("bbs.ui.timeline.properties.",
+            /* The recording */
+            "x", "y", "z", "vX", "vY", "vZ", "yaw", "pitch", "headYaw", "bodyYaw", "anchor",
+            "sneaking", "sprinting", "grounded", "swimming", "riding", "flying", "gliding", "damage",
+            "hotbar", "selected_slot", "item_off_hand", "item_head", "item_chest", "item_legs", "item_feet",
+            "stick_lx", "stick_ly", "stick_rx", "stick_ry", "trigger_l", "trigger_r",
+            "extra1_x", "extra1_y", "extra2_x", "extra2_y",
+            /* Forms */
+            "texture", "model", "actions", "billboard", "shading", "crop", "block_state", "item_stack",
+            "modelTransform", "scale", "mobId", "mobNbt", "slim", "length", "loop", "paused",
+            "offsetX", "offsetY", "rotation", "video", "videoOffset", "structure", "biome", "effect",
+            "useTarget", "origin", "local", "linear", "mipmap", "additive_color", "width", "height",
+            "shaderShadow", "render_last", "render_layer",
+            "hitbox", "hitboxEyeHeight", "hitboxHeight", "hitboxWidth", "hitboxSneakMultiplier", "hp",
+            "movement_speed", "step_height", "inheritPosition", "inheritRotation", "inheritScale",
+            /* The label */
+            "text", "font", "fontSize", "lineHeight", "anchorX", "anchorY", "anchorLines",
+            "shadowX", "shadowY", "shadowColor", "background", "offset",
+            /* Particles */
+            "settings", "frequency", "count", "max", "velocity", "scattering_pitch", "scattering_yaw",
+            "offset_x", "offset_y", "offset_z", "leaning", "roll",
+            "user1", "user2", "user3", "user4", "user5", "user6",
+            /* The rig's CEM states; the steps' own tracks are named by the rig itself, see setup() */
+            "cem_aggressive", "cem_burning", "cem_climbing", "cem_crawling", "cem_health",
+            "cem_in_lava", "cem_on_shoulder", "cem_sitting", "cem_tamed",
+            /* Splines */
+            "curve", "repeatEnabled", "repeatMode", "repeatCount", "repeatDistance", "repeatRotation",
+            "repeatStart", "repeatEnd", "repeatOffset");
+
+        /* The same names the form's own appearance tracks go by. */
+        putLabels("bbs.ui.timeline.material.", TrackId.MATERIAL_PROPS_ALL);
+
+        LABELS.put("pose", L10n.lang("bbs.ui.timeline.whole_pose"));
+        LABELS.put("transform", L10n.lang("bbs.ui.timeline.base_transform"));
+        LABELS.put("shape_keys", L10n.lang("bbs.ui.timeline.shape_keys"));
+
+        for (String overlay : OVERLAYS)
+        {
+            LABELS.put(overlay, L10n.lang("bbs.ui.timeline." + overlay));
+        }
+    }
+
+    private static void putLabels(String prefix, String... keys)
+    {
+        for (String key : keys) LABELS.put(key, L10n.lang(prefix + key));
     }
 
     public static Icon icon(String key)

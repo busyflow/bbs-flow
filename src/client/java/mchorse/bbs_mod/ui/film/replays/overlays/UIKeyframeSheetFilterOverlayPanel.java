@@ -32,6 +32,12 @@ public class UIKeyframeSheetFilterOverlayPanel extends UIOverlayPanel
 
     public UIKeyframeSheetFilterOverlayPanel(Set<String> disabled, Set<String> keys, Map<String, Integer> keyToColor)
     {
+        this(disabled, keys, keyToColor, null);
+    }
+
+    /** {@code keyToTitle} names the toggles the way the timeline names the rows; a key missing from it shows as is. */
+    public UIKeyframeSheetFilterOverlayPanel(Set<String> disabled, Set<String> keys, Map<String, Integer> keyToColor, Map<String, IKey> keyToTitle)
+    {
         super(UIKeys.FILM_REPLAY_FILTER_SHEETS_TITLE);
 
         /* Expand the legacy "hide everything" sentinel into concrete keys so the toggles below stay consistent. */
@@ -79,7 +85,8 @@ public class UIKeyframeSheetFilterOverlayPanel extends UIOverlayPanel
                 ? keyToColor.get(key)
                 : BBSSettings.trackStyles.color(key, UIReplaysEditor.getColor(key));
             /* Show the user's name for the track, so a renamed row is recognizable here too */
-            String label = BBSSettings.trackStyles.name(key, key);
+            IKey title = keyToTitle == null ? null : keyToTitle.get(key);
+            String label = BBSSettings.trackStyles.name(key, title == null ? key : title.get());
             UIToggle toggle = new UICoolToggle(key, IKey.constant(label), color, (b) ->
             {
                 if (disabled.contains(key))

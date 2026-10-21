@@ -8,7 +8,6 @@ import mchorse.bbs_mod.settings.values.IValueListener;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.utils.context.ContextMenuManager;
-import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.IUIKeyframeGraph;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeDopeSheet;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeGraph;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.overlays.UIKeyframeLoopOverlay;
@@ -87,7 +86,7 @@ public class UIKeyframeLoops
 
     private Hit hit(UIContext context)
     {
-        if (!this.view.graphArea.isInside(context) || context.mouseY < this.view.area.y + IUIKeyframeGraph.TOP_MARGIN) return null;
+        if (!this.view.graphArea.isInside(context) || context.mouseY < this.view.area.y + this.view.getTopMargin()) return null;
         boolean dope = !this.view.isEditing();
         List<UIKeyframeSheet> sheets = new ArrayList<>(this.view.getOperationSheets());
         UIKeyframeSheet active = this.view.getPickedSheet();
@@ -100,7 +99,7 @@ public class UIKeyframeLoops
         for (UIKeyframeSheet sheet : sheets)
         {
             if (dope && sheet != row) continue;
-            int y = dope ? this.view.getDopeSheet().getDopeSheetY(sheet) : this.view.area.y + IUIKeyframeGraph.TOP_MARGIN;
+            int y = dope ? this.view.getDopeSheet().getDopeSheetY(sheet) : this.view.area.y + this.view.getTopMargin();
             int height = dope ? this.view.getDopeSheet().getTrackHeight(sheet) : 16;
             for (Object entry : sheet.channel.getLoops())
             {
@@ -352,7 +351,7 @@ public class UIKeyframeLoops
             context.requestCursor(GLFW.GLFW_HRESIZE_CURSOR);
         }
         boolean dope = this.view.getGraph() == this.view.getDopeSheet();
-        int rulerBottom = this.view.area.y + IUIKeyframeGraph.TOP_MARGIN;
+        int rulerBottom = this.view.area.y + this.view.getTopMargin();
         context.batcher.clipBox(this.view.graphArea.x, rulerBottom, this.view.graphArea.ex(), this.view.graphArea.ey(), context);
         for (UIKeyframeSheet sheet : this.view.getOperationSheets())
         {

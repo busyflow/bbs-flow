@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.api.client.editor;
 
+import mchorse.bbs_mod.cubic.rig.RigStep;
 import mchorse.bbs_mod.film.replays.tracks.TrackId;
 import mchorse.bbs_mod.film.replays.tracks.TrackKind;
 import mchorse.bbs_mod.l10n.L10n;
@@ -50,7 +51,7 @@ public final class TrackCategories
         if (kind != null)
         {
             if (kind == TrackKind.PROPERTY && (track.subject().startsWith("splines/")
-                || Set.of("ik", "physics", "spline_ik", "wind", "shake").contains(track.subject())))
+                || RigStep.ofTrack(track.subject()) != null))
             {
                 return TrackCategory.FORM;
             }

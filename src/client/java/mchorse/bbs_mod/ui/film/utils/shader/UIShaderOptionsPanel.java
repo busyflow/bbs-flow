@@ -1,85 +1,59 @@
 package mchorse.bbs_mod.ui.film.utils.shader;
 
-import mchorse.bbs_mod.camera.clips.misc.CurveClip;
-import mchorse.bbs_mod.film.Film;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
-import mchorse.bbs_mod.ui.film.UIFilmPanel;
-import mchorse.bbs_mod.ui.film.clips.UICurveClip;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.UIScrollView;
-import mchorse.bbs_mod.ui.framework.elements.UISection;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIButton;
 import mchorse.bbs_mod.ui.framework.elements.input.text.UITextbox;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIMessageOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
+import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIText;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.UIConstants;
-import mchorse.bbs_mod.ui.utils.context.ContextMenuManager;
 import mchorse.bbs_mod.ui.utils.context.UIChoiceMenu;
-import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.resizers.layout.LabelRowResizer;
-import mchorse.bbs_mod.utils.clips.Clip;
-import mchorse.bbs_mod.utils.colors.Color;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.iris.ShaderCurves;
 import mchorse.bbs_mod.utils.iris.ShaderMenu;
 import mchorse.bbs_mod.utils.iris.ShaderOptions;
-import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * What a curve clip can animate, as two sections of the clip's properties: the world's curves
- * ({@link #world}), and this one with the options of the shader pack that's on (picking the pack is
- * F6's), laid out the way Iris' own menu lays them out (screens, the way back up, a search through
- * all of it), one option per row with a control that suits it. The pack's name is in the section's
- * title, and its profile is a row of its own above the options, wherever the pack's menu puts it.
+ * The settings of the shader pack that's on, opened from the utility panel (F6), laid out the way
+ * Iris' own menu lays them out (screens, the way back up, a search through all of it), one option
+ * per row with a control that suits it. The pack's name is in the title, and its profile is a row
+ * of its own above the options, wherever the pack's menu puts it.
  *
  * <ul>
  *     <li>An option the pack turned into a uniform ({@link ShaderCurves#getCurvable()}) changes at
  *     once, with no reload.</li>
  *     <li>Any other one needs the pack reloaded: its changes pile up, and the bar at the bottom
- *     applies them all with one reload, or drops them.</li>
- *     <li>Right click on an animatable option or a curve of the world makes a curve for it in the
- *     clip, starting from the value it has now. From then on its track sets it: a row a curve of
- *     the film sets at the playhead shows the curve's value there, and can't be changed here.</li>
+ *     applies them all with one reload, or drops them. Closing the panel applies what's left, the
+ *     way Iris' menu does.</li>
  * </ul>
  *
- * <p>The section takes whatever height the clip's properties have left, and the options scroll in
- * it under the search. The film editor has one panel, which moves into whichever curve clip is
- * picked ({@link #attach}), so the screen on show, the search, the folds and the changes waiting
- * for a reload stay from one clip to the next. After every load of the pack the panel reads the
- * menu again, since what options there are and which of them can be animated may change, down to
- * the pack's fallback builds. Iris is reached through {@link ShaderOptions} only, so the panel
- * works (and says Iris is missing) without it.</p>
+ * <p>After every load of the pack the panel reads the menu again, since what options there are
+ * and which of them can be animated may change, down to the pack's fallback builds. Iris is reached
+ * through {@link ShaderOptions} only, so the panel works (and says Iris is missing) without it.
+ * Curves are not its business: they are made in the curve clip's picker.</p>
  */
-public class UIShaderPanel extends UISection
+public class UIShaderOptionsPanel extends UIOverlayPanel
 {
-    /** Least height of the options list; whatever the clip's properties have spare goes on top */
-    private static final int LIST_HEIGHT = 120;
+    private static final int PADDING = 6;
     private static final int GAP = 4;
 
     /** The panel's own page with the animatable options the pack's menu leaves out */
     private static final String NOT_IN_MENU = "#not_in_menu";
-
-    private final UIFilmPanel filmPanel;
-
-    /** The section with the world's curves, which goes above this one */
-    public final UISection world;
-
-    /** The curve clip the panel is in: the one its curves are made for */
-    private UICurveClip owner;
 
     private ShaderMenu menu;
     private ShaderMenuBrowser browser = new ShaderMenuBrowser(null, Collections.emptyMap());
@@ -88,18 +62,12 @@ public class UIShaderPanel extends UISection
     private List<ShaderMenu.Cell> notInMenu = Collections.emptyList();
     private String pack = "";
     private boolean failed;
-    private int revision = -1;
+    private int revision;
 
     /** Values of options that need a reload, waiting for the bar's Apply */
     private final Map<String, String> pending = new LinkedHashMap<>();
 
-    /** Values the film's curves give at the playhead, by channel id, found every frame */
-    private final Map<String, Double> curves = new HashMap<>();
-
-    /** Ids of the colour curves the film has at the playhead */
-    private final Set<String> colorCurves = new HashSet<>();
-
-    public final UITextbox search;
+    private final UITextbox search;
 
     private final UIElement profile;
     private final UIShaderScreenTitle screenTitle;
@@ -107,35 +75,25 @@ public class UIShaderPanel extends UISection
     private final UIText status;
     private final UIElement bar;
 
-    public UIShaderPanel(UIFilmPanel filmPanel)
+    public UIShaderOptionsPanel()
     {
-        super(UIKeys.CAMERA_PANELS_CURVES_SHADER_SECTION);
+        super(UIKeys.UTILITY_SHADER_OPTIONS);
 
-        this.filmPanel = filmPanel;
-        this.title((IKey) this::sectionTitle);
-
-        this.world = new UISection(UIKeys.CAMERA_PANELS_CURVES_WORLD);
-
-        for (WorldCurve curve : WorldCurve.all())
-        {
-            this.world.fields.add(new UIWorldCurveRow(this, curve));
-        }
+        this.title.label = (IKey) this::panelTitle;
 
         UIButton profile = new UIButton(() -> this.browser.profileLabel(this.currentProfile()), (b) -> this.openProfiles());
 
         this.profile = new UIElement();
-        LabelRowResizer.apply(this.profile, UIShaderOptionRow.CONTROL_WIDTH, true);
+        LabelRowResizer.apply(this.profile, UIShaderOptionRow.CONTROL_WIDTH, false);
         this.profile.add(new UIShaderRowName(UIKeys.CAMERA_PANELS_SHADER_PROFILE::get, () -> Colors.WHITE, null), profile);
 
         this.search = new UITextbox(100, this::filter);
         this.search.placeholder(UIKeys.GENERAL_SEARCH);
-        this.search.h(UIConstants.CONTROL_HEIGHT);
 
         this.screenTitle = new UIShaderScreenTitle();
 
         this.view = UI.scrollView(UIConstants.MARGIN, 0);
         this.view.scroll.scrollSpeed = 20;
-        this.view.h(LIST_HEIGHT).expand();
 
         this.status = new UIText().color(Colors.GRAY, true);
 
@@ -147,120 +105,20 @@ public class UIShaderPanel extends UISection
             UI.row(UIConstants.MARGIN, 0, UIConstants.CONTROL_HEIGHT, apply, discard)
         );
 
-        /* The list takes the height that's left, so every layer down to it has to ask for it */
-        this.fields.expand();
-        this.fields.add(this.profile, this.search, this.screenTitle, this.view, this.status, this.bar);
-        this.onToggle((section) -> this.updateExpand());
-        this.layoutParts();
+        for (UIElement element : new UIElement[] {this.profile, this.search, this.screenTitle, this.view, this.status, this.bar})
+        {
+            element.relative(this.content).x(PADDING).w(1F, -PADDING * 2);
+        }
+
+        this.content.add(this.profile, this.search, this.screenTitle, this.view, this.status, this.bar);
+
+        this.revision = ShaderOptions.revision();
+        this.rebuild();
     }
 
-    /* === The clip === */
-
-    /**
-     * The panel's sections leave the clip they were in; the curves it makes go to the given clip,
-     * which puts the sections among its own.
-     */
-    public void attach(UICurveClip owner)
+    private String panelTitle()
     {
-        this.world.removeFromParent();
-        this.removeFromParent();
-        this.owner = owner;
-    }
-
-    public void focusSearch()
-    {
-        UIContext context = this.getContext();
-
-        if (context == null || this.menu == null)
-        {
-            return;
-        }
-
-        if (!this.isExpanded())
-        {
-            this.setExpanded(true);
-        }
-
-        context.focus(this.search);
-    }
-
-    /** What a track of a curve clip is called: the world curve's name, or the option's in the pack */
-    public String channelLabel(String channelId)
-    {
-        for (UIWorldCurveRow row : this.world.fields.getChildren(UIWorldCurveRow.class))
-        {
-            if (row.curve.id.equals(channelId))
-            {
-                return row.curve.label.get();
-            }
-        }
-
-        if (channelId.startsWith(CurveClip.SHADER_CURVES_PREFIX))
-        {
-            return this.browser.optionLabel(channelId.substring(CurveClip.SHADER_CURVES_PREFIX.length()));
-        }
-
-        return channelId;
-    }
-
-    /**
-     * Right click on a row: a curve for it in the clip (starting from the value the row shows), or
-     * the way to take the clip's curve out.
-     */
-    void curveActions(ContextMenuManager menu, String channelId, boolean curvable)
-    {
-        if (this.owner == null)
-        {
-            return;
-        }
-
-        if (this.owner.hasCurve(channelId))
-        {
-            menu.action(Icons.REMOVE, UIKeys.CAMERA_PANELS_CURVE_REMOVE, () -> this.owner.removeCurve(channelId));
-        }
-        else if (curvable)
-        {
-            menu.action(Icons.CURVES, UIKeys.CAMERA_PANELS_CURVE_CREATE, () -> this.owner.createCurve(channelId));
-        }
-    }
-
-    /**
-     * The value a curve starts from: the one its row shows now, which may be what a curve of the
-     * film gives it at the playhead. A new curve's first keyframe takes it, so making a curve
-     * leaves the picture as it was. A colour for a colour curve; null for a track the panel
-     * doesn't know.
-     */
-    public Object startValue(String channelId)
-    {
-        for (UIWorldCurveRow row : this.world.fields.getChildren(UIWorldCurveRow.class))
-        {
-            if (row.curve.id.equals(channelId))
-            {
-                return row.curve.start();
-            }
-        }
-
-        if (!channelId.startsWith(CurveClip.SHADER_CURVES_PREFIX))
-        {
-            return null;
-        }
-
-        String optionId = channelId.substring(CurveClip.SHADER_CURVES_PREFIX.length());
-        Double curve = this.curveValue(optionId);
-
-        if (curve != null)
-        {
-            return curve;
-        }
-
-        Float value = ShaderCurves.parse(this.value(optionId));
-
-        return value == null ? 0D : value.doubleValue();
-    }
-
-    private String sectionTitle()
-    {
-        String title = UIKeys.CAMERA_PANELS_CURVES_SHADER_SECTION.get();
+        String title = UIKeys.UTILITY_SHADER_OPTIONS.get();
 
         return this.menu == null || this.menu.name.isEmpty() ? title : title + " · " + this.menu.name;
     }
@@ -278,18 +136,6 @@ public class UIShaderPanel extends UISection
         }
 
         return value;
-    }
-
-    /** The value a curve of the film gives the option at the playhead, or null */
-    Double curveValue(String optionId)
-    {
-        return this.curvable.contains(optionId) ? this.curves.get(CurveClip.SHADER_CURVES_PREFIX + optionId) : null;
-    }
-
-    /** Whether a curve of the film sets a curve of the world at the playhead */
-    boolean isCurved(String channelId)
-    {
-        return this.curves.containsKey(channelId) || this.colorCurves.contains(channelId);
     }
 
     boolean isCurvable(String optionId)
@@ -355,8 +201,13 @@ public class UIShaderPanel extends UISection
 
         UIContext context = this.getContext();
 
-        ShaderOptions.reload(() -> ShaderOptions.apply(values),
-            () -> UIOverlay.addOverlay(context, new UIMessageOverlayPanel(UIKeys.GENERAL_ERROR, UIKeys.UTILITY_SHADER_ERROR)));
+        ShaderOptions.reload(() -> ShaderOptions.apply(values), () ->
+        {
+            if (context != null)
+            {
+                UIOverlay.addOverlay(context, new UIMessageOverlayPanel(UIKeys.GENERAL_ERROR, UIKeys.UTILITY_SHADER_ERROR));
+            }
+        });
     }
 
     private void discardPending()
@@ -541,35 +392,33 @@ public class UIShaderPanel extends UISection
         this.view.removeAll();
         this.screenTitle.setVisible(this.menu != null && (this.browser.isSearching() || !this.browser.isMain()));
 
-        if (this.menu == null)
+        if (this.menu != null)
         {
-            return;
-        }
-
-        if (this.browser.isSearching())
-        {
-            this.fillResults();
-        }
-        else
-        {
-            String screenId = this.browser.getScreen();
-
-            this.screenTitle.screen(this.browser.screenTitle(screenId), this::back);
-
-            if (NOT_IN_MENU.equals(screenId))
+            if (this.browser.isSearching())
             {
-                for (ShaderMenu.Cell cell : this.notInMenu)
-                {
-                    this.view.add(new UIShaderOptionRow(this, cell, null));
-                }
+                this.fillResults();
             }
             else
             {
-                this.fillScreen(this.menu.getScreen(screenId));
+                String screenId = this.browser.getScreen();
+
+                this.screenTitle.screen(this.browser.screenTitle(screenId), this::back);
+
+                if (NOT_IN_MENU.equals(screenId))
+                {
+                    for (ShaderMenu.Cell cell : this.notInMenu)
+                    {
+                        this.view.add(new UIShaderOptionRow(this, cell, null));
+                    }
+                }
+                else
+                {
+                    this.fillScreen(this.menu.getScreen(screenId));
+                }
             }
         }
 
-        this.relayout();
+        this.layoutParts();
     }
 
     private void fillResults()
@@ -667,16 +516,41 @@ public class UIShaderPanel extends UISection
         return null;
     }
 
-    /** Shows what the state calls for: the pack's parts while there is a pack, a line why not otherwise. */
+    /**
+     * Shows what the state calls for, one part under another: the pack's parts while there is a
+     * pack, with the list taking the height that's left, or a line why not.
+     */
     private void layoutParts()
     {
         boolean menu = this.menu != null;
+        boolean bar = menu && !this.pending.isEmpty();
+        int barHeight = UIConstants.CONTROL_HEIGHT * 2 + UIConstants.MARGIN;
+        int y = PADDING;
 
         this.profile.setVisible(menu && !this.menu.profiles.isEmpty());
         this.search.setVisible(menu);
         this.view.setVisible(menu);
         this.status.setVisible(!menu);
-        this.bar.setVisible(menu && !this.pending.isEmpty());
+        this.bar.setVisible(bar);
+
+        if (this.profile.isVisible())
+        {
+            this.profile.y(y).h(UIConstants.CONTROL_HEIGHT);
+            y += UIConstants.CONTROL_HEIGHT + UIConstants.MARGIN;
+        }
+
+        this.search.y(y).h(UIConstants.CONTROL_HEIGHT);
+        y += UIConstants.CONTROL_HEIGHT + UIConstants.MARGIN;
+
+        if (this.screenTitle.isVisible())
+        {
+            this.screenTitle.y(y);
+            y += UIShaderScreenTitle.HEIGHT;
+        }
+
+        this.view.y(y).h(1F, -y - (bar ? barHeight + PADDING + UIConstants.MARGIN : PADDING));
+        this.bar.y(1F, -barHeight - PADDING).h(barHeight);
+        this.status.y(PADDING).h(1F, -PADDING * 2);
 
         if (!menu)
         {
@@ -685,33 +559,14 @@ public class UIShaderPanel extends UISection
                 : UIKeys.CAMERA_PANELS_CURVES_NO_SHADERS);
         }
 
-        this.updateExpand();
-        this.relayout();
-    }
-
-    /** Lays the clip's properties out again, if the panel is in them (it is laid out when it gets in) */
-    private void relayout()
-    {
         if (this.hasParent())
         {
-            this.resizeParent();
+            this.resize();
         }
     }
 
-    /** Only an open section with a menu in it has a use for the room left in the clip's properties. */
-    private void updateExpand()
-    {
-        this.expand(this.isExpanded() && this.menu != null);
-    }
-
-    /* === Every frame === */
-
-    /**
-     * Called by the clip the panel is in on every frame, whether its sections are in sight or
-     * folded: reads the menu again after a load of the pack, and finds what the film's curve clips
-     * set at the playhead, the top layer winning.
-     */
-    public void update()
+    @Override
+    public void render(UIContext context)
     {
         int revision = ShaderOptions.revision();
 
@@ -721,42 +576,17 @@ public class UIShaderPanel extends UISection
             this.rebuild();
         }
 
-        this.curves.clear();
-        this.colorCurves.clear();
+        super.render(context);
+    }
 
-        Film film = this.filmPanel.getData();
+    @Override
+    public void onClose()
+    {
+        super.onClose();
 
-        if (film == null)
+        if (!this.pending.isEmpty())
         {
-            return;
-        }
-
-        int tick = this.filmPanel.getCursor();
-
-        for (Clip clip : film.camera.getClips(tick))
-        {
-            if (!clip.enabled.get() || !(clip instanceof CurveClip curveClip))
-            {
-                continue;
-            }
-
-            int relative = tick - clip.tick.get();
-
-            for (KeyframeChannel<Double> channel : curveClip.channels.getChannels())
-            {
-                if (channel.hasEnabledKeyframes())
-                {
-                    this.curves.put(channel.getId(), channel.interpolate(relative));
-                }
-            }
-
-            for (KeyframeChannel<Color> channel : curveClip.channels.getColorChannels())
-            {
-                if (channel.hasEnabledKeyframes())
-                {
-                    this.colorCurves.add(channel.getId());
-                }
-            }
+            this.applyPending();
         }
     }
 }

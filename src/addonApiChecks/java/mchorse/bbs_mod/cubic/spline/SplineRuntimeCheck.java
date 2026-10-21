@@ -6,6 +6,8 @@ import mchorse.bbs_mod.cubic.data.model.Model;
 import mchorse.bbs_mod.cubic.data.model.ModelGroup;
 import mchorse.bbs_mod.cubic.render.CubicRenderer;
 import mchorse.bbs_mod.cubic.render.CubicMatrixRenderer;
+import mchorse.bbs_mod.cubic.rig.RigOwners;
+import mchorse.bbs_mod.cubic.rig.RigStep;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.renderers.utils.MatrixCache;
 import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
@@ -67,23 +69,24 @@ public final class SplineRuntimeCheck
         model.snapshotChannels();
         ModelSplineRuntime.apply(instance, form);
         List<Vector3f> solved = positions(model);
-        check(mchorse.bbs_mod.cubic.ik.ModelIKRuntime.isRotationConstrained(model, form, "bone0"), "Active spline owns FK rotation gestures");
-        check(mchorse.bbs_mod.cubic.ik.ModelIKRuntime.isRotationConstrained(model, form, "bone7"), "Terminal rotation is owned too");
-        check(!mchorse.bbs_mod.cubic.ik.ModelIKRuntime.isRotationConstrained(model, form, "other"), "Unrelated FK rotations remain editable");
+        check(RigOwners.of(model, form).locksRotation("bone0"), "Active spline owns FK rotation gestures");
+        check(RigOwners.of(model, form).locksRotation("bone7"), "Terminal rotation is owned too");
+        check(!RigOwners.of(model, form).locksRotation("other"), "Unrelated FK rotations remain editable");
+        check(RigOwners.of(model, form).rotationDriver("bone3") == RigStep.SPLINE, "The spline is named as the driver");
         for (int i = 0; i < 8; i++) close(solved.get(i), originals.get(i), "Authored straight curve preserves original pose");
         check(other.orient == null && other.offset == null, "Side branch remains untouched");
 
         spline.chainLength.set(2);
-        check(ModelSplineRuntime.isRotationConstrained(model, form, "bone6"), "Length includes the tip and its parent");
-        check(!ModelSplineRuntime.isRotationConstrained(model, form, "bone5"), "Length excludes ancestors beyond the count");
+        check(splineLocks(model, form, "bone6"), "Length includes the tip and its parent");
+        check(!splineLocks(model, form, "bone5"), "Length excludes ancestors beyond the count");
         spline.chainLength.set(0);
-        check(ModelSplineRuntime.isRotationConstrained(model, form, "All"), "Zero length reaches the hierarchy root");
+        check(splineLocks(model, form, "All"), "Zero length reaches the hierarchy root");
         spline.chainLength.set(100);
-        check(ModelSplineRuntime.isRotationConstrained(model, form, "All"), "Length beyond ancestry stops at the root");
+        check(splineLocks(model, form, "All"), "Length beyond ancestry stops at the root");
         spline.chainLength.set(1);
-        check(!ModelSplineRuntime.isRotationConstrained(model, form, "bone7"), "A single bone cannot form a spline segment");
+        check(!splineLocks(model, form, "bone7"), "A single bone cannot form a spline segment");
         spline.tip.set("missing");
-        check(!ModelSplineRuntime.isRotationConstrained(model, form, "bone0"), "Missing tip does not constrain bones");
+        check(!splineLocks(model, form, "bone0"), "Missing tip does not constrain bones");
         spline.tip.set("bone7");
         spline.chainLength.set(8);
 
@@ -139,7 +142,7 @@ public final class SplineRuntimeCheck
 
         model.restoreChannels();
         spline.influence.set(0F);
-        check(!mchorse.bbs_mod.cubic.ik.ModelIKRuntime.isRotationConstrained(model, form, "bone0"), "Zero influence releases FK rotation gestures");
+        check(!RigOwners.of(model, form).locksRotation("bone0"), "Zero influence releases FK rotation gestures");
         ModelSplineRuntime.apply(instance, form);
         compare(positions(model), originals, "Zero influence returns exact FK");
         check(model.getGroup("bone0").orient == null, "Zero influence writes no orientation");
@@ -315,6 +318,11 @@ public final class SplineRuntimeCheck
         check(topMotion != null && topMotion.parentFrame().equals(new Matrix4f(), 1E-6F), "Top-level driver has an identity parent frame");
         Map<String, Matrix4f> topMoved = renderedMatrices(model, topMotion.matrix());
         for (String id : model.getAllGroupKeys()) check(topMoved.get(id).equals(topChainOnly.get(id), 3E-4F), "Top-level extraction preserves the entire solved model");
+    }
+
+    private static boolean splineLocks(Model model, ModelForm form, String bone)
+    {
+        return RigOwners.of(model, form, java.util.EnumSet.of(RigStep.SPLINE)).locksRotation(bone);
     }
 
     /** Use the real render traversal: collectPivotFrames intentionally strips base scale/shear. */

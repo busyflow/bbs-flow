@@ -5,17 +5,22 @@ import mchorse.bbs_mod.cubic.IModel;
 import mchorse.bbs_mod.cubic.data.model.Model;
 import mchorse.bbs_mod.cubic.data.model.ModelGroup;
 import mchorse.bbs_mod.cubic.ik.ModelIKRuntime;
+import mchorse.bbs_mod.cubic.rig.BonePassport;
+import mchorse.bbs_mod.cubic.rig.RigClaim.Hold;
+import mchorse.bbs_mod.cubic.rig.RigOwners;
+import mchorse.bbs_mod.cubic.rig.RigStep;
 import mchorse.bbs_mod.forms.forms.ModelForm;
-import mchorse.bbs_mod.forms.forms.utils.FormBone;
 import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
-import mchorse.bbs_mod.settings.values.base.BaseValue;
+import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,6 +29,18 @@ import java.util.Set;
 public final class ModelSplineRuntime
 {
     private static final float EPS = 1E-5F;
+
+    /** The steps whose bones a spline leaves alone: it takes only chains nobody else holds. */
+    private static final Set<RigStep> HOLDERS = Collections.unmodifiableSet(EnumSet.of(RigStep.IK, RigStep.PHYSICS, RigStep.LIMITS));
+
+    /* Which of a form's splines solve right now, from a dry solve: once per form per frame, and again
+     * after an edit, rather than once per question - the gizmo asks on every draw. Keyed by the frame,
+     * not by the epoch every out-of-band pass bumps; dropped wholesale when the frame moves on. */
+    private static final Map<ModelForm, Solving> SOLVING = new IdentityHashMap<>();
+    private static long solvingFrame = Long.MIN_VALUE;
+
+    private record Solving(Model model, int poseVersion, Set<String> splines)
+    {}
 
     private ModelSplineRuntime()
     {}
@@ -88,10 +105,45 @@ public final class ModelSplineRuntime
         return new Motion(motionSpline.getId(), motion, parent);
     }
 
-    /** Same admission rules as the runtime, without changing the shared model's pose. */
-    public static boolean isRotationConstrained(IModel source, ModelForm form, String bone)
+    /**
+     * The spline step's hand on the form's bones (see {@link RigOwners}): every spline's chain, the tip
+     * it ends at and the links. A spline that solves sets the rotation of all of them; which ones solve
+     * is the runtime's own admission and solve, without the writes.
+     */
+    public static void claim(IModel source, ModelForm form, RigOwners owners)
     {
-        if (!(source instanceof Model model) || form == null) return false;
+        if (!(source instanceof Model model) || form.splines.getAllTyped().isEmpty()) return;
+
+        Set<String> solving = solving(model, form);
+
+        for (SplineIK spline : form.splines.getAllTyped())
+        {
+            List<String> chain = chain(model, spline).stream().map(bone -> bone.id).toList();
+
+            owners.chain(RigStep.SPLINE, spline.getId(), spline.tip.get(), chain, Hold.DRIVES, true, solving.contains(spline.getId()));
+        }
+    }
+
+    /** Same admission rules as the runtime, without changing the shared model's pose. */
+    private static Set<String> solving(Model model, ModelForm form)
+    {
+        boolean cached = RenderFrame.isEnabled();
+        int version = form.getPoseVersion();
+
+        if (cached)
+        {
+            if (solvingFrame != RenderFrame.getFrame())
+            {
+                SOLVING.clear();
+                solvingFrame = RenderFrame.getFrame();
+            }
+
+            Solving entry = SOLVING.get(form);
+
+            if (entry != null && entry.model() == model && entry.poseVersion() == version) return entry.splines();
+        }
+
+        Set<String> splines = new HashSet<>();
         Set<String> occupied = new HashSet<>();
         for (SplineIK spline : form.splines.getAllTyped())
         {
@@ -101,25 +153,11 @@ public final class ModelSplineRuntime
             if (validate(model, form, chain) != null || chain.stream().anyMatch(group -> occupied.contains(group.id))) continue;
             if (!solve(chain, spline, control, false)) continue;
             for (ModelGroup group : chain) occupied.add(group.id);
+            splines.add(spline.getId());
         }
-        return occupied.contains(bone);
-    }
 
-    /** Short stable error keys for the editor; null is a supported chain. */
-    public static String validate(ModelForm form, SplineIK selected)
-    {
-        ModelInstance instance = ModelFormRenderer.getModel(form);
-        if (instance == null || !(instance.model instanceof Model model)) return "cubic_only";
-        String error = validate(model, form, chain(model, selected));
-        if (error != null) return error;
-        Set<String> ids = new HashSet<>(getChain(form, selected));
-        for (SplineIK spline : form.splines.getAllTyped())
-        {
-            SplineControl control = form.splineIK.get().get(spline.getId());
-            if (spline == selected) break;
-            if (control.influence > 0F && !Collections.disjoint(ids, getChain(form, spline))) return "spline_conflict";
-        }
-        return null;
+        if (cached) SOLVING.put(form, new Solving(model, version, splines));
+        return splines;
     }
 
     private static String validate(Model model, ModelForm form, List<ModelGroup> chain)
@@ -127,10 +165,8 @@ public final class ModelSplineRuntime
         if (chain.size() < 2) return "invalid_chain";
         if (chain.size() > 128) return "long_chain";
 
-        Set<String> ids = new HashSet<>();
         for (ModelGroup group : chain)
         {
-            ids.add(group.id);
             Vector3f scale = group.current.scale;
 
             /* The parent of the chain may have any invertible affine transform: the entire
@@ -139,19 +175,11 @@ public final class ModelSplineRuntime
             if (!scale.isFinite() || scale.x <= EPS || Math.abs(scale.x - scale.y) > EPS || Math.abs(scale.x - scale.z) > EPS) return "chain_scale";
         }
 
-        for (Map.Entry<String, List<String>> ik : ModelIKRuntime.getChains(model, form).entrySet())
-        {
-            FormBone bone = form.bones.getBone(ik.getKey());
-            if (bone != null && form.ik.get().get(ik.getKey()).enabled && form.ik.get().get(ik.getKey()).weight > 0F && !Collections.disjoint(ids, ik.getValue())) return "ik_conflict";
-        }
+        RigOwners owners = RigOwners.of(model, form, HOLDERS);
 
-        for (BaseValue value : form.bones.getAll())
-        {
-            if (!(value instanceof FormBone bone)) continue;
-            if (ids.contains(bone.getId()) && bone.constraints.get().isActive()) return "limits_conflict";
-            if (!bone.hasPhysicsChain() || !form.physics.get().get(bone.getId()).enabled || form.physics.get().get(bone.getId()).weight <= 0F) continue;
-            for (ModelGroup physics : chain(model, bone.getId(), bone.physicsEnd.get())) if (ids.contains(physics.id)) return "physics_conflict";
-        }
+        if (chain.stream().anyMatch(group -> owners.holds(RigStep.IK, group.id))) return "ik_conflict";
+        if (chain.stream().anyMatch(group -> owners.holds(RigStep.LIMITS, group.id))) return "limits_conflict";
+        if (chain.stream().anyMatch(group -> owners.holds(RigStep.PHYSICS, group.id))) return "physics_conflict";
 
         return null;
     }
@@ -174,27 +202,6 @@ public final class ModelSplineRuntime
         if (model.getGroup(spline.tip.get()) == null) return List.of();
         return ModelIKRuntime.chainBones(model, spline.tip.get(), spline.chainLength.get()).stream()
             .map(model::getGroup).toList();
-    }
-
-    private static List<ModelGroup> chain(Model model, String root, String tip)
-    {
-        ModelGroup first = model.getGroup(root);
-        ModelGroup cursor = model.getGroup(tip);
-        List<ModelGroup> result = new ArrayList<>();
-
-        if (first == null || cursor == null) return result;
-        while (cursor != null && result.size() <= 128)
-        {
-            result.add(cursor);
-            if (cursor == first)
-            {
-                Collections.reverse(result);
-                return result;
-            }
-            cursor = cursor.parent;
-        }
-
-        return List.of();
     }
 
     /**
@@ -247,10 +254,11 @@ public final class ModelSplineRuntime
         if (result == null || !Float.isFinite(control.twist)) return false;
 
         for (int i = 0; i < count - 1; i++) fkTangents[i] = new Vector3f(fkPositions[i + 1]).sub(fkPositions[i]).normalize();
-        /* No artificial child is needed: the terminal's axis and length come from the final
-         * rest segment, but its own FK rotation still matters when orienting its geometry. */
-        Vector3f terminalAxis = new Vector3f(chain.get(count - 1).initial.translate).sub(chain.get(count - 2).initial.translate);
-        if (terminalAxis.lengthSquared() <= EPS * EPS) return false;
+        /* No artificial child is needed: the terminal's axis is its rest axis past the tip, on along
+         * the final rest segment, but its own FK rotation still matters when orienting its geometry. */
+        ModelGroup terminal = chain.get(count - 1);
+        Vector3f terminalAxis = BonePassport.of(terminal.owner).restAxisPastTip(terminal.id, null, chain.get(count - 2).id);
+        if (terminalAxis == null || terminalAxis.lengthSquared() <= EPS * EPS) return false;
         fkTangents[count - 1] = fkWorld[count - 1].transform(terminalAxis.normalize());
 
         Vector3f fkNormal = SplineMath.perpendicular(fkTangents[0]);
@@ -276,6 +284,8 @@ public final class ModelSplineRuntime
 
             Quaternionf parentRotation = matrix.getUnnormalizedRotation(new Quaternionf()).normalize();
             Quaternionf local = parentRotation.invert().mul(target).normalize();
+            /* Its own mix rather than RigWriter.blend: it always slerps and renormalises, and the
+             * chain is written atomically below. */
             Quaternionf orientation = new Quaternionf(fkLocal[i]).slerp(local, weight).normalize();
             /* Blend the authored roll as an angle after the swing. Slerping a quaternion that
              * already includes twist would wrap to the shortest arc and pop at 180 degrees

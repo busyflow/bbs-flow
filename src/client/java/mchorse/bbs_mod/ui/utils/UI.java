@@ -6,6 +6,7 @@ import mchorse.bbs_mod.ui.framework.elements.UIScrollView;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
 import mchorse.bbs_mod.ui.framework.elements.utils.Batcher2D;
 import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
+import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.ui.utils.resizers.layout.LabelRowResizer;
 import mchorse.bbs_mod.utils.colors.Colors;
 
@@ -152,6 +153,19 @@ public class UI
         scrollView.add(elements);
 
         return scrollView;
+    }
+
+    /** A row's marker, drawn the way the transform editor draws its own: white, not a button. */
+    public static UIIcon marker(Icon icon, IKey tooltip)
+    {
+        UIIcon element = new UIIcon(icon, null);
+
+        element.wh(UIConstants.CONTROL_HEIGHT, UIConstants.CONTROL_HEIGHT);
+        element.disabledColor = element.hoverColor = Colors.WHITE;
+        element.setEnabled(false);
+        element.tooltip(tooltip);
+
+        return element;
     }
 
     /** The verbs of a list — add, duplicate, remove — as a row of compact icons over it (the replay list's idiom). */

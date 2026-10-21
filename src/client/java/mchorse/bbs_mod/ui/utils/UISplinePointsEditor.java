@@ -19,7 +19,7 @@ import mchorse.bbs_mod.utils.pose.Transform;
 import org.joml.Vector3f;
 import java.util.*;
 import java.util.function.*;
-import static mchorse.bbs_mod.ui.forms.editors.panels.UIModelSplineFormPanel.key;
+import static mchorse.bbs_mod.ui.forms.editors.panels.rig.UIRigSplineSection.key;
 
 /** Shared topology and coordinate tools for forms and their keyframes. */
 public class UISplinePointsEditor extends UIElement

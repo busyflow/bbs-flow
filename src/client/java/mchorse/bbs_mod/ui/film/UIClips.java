@@ -1138,6 +1138,30 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
         return this.layerHeight;
     }
 
+    /** How tall the clips have to be for one lane to show between the ruler and the bottom margin. */
+    public int getOneLaneHeight()
+    {
+        return TimelineRulerRenderer.RULER_BLOCK_HEIGHT + this.getLayerHeight() + MARGIN;
+    }
+
+    /** Scrolls as little as it takes for a layer's lane to show between the ruler and the bottom margin. */
+    public void scrollToLayer(int layer)
+    {
+        int h = this.getLayerHeight();
+        int y = this.toLayerY(layer);
+        int top = TimelineRulerRenderer.getRulerBottom(this.area);
+        int bottom = this.area.ey() - MARGIN;
+
+        if (y < top)
+        {
+            this.vertical.setScroll(this.vertical.getScroll() - (top - y));
+        }
+        else if (y + h > bottom)
+        {
+            this.vertical.setScroll(this.vertical.getScroll() + (y + h - bottom));
+        }
+    }
+
     public void updateLayers()
     {
         this.layers = 20;

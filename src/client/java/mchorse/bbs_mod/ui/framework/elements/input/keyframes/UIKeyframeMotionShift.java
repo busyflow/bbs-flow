@@ -5,7 +5,6 @@ import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.graphics.line.LineBuilder;
 import mchorse.bbs_mod.graphics.line.SolidColorLineRenderer;
 import mchorse.bbs_mod.ui.framework.UIContext;
-import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.IUIKeyframeGraph;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeGraph;
 import mchorse.bbs_mod.ui.utils.Area;
 import mchorse.bbs_mod.ui.utils.DoubleClick;
@@ -64,7 +63,7 @@ public class UIKeyframeMotionShift
     private Hit hit(UIContext context)
     {
         if (!BBSSettings.showMotionShiftHandles.get() || this.view.isInteracting()
-            || !this.view.graphArea.isInside(context) || context.mouseY < this.view.area.y + IUIKeyframeGraph.TOP_MARGIN
+            || !this.view.graphArea.isInside(context) || context.mouseY < this.view.area.y + this.view.getTopMargin()
             || Window.isCtrlPressed() || Window.isAltPressed() || Window.isShiftPressed()) return null;
 
         UIKeyframeSheet sheet = this.view.getGraph().getSheet(context.mouseX, context.mouseY);
@@ -96,7 +95,7 @@ public class UIKeyframeMotionShift
         if (hit == null) return null;
 
         boolean dope = this.view.getGraph() == this.view.getDopeSheet();
-        int rowY = dope ? this.view.getDopeSheet().getDopeSheetY(sheet) : this.view.area.y + IUIKeyframeGraph.TOP_MARGIN;
+        int rowY = dope ? this.view.getDopeSheet().getDopeSheetY(sheet) : this.view.area.y + this.view.getTopMargin();
         int height = dope ? this.view.getDopeSheet().getTrackHeight(sheet) : 16;
         /* Loop boundaries retain their existing move/resize targets. */
         for (Object entry : sheet.channel.getLoops())
@@ -131,7 +130,7 @@ public class UIKeyframeMotionShift
         KeyframeSegment<?> actual = sheet.channel.find(start + duration * (0.5F + key.getMotionShift()));
         if (actual == null || actual.a != key || actual.timeOffset != 0F) return null;
         y = this.handleY(hit);
-        if (y < this.view.area.y + IUIKeyframeGraph.TOP_MARGIN + 4 || y >= this.view.area.ey() - 4) return null;
+        if (y < this.view.area.y + this.view.getTopMargin() + 4 || y >= this.view.area.ey() - 4) return null;
         return hit;
     }
 
@@ -204,7 +203,7 @@ public class UIKeyframeMotionShift
         if (!BBSSettings.showMotionShiftHandles.get()) return;
 
         Hit hovered = this.isDragging() ? this.dragging : this.hit(context);
-        int top = this.view.area.y + IUIKeyframeGraph.TOP_MARGIN;
+        int top = this.view.area.y + this.view.getTopMargin();
         context.batcher.clip(new Area(this.view.graphArea.x, top, this.view.graphArea.w, this.view.area.ey() - top), context);
         for (UIKeyframeSheet sheet : this.view.getOperationSheets())
         {

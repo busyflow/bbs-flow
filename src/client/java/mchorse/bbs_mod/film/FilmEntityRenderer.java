@@ -230,7 +230,7 @@ public class FilmEntityRenderer
             /* The bone case is the only one drawn INSIDE the form's frame; the other two are
              * placed on matrices of their own and so live past the pop below. Both halves read
              * the one target, so they cannot disagree about which of the three it is. */
-            if (gizmoTarget.boneOrNull() != null) renderAxes(gizmoTarget.bone(), gizmoTarget.space(), context.gizmoView, context.map, form, entity, transition, stack, gizmoFrame);
+            if (gizmoTarget.boneOrNull() != null) renderAxes(gizmoTarget.bone(), gizmoTarget.space(), context.gizmoMask, context.gizmoView, context.map, form, entity, transition, stack, gizmoFrame);
             if (gizmoTarget.is(FilmTarget.Kind.SPLINE_POINT)) renderSplineGizmo(gizmoTarget, context.gizmoView, context.map, form, entity, transition, stack);
             if (context.bone2 != null && context.map == null) renderPreviewAxes(context.bone2, context.space2, form, entity, transition, stack, gizmoFrame, context.gizmoViewportHeight);
         }
@@ -325,7 +325,7 @@ public class FilmEntityRenderer
         stack.pop();
     }
 
-    private static void renderAxes(String bone, TransformSpace space, Matrix4f gizmoView, StencilMap stencilMap, Form form, IEntity entity, float transition, MatrixStack stack, FormFrameCache frame)
+    private static void renderAxes(String bone, TransformSpace space, Gizmo.HandleMask mask, Matrix4f gizmoView, StencilMap stencilMap, Form form, IEntity entity, float transition, MatrixStack stack, FormFrameCache frame)
     {
         String mapKey = FilmMatrices.boneMapKey(bone);
         Form root = FormUtils.getRoot(form);
@@ -348,11 +348,11 @@ public class FilmEntityRenderer
             {
                 /* The visual is drawn later, in the panel's UI pass (see
                  * Gizmo#renderInterface) — here we only snapshot its placement. */
-                Gizmo.INSTANCE.captureVisual(stack);
+                Gizmo.INSTANCE.captureVisual(stack, mask);
             }
             else
             {
-                Gizmo.INSTANCE.renderStencil(stack);
+                Gizmo.INSTANCE.renderStencil(stack, mask);
             }
 
             RenderSystem.enableDepthTest();

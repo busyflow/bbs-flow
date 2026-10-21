@@ -8,7 +8,7 @@ import org.joml.Vector3f;
 
 import mchorse.bbs_mod.cubic.spline.*;
 import mchorse.bbs_mod.forms.forms.ModelForm;
-import mchorse.bbs_mod.ui.forms.editors.panels.UIModelSplineFormPanel;
+import mchorse.bbs_mod.ui.forms.editors.panels.rig.UIRigSplineSection;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.framework.elements.input.UITrackpad;
@@ -96,9 +96,9 @@ public class UISplineKeyframeFactory extends UIKeyframeFactory<SplineControls> i
         this.transform.noScale().setRotationVisible(false);
         this.transform.enableHotkeys(() -> !this.pointEditor.pointId().isEmpty(), op -> op == TransformOp.TRANSLATE);
         this.scroll.add(UI.column(this.chains,
-            UI.labelRow(UIModelSplineFormPanel.key("influence"), this.influence),
-            UI.labelRow(UIModelSplineFormPanel.key("progress_short"), this.progress),
-            UI.labelRow(UIModelSplineFormPanel.key("twist"), this.twist), this.pointEditor).expand());
+            UI.labelRow(UIRigSplineSection.key("influence"), this.influence),
+            UI.labelRow(UIRigSplineSection.key("progress_short"), this.progress),
+            UI.labelRow(UIRigSplineSection.key("twist"), this.twist), this.pointEditor).expand());
         List<String> ids = new ArrayList<>();
         if (this.form != null) for (SplineIK chain : this.form.splines.getAllTyped()) ids.add(chain.getId());
         this.chains.setList(ids);

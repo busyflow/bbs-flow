@@ -14,11 +14,12 @@ import mchorse.bbs_mod.ui.film.UIFilmPanel;
 import mchorse.bbs_mod.ui.utils.Area;
 import mchorse.bbs_mod.ui.utils.Gizmo;
 import mchorse.bbs_mod.ui.utils.GizmoDrag;
+import mchorse.bbs_mod.ui.utils.GizmoLocks;
 import mchorse.bbs_mod.ui.utils.pose.PoseBones;
 import mchorse.bbs_mod.cubic.ModelInstance;
 import mchorse.bbs_mod.cubic.data.animation.Animation;
 import mchorse.bbs_mod.cubic.data.animation.AnimationPart;
-import mchorse.bbs_mod.cubic.ik.ModelIKRuntime;
+import mchorse.bbs_mod.cubic.rig.RigOwners;
 import mchorse.bbs_mod.film.replays.FormProperties;
 import mchorse.bbs_mod.film.replays.tracks.TrackDescriptor;
 import mchorse.bbs_mod.film.replays.tracks.TrackId;
@@ -42,7 +43,6 @@ import mchorse.bbs_mod.math.molang.expressions.MolangExpression;
 import mchorse.bbs_mod.ui.film.ICursor;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
-import mchorse.bbs_mod.ui.framework.elements.input.items.FoldState;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeEditor;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeSheet;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIAnchorKeyframeFactory;
@@ -57,7 +57,6 @@ import mchorse.bbs_mod.settings.values.core.ValuePose;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import mchorse.bbs_mod.utils.keyframes.KeyframeSegment;
-import mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.base.BaseValueBasic;
 import mchorse.bbs_mod.utils.pose.Pose;
@@ -92,13 +91,13 @@ public class UIReplaysEditorUtils
     }
 
     /** Shared read-only search catalog for film and state editors. */
-    public static List<TrackSearchEntry> formSearchEntries(Form root, UIForms parts, boolean animationState)
+    public static List<TrackSearchEntry> formSearchEntries(Form root, boolean animationState)
     {
         List<TrackSearchEntry> entries = new ArrayList<>();
         /* No FormProperties: opening the navigator must not create channels. */
         List<TrackDescriptor> catalog = TrackCatalog.of(root);
         Map<String, String> names = new HashMap<>();
-        for (var part : parts.getList()) names.put(part.getPath(), part.toString());
+        for (var part : UIForms.entries(root)) names.put(part.getPath(), part.toString());
 
         for (TrackDescriptor track : catalog)
         {
@@ -180,84 +179,6 @@ public class UIReplaysEditorUtils
     }
 
     /**
-     * Key the pose at the tick, following what the timeline is showing: a pose track with its limbs
-     * unfolded is keyed limb by limb, a folded one is keyed as a whole pose. The per-limb tracks are
-     * where the pose actually lives once it has been split, but keying every bone of a form the user
-     * has folded away (or never split at all) buries the timeline in keyframes nobody asked for.
-     *
-     * @param expandedPoseIds which pose tracks are unfolded, from {@link UIReplaysEditor#getExpandedPoseTabIds()}.
-     */
-    public static void insertPoseKeyframesAtTick(Replay replay, float tick, FoldState<String> expandedPoseIds)
-    {
-        if (replay == null)
-        {
-            return;
-        }
-
-        FoldState<String> expanded = expandedPoseIds == null ? new FoldState<>() : expandedPoseIds;
-        Form form = replay.form.get();
-
-        BaseValue.edit(replay.properties, (props) ->
-        {
-            for (Map.Entry<TrackId, KeyframeChannel> entry : props.tracks.entrySet())
-            {
-                TrackId track = entry.getKey();
-                KeyframeChannel<?> channel = entry.getValue();
-
-                if (track.is(TrackKind.BONE))
-                {
-                    if (expanded.isExpanded(poseTrackIdOf(track)))
-                    {
-                        insertPoseTransformKeyframe((KeyframeChannel<PoseTransform>) channel, tick, null);
-                    }
-                }
-                else if (isWholePoseTrack(track, channel) && !expanded.isExpanded(track.toKey()))
-                {
-                    insertWholePoseKeyframe(form, (KeyframeChannel<Pose>) channel, tick);
-                }
-            }
-        });
-    }
-
-    /** The pose track a per-limb track hangs under - the same id {@code flushForm} groups them by. */
-    private static String poseTrackIdOf(TrackId track)
-    {
-        return TrackId.property(track.formPath(), FormProperties.POSE_PROPERTY).toKey();
-    }
-
-    /** The form's own pose track, as opposed to a per-limb one or a pose overlay. */
-    private static boolean isWholePoseTrack(TrackId track, KeyframeChannel<?> channel)
-    {
-        return track.is(TrackKind.PROPERTY)
-            && track.subject().equals(FormProperties.POSE_PROPERTY)
-            && channel.getFactory() == KeyframeFactories.POSE;
-    }
-
-    private static void insertWholePoseKeyframe(Form form, KeyframeChannel<Pose> channel, float tick)
-    {
-        KeyframeSegment<Pose> segment = channel.find(tick);
-        Pose pose;
-
-        if (segment != null)
-        {
-            pose = segment.createInterpolated();
-        }
-        else
-        {
-            /* Nothing on the track yet, so the pose the form is standing in is the one to keep -
-             * an empty keyframe would snap every bone to the factory defaults instead. */
-            BaseValue property = form == null ? null : FormUtils.getProperty(form, channel.getId());
-            Object value = property instanceof BaseValueBasic basic ? basic.get() : null;
-
-            pose = value instanceof Pose formPose
-                ? channel.getFactory().copy(formPose)
-                : channel.getFactory().createEmpty();
-        }
-
-        channel.insertInheriting(tick, pose);
-    }
-
-    /**
      * Turn a form's catalog into timeline rows, hanging the tracks that fold under another one off
      * their parent row. The catalog decides what exists and where it sits; this only builds widgets,
      * which is why both timelines — a replay's and an animation state's — go through it.
@@ -309,16 +230,6 @@ public class UIReplaysEditorUtils
                 sheet.parent = null;
             }
         }
-    }
-
-    private static void insertPoseTransformKeyframe(KeyframeChannel<PoseTransform> channel, float tick, PoseTransform value)
-    {
-        KeyframeSegment<PoseTransform> segment = channel.find(tick);
-        PoseTransform poseTransform = value == null
-            ? segment != null ? segment.createInterpolated() : new PoseTransform()
-            : (PoseTransform) value.copy();
-
-        channel.insertInheriting(tick, poseTransform);
     }
 
     public static UIPropTransform getEditableTransform(UIKeyframeEditor editor)
@@ -457,13 +368,27 @@ public class UIReplaysEditorUtils
 
         transform.worldTransform(pose ? new FilmBoneWorldProvider(panel) : null);
         transform.rotationConstrained(pose ? () -> isFilmBoneRotationConstrained(panel) : null);
+        transform.axisLocks(() -> getFilmAxisLocks(panel));
+    }
+
+    /** The locked channels of the bones the film's keyframe editor moves on the current replay. */
+    public static int getFilmAxisLocks(UIFilmPanel panel)
+    {
+        IEntity entity = panel.getController().getCurrentEntity();
+
+        return entity == null ? 0 : GizmoLocks.of(entity.getForm(), panel.replayEditor.keyframeEditor);
+    }
+
+    /** The handles the film's gizmo may show on {@code target}: a bone's locked channels take theirs off. */
+    public static Gizmo.HandleMask getFilmGizmoMask(UIFilmPanel panel, FilmTarget target)
+    {
+        return target.boneOrNull() == null ? Gizmo.HandleMask.ALL : Gizmo.HandleMask.ALL.locked(getFilmAxisLocks(panel), target.space());
     }
 
     /**
-     * Whether the film pose editor's current bone rotation is owned by an
-     * enabled IK chain of its (possibly nested) model form — the gizmo then
-     * refuses rotation gestures and dims its rings (see
-     * {@link ModelIKRuntime#isRotationConstrained}).
+     * Whether a solve of its (possibly nested) model form sets the film pose
+     * editor's current bone rotation — the gizmo then refuses rotation gestures
+     * and dims its rings (see {@link RigOwners#locksRotation}).
      */
     private static boolean isFilmBoneRotationConstrained(UIFilmPanel panel)
     {
@@ -493,7 +418,7 @@ public class UIReplaysEditorUtils
 
         ModelInstance instance = ModelFormRenderer.getModel(modelForm);
 
-        return instance != null && ModelIKRuntime.isRotationConstrained(instance.model, modelForm, StringUtils.fileName(bone.a));
+        return instance != null && RigOwners.of(instance.model, modelForm).locksRotation(StringUtils.fileName(bone.a));
     }
 
     /**
@@ -709,8 +634,11 @@ public class UIReplaysEditorUtils
         UIKeyframeSheet sheet = editor.editor.getSheet();
         if (sheet == null) return sampler;
 
+        boolean cursor = editor.view.getAutoKeyframeTick() != null;
+        /* Without auto-keyframing an edit lands only on selected keys; with none there is nothing to probe. */
+        if (!cursor && !sheet.selection.hasAny()) return sampler;
+
         List<Transform> targets = new ArrayList<>();
-        boolean cursor = editor.view.getAutoKeyframeTick() != null || !sheet.selection.hasAny();
         KeyframeChannel draft = new KeyframeChannel(sheet.id, sheet.channel.getFactory());
         draft.fromData(sheet.channel.toData());
         UIKeyframeSheet draftSheet = new UIKeyframeSheet(sheet.id, sheet.title, sheet.color, draft, sheet.property, sheet.isBoneTrack);

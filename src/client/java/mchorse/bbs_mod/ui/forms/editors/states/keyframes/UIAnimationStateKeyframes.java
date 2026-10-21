@@ -48,20 +48,6 @@ public class UIAnimationStateKeyframes extends UIKeyframes
     {
         return this.editor != null && (BBSSettings.autoKeyframe.get() || this.editor.isRunning()) ? this.getOffset() : null;
     }
-
-    @Override
-    public boolean stopPlaybackOnValueChange()
-    {
-        if (this.editor == null || BBSSettings.autoKeyframe.get() || BBSSettings.liveRecording.get() || !this.editor.isRunning())
-        {
-            return false;
-        }
-
-        float tick = this.getOffset();
-        this.editor.stopPlayback();
-        this.editor.setCursor(tick);
-
-        return true;
     }
 
     @Override

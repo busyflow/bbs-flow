@@ -13,6 +13,7 @@ import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.framework.elements.UIScrollView;
+import mchorse.bbs_mod.ui.framework.elements.UISection;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIButton;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIIconToggles;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
@@ -28,6 +29,8 @@ import java.util.function.Consumer;
 
 public class UIBodyPartEditor extends UIScrollView
 {
+    /** One folding section holds the part's fields; the form editor refits around it when it folds. */
+    public UISection section;
     public UIButton pick;
     public UIToggle useTarget;
     public UIBonePicker bone;
@@ -167,8 +170,11 @@ public class UIBodyPartEditor extends UIScrollView
 
         this.pick.keys().register(Keys.FORMS_EDIT, this.pick::clickItself);
 
+        this.section = new UISection(UIKeys.FORMS_EDITOR_BODY_PART);
+
         this.column(UIConstants.MARGIN).vertical().stretch().scroll().padding(UIConstants.SCROLL_PADDING);
         this.scroll.cancelScrolling();
+        this.add(this.section);
     }
 
     public void setPart(BodyPart part, Form form)
@@ -176,7 +182,7 @@ public class UIBodyPartEditor extends UIScrollView
         this.part = part;
         this.owner = form;
 
-        this.removeAll();
+        this.section.fields.removeAll();
 
         this.bone.setLabel(this.boneLabel(part.bone.get()));
 
@@ -184,11 +190,11 @@ public class UIBodyPartEditor extends UIScrollView
          * where there is a bone to attach to at all — the same condition the picker has. */
         if (!FormUtilsClient.getBones(form).isEmpty())
         {
-            this.add(this.pick, this.bone, this.inherit.labelRow(UIKeys.INHERIT_TITLE), this.useTarget, this.transform);
+            this.section.fields.add(this.pick, this.bone, this.inherit.labelRow(UIKeys.INHERIT_TITLE), this.useTarget, this.transform);
         }
         else
         {
-            this.add(this.pick, this.useTarget, this.transform);
+            this.section.fields.add(this.pick, this.useTarget, this.transform);
         }
 
         this.scroll.setScroll(0);

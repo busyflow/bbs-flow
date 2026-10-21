@@ -1,7 +1,7 @@
 package mchorse.bbs_mod.cubic.ik;
 
 import mchorse.bbs_mod.cubic.IModel;
-import mchorse.bbs_mod.cubic.ik.JointDoF;
+import mchorse.bbs_mod.cubic.constraints.BoneConstraint;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
 import mchorse.bbs_mod.forms.forms.utils.FormBone;
@@ -32,7 +32,8 @@ final class ModelIKCache
     {
     }
 
-    public record Compiled(List<CompiledChain> chains, Map<String, JointDoF> bones)
+    /** {@code bones}: the limits of every bone the solve can't turn freely, by name. */
+    public record Compiled(List<CompiledChain> chains, Map<String, BoneConstraint> bones)
     {
     }
 
@@ -69,7 +70,7 @@ final class ModelIKCache
     private static Compiled compileFresh(IModel model, ModelForm form)
     {
         List<CompiledChain> chains = null;
-        Map<String, JointDoF> joints = null;
+        Map<String, BoneConstraint> joints = null;
 
         for (BaseValue value : form.bones.getAll())
         {
@@ -78,7 +79,7 @@ final class ModelIKCache
                 continue;
             }
 
-            JointDoF joint = bone.joint.get();
+            BoneConstraint joint = bone.constraints.get();
 
             if (!joint.isFree())
             {

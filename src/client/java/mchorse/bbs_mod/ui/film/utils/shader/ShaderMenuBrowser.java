@@ -4,6 +4,7 @@ import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.utils.iris.ShaderMenu;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -13,12 +14,12 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * Finding the way around a shader pack's options menu, for the shader panel: which screen is on
- * show and the way back up from it, the search query, the names the pack's translations give
- * screens, options and values, and the options a screen leads to.
+ * Finding the way around a shader pack's options menu, for the curve picker and the pack's
+ * settings: which screen is on show and the way back up from it, the search query, the names the
+ * pack's translations give screens, options and values, and the options a screen leads to.
  *
- * <p>Its owner can add pages of its own that open like the pack's screens (the shader panel's
- * page of animatable options the menu leaves out).</p>
+ * <p>Its owner can add pages of its own that open like the pack's screens (the page of animatable
+ * options the menu leaves out).</p>
  */
 public class ShaderMenuBrowser
 {
@@ -44,11 +45,6 @@ public class ShaderMenuBrowser
     public void addPage(String id, String title)
     {
         this.pages.put(id, title);
-    }
-
-    public boolean isPage(String id)
-    {
-        return this.pages.containsKey(id);
     }
 
     /* === Where it is === */
@@ -85,8 +81,14 @@ public class ShaderMenuBrowser
         return this.path.size() == 1;
     }
 
+    /** Screen ids from the main screen down to the one on show */
+    public List<String> getPath()
+    {
+        return Collections.unmodifiableList(this.path);
+    }
+
     /** Back up to the screen at the given depth of the path (0 is the main screen). */
-    private void goTo(int depth)
+    public void goTo(int depth)
     {
         while (this.path.size() > depth + 1)
         {

@@ -171,7 +171,8 @@ public class UIFilmController extends UIElement implements GizmoViewport
             if (entity == null || entity.getForm() == null) continue;
             for (var source : SplineEditorUtils.sourcesInTree(entity.getForm()))
             {
-                if (source instanceof SplineIK && entity != this.getCurrentEntity()) continue;
+                /* A model's spline shows with the rig's debug, as the rest of the rig does. */
+                if (source instanceof SplineIK && !BBSSettings.debugOverlay.get()) continue;
                 var owner = SplineEditorUtils.owner(source);
                 Matrix4f parent;
                 if (source instanceof SplineForm)
@@ -191,7 +192,6 @@ public class UIFilmController extends UIElement implements GizmoViewport
                     entity == this.getCurrentEntity() ? SplineEditorUtils.hoveredPoint(this.panel.replayEditor.keyframeEditor, context, source) : "");
             }
         }
-        this.splineOverlay.finish(context, this.panel.preview.getViewport());
         if (Window.isCtrlPressed() && !context.isFocused() && !this.panel.isFlying()
             && this.panel.replayEditor.keyframeEditor != null
             && this.panel.replayEditor.keyframeEditor.editor instanceof SplineKeyframeEditor spline
@@ -602,7 +602,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
         if (this.panel.replayEditor.isVisible())
         {
-            this.panel.replayEditor.pickReplayCategory();
+            this.panel.replayEditor.showReplayTracks();
         }
 
         boolean replacePlayer = ClientNetwork.isIsBBSModOnServer();
@@ -1114,7 +1114,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
         if (this.instantKeyframes)
         {
-            this.keyframes.insertFrame();
+            this.keyframes.insertDrivenFrame();
         }
     }
 

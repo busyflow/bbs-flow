@@ -3,6 +3,7 @@ package mchorse.bbs_mod.cubic.physics;
 import mchorse.bbs_mod.api.client.events.FormPoseEvents;
 
 import mchorse.bbs_mod.cubic.IModel;
+import mchorse.bbs_mod.cubic.rig.BonePassport;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.forms.utils.FormBone;
 import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
@@ -234,9 +235,9 @@ final class ModelPhysicsCache
 
     private static float[] computeRestLengths(IModel model, List<String> ids)
     {
-        PhysicsRig rig = PhysicsRig.of(model);
+        BonePassport passport = BonePassport.of(model);
 
-        if (rig == null)
+        if (passport == null)
         {
             return null;
         }
@@ -246,7 +247,7 @@ final class ModelPhysicsCache
 
         if (n == 1)
         {
-            float len = rig.restLength(ids.get(0), null);
+            float len = passport.restLength(ids.get(0), null);
 
             if (len < 0F)
             {
@@ -260,7 +261,7 @@ final class ModelPhysicsCache
 
         for (int i = 0; i < n - 1; i++)
         {
-            float len = rig.restLength(ids.get(i), ids.get(i + 1));
+            float len = passport.restLength(ids.get(i), ids.get(i + 1));
 
             if (len < 0F)
             {

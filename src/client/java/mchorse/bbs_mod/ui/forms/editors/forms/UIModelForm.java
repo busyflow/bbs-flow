@@ -1,7 +1,7 @@
 package mchorse.bbs_mod.ui.forms.editors.forms;
 
 import mchorse.bbs_mod.cubic.ModelInstance;
-import mchorse.bbs_mod.cubic.ik.ModelIKRuntime;
+import mchorse.bbs_mod.cubic.rig.RigOwners;
 import mchorse.bbs_mod.data.DataStorageUtils;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.forms.FormUtils;
@@ -10,13 +10,10 @@ import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.forms.editors.panels.UIActionsFormPanel;
-import mchorse.bbs_mod.ui.forms.editors.panels.UIModelConstraintsFormPanel;
 import mchorse.bbs_mod.ui.forms.editors.panels.UIModelFormPanel;
-import mchorse.bbs_mod.ui.forms.editors.panels.UIModelIKFormPanel;
-import mchorse.bbs_mod.ui.forms.editors.panels.UIModelSplineFormPanel;
-import mchorse.bbs_mod.ui.forms.editors.panels.UIModelPhysicsFormPanel;
-import mchorse.bbs_mod.ui.forms.editors.panels.UIModelShakeFormPanel;
+import mchorse.bbs_mod.ui.forms.editors.panels.UIRigFormPanel;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
+import mchorse.bbs_mod.ui.utils.GizmoLocks;
 import mchorse.bbs_mod.ui.utils.pose.UIPoseEditor;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
@@ -27,7 +24,7 @@ import org.joml.Vector3f;
 public class UIModelForm extends UIForm<ModelForm>
 {
     public UIModelFormPanel modelPanel;
-    public UIModelSplineFormPanel splinePanel;
+    public UIRigFormPanel rigPanel;
 
     public UIModelForm()
     {
@@ -39,17 +36,14 @@ public class UIModelForm extends UIForm<ModelForm>
             ModelForm form = this.form;
             ModelInstance instance = form == null ? null : ModelFormRenderer.getModel(form);
 
-            return instance != null && ModelIKRuntime.isRotationConstrained(instance.model, form, this.modelPanel.poseEditor.groups.list.getCurrentFirst());
+            return instance != null && RigOwners.of(instance.model, form).locksRotation(this.modelPanel.poseEditor.groups.list.getCurrentFirst());
         });
+        this.modelPanel.poseEditor.transform.axisLocks(() -> GizmoLocks.of(this.form, this.modelPanel.poseEditor.groups.list.getCurrent()));
         this.defaultPanel = this.modelPanel;
 
         this.registerPanel(this.defaultPanel, UIKeys.FORMS_EDITORS_MODEL_POSE, ModelForm.ICON);
-        this.registerPanel(new UIModelIKFormPanel(this), UIKeys.FORMS_EDITORS_MODEL_IK, Icons.IK);
-        this.splinePanel = new UIModelSplineFormPanel(this);
-        this.registerPanel(this.splinePanel, UIModelSplineFormPanel.key("title"), Icons.GRAPH);
-        this.registerPanel(new UIModelPhysicsFormPanel(this), UIKeys.FORMS_EDITORS_MODEL_PHYSICS_TITLE, Icons.PHYSICS);
-        this.registerPanel(new UIModelShakeFormPanel(this), UIKeys.FORMS_EDITORS_MODEL_SHAKE_TITLE, Icons.EXCHANGE);
-        this.registerPanel(new UIModelConstraintsFormPanel(this), UIKeys.FORMS_EDITORS_MODEL_CONSTRAINTS_TITLE, Icons.LOCKED);
+        this.rigPanel = new UIRigFormPanel(this);
+        this.registerPanel(this.rigPanel, UIKeys.FORMS_EDITORS_MODEL_RIG_TITLE, Icons.BONE);
         this.registerPanel(new UIActionsFormPanel(this), UIKeys.FORMS_EDITORS_ACTIONS_TITLE, Icons.MORE);
         this.registerDefaultPanels();
 
@@ -75,8 +69,8 @@ public class UIModelForm extends UIForm<ModelForm>
     {
         super.collectUndoData(data);
 
-        data.putString("splineChain", this.splinePanel.getChainId());
-        data.putString("splinePoint", this.splinePanel.getPointId());
+        data.putString("splineChain", this.rigPanel.spline.getChainId());
+        data.putString("splinePoint", this.rigPanel.spline.getPointId());
 
         data.put("bones", DataStorageUtils.stringListToData(this.modelPanel.poseEditor.groups.list.getCurrent()));
     }
@@ -86,7 +80,7 @@ public class UIModelForm extends UIForm<ModelForm>
     {
         super.applyUndoData(data);
 
-        this.splinePanel.select(data.getString("splineChain"), data.getString("splinePoint"));
+        this.rigPanel.spline.select(data.getString("splineChain"), data.getString("splinePoint"));
 
         if (data.has("bones"))
         {

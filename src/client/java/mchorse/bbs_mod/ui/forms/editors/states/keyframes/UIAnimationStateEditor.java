@@ -2,10 +2,12 @@ package mchorse.bbs_mod.ui.forms.editors.states.keyframes;
 
 import mchorse.bbs_mod.ui.utils.SplineKeyframeEditor;
 import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.cubic.spline.SplineIK;
 import mchorse.bbs_mod.cubic.ModelInstance;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.film.replays.tracks.TrackCatalog;
 import mchorse.bbs_mod.film.replays.tracks.TimelineBodyPartSelection;
+import mchorse.bbs_mod.film.replays.tracks.TrackTree;
 import mchorse.bbs_mod.film.replays.tracks.TrackDescriptor;
 import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.FormUtilsClient;
@@ -18,14 +20,15 @@ import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
 import mchorse.bbs_mod.forms.renderers.utils.MatrixCache;
 import mchorse.bbs_mod.forms.states.AnimationState;
 import mchorse.bbs_mod.l10n.L10n;
+import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.Keys;
-import mchorse.bbs_mod.film.replays.tracks.TrackId;
 import mchorse.bbs_mod.film.replays.tracks.TrackSearchEntry;
 import mchorse.bbs_mod.ui.film.replays.overlays.UITrackSearchOverlayPanel;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditor;
 import mchorse.bbs_mod.api.client.editor.TrackCategory;
 import mchorse.bbs_mod.api.client.editor.TrackCategories;
+import mchorse.bbs_mod.ui.film.replays.CategoryFold;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditorUtils;
 import mchorse.bbs_mod.ui.film.replays.overlays.UIAnimationToPoseOverlayPanel;
 import mchorse.bbs_mod.ui.film.replays.overlays.UIKeyframeSheetFilterOverlayPanel;
@@ -33,9 +36,8 @@ import mchorse.bbs_mod.ui.forms.editors.UIFormEditor;
 import mchorse.bbs_mod.ui.forms.editors.UIForms;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
-import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
-import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
 import mchorse.bbs_mod.ui.framework.elements.UISection;
+import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.framework.elements.input.items.FoldState;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeEditor;
@@ -44,11 +46,13 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeDopeSheet;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIDraggable;
+import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIRenderable;
 import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCategoryBar;
 import mchorse.bbs_mod.ui.utils.Gizmo;
 import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.GizmoDrag;
+import mchorse.bbs_mod.ui.utils.GizmoLocks;
 import mchorse.bbs_mod.ui.utils.StencilFormFramebuffer;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.renderers.TimelineRulerRenderer;
@@ -89,6 +93,9 @@ public class UIAnimationStateEditor extends UIElement
             Form model = entry.getForm();
             for (var chain : SplineEditorUtils.sources(model))
             {
+                /* A model's spline shows with the rig's debug. */
+                if (chain instanceof SplineIK && !BBSSettings.debugOverlay.get()) continue;
+
                 Matrix4f parent = SplineEditorUtils.parentMatrix(this.root, renderer.getTargetEntity(), context.getTransition(), model, chain);
                 if (parent == null) continue;
                 this.splineOverlay.draw(context, new Matrix4f(view).mul(renderer.toSceneMatrix(parent)), camera.projection,
@@ -96,7 +103,6 @@ public class UIAnimationStateEditor extends UIElement
                     SplineEditorUtils.hoveredPoint(this.keyframeEditor, context, chain));
             }
         }
-        this.splineOverlay.finish(context, renderer.area);
         if (Window.isCtrlPressed() && !context.isFocused()
             && this.keyframeEditor.editor instanceof SplineKeyframeEditor spline
             && !spline.pointEditor().position.isEditing())
@@ -126,7 +132,7 @@ public class UIAnimationStateEditor extends UIElement
         if (hit == null) return false;
         String path = FormUtils.getPropertyPath(hit.point().position);
         String compound = SplineEditorUtils.compoundPath(path);
-        for (TrackSearchEntry entry : UIReplaysEditorUtils.formSearchEntries(this.root, this.bodyParts, true))
+        for (TrackSearchEntry entry : UIReplaysEditorUtils.formSearchEntries(this.root, true))
         {
             if (!entry.key().equals(compound)) continue;
             this.revealTrack(entry, false);
@@ -164,9 +170,11 @@ public class UIAnimationStateEditor extends UIElement
     private final Map<TrackCategory, UIIcon> categoryButtons = new java.util.LinkedHashMap<>();
     private final List<TrackCategory> visibleCategories = new ArrayList<>();
     private TrackCategory category = TrackCategory.FORM;
-    private boolean allMode = true;
     private final UISection bodyPartsSection = new UISection(L10n.lang("bbs.ui.film.replays.body_parts"));
     private Form root;
+    /** New with every form edited, like the folds: another form's headings start the way new ones do. */
+    private TrackTree trackTree = new TrackTree();
+    /** The parts the timeline shows and the one in focus, which the track search lists first. */
     private TimelineBodyPartSelection partSelection = new TimelineBodyPartSelection();
     private boolean allBodyPartsSetting;
 
@@ -190,9 +198,8 @@ public class UIAnimationStateEditor extends UIElement
             .h(BBSSettings.editorLayoutSettings.getStateEditorSizeV());
 
         this.categoryBar.relative(this.timelineArea);
-        UIIcon all = new UIIcon(Icons.LIST, button -> this.setCategory(null));
+        UIIcon all = new UIIcon(Icons.LIST, button -> this.setAllTracks());
         all.tooltip(UIKeys.FILM_REPLAY_ALL_TRACKS, Direction.RIGHT);
-        all.highlight(() -> this.allMode, Direction.LEFT);
         this.categoryBar.add(all);
 
         for (TrackCategory category : TrackCategories.values())
@@ -200,7 +207,7 @@ public class UIAnimationStateEditor extends UIElement
             if (category == TrackCategory.REPLAY) continue;
             UIIcon button = new UIIcon(category.icon, b -> this.setCategory(category));
             button.tooltip(category.tooltip, Direction.RIGHT);
-            button.highlight(() -> !this.allMode && this.category == category, Direction.LEFT);
+            button.highlight(() -> this.category == category, Direction.LEFT);
             this.categoryButtons.put(category, button);
         }
 
@@ -268,12 +275,11 @@ public class UIAnimationStateEditor extends UIElement
         return this.state;
     }
 
+    /** A category opens its owners on the timeline and folds the others: see {@link CategoryFold}. */
     private void setCategory(TrackCategory category)
     {
-        this.revealedSearchTrack = null;
-        this.allMode = category == null;
-        if (category != null) this.category = category;
-        this.setState(this.state);
+        this.category = category;
+        CategoryFold.apply(this.keyframeEditor, this.expandedTabs, category);
     }
 
     private String getSelectedPartName()
@@ -281,11 +287,26 @@ public class UIAnimationStateEditor extends UIElement
         return this.partSelection.title(this.bodyParts);
     }
 
+    /** The parts list picked the parts the timeline shows; the one clicked opens. */
     private void selectParts(List<UIForms.FormEntry> parts)
     {
         this.partSelection.select(parts, this.bodyParts.getActivePath());
         this.revealedSearchTrack = null;
         this.setState(this.state);
+
+        if (this.keyframeEditor != null)
+        {
+            this.keyframeEditor.view.getDopeSheet().revealSection(TrackTree.ownerId(this.partSelection.activePart));
+        }
+    }
+
+    /** Unfold every owner and heading at once. An action, not a mode: the tab lit stays. */
+    private void setAllTracks()
+    {
+        if (this.keyframeEditor != null)
+        {
+            this.keyframeEditor.view.getDopeSheet().setAllSectionsExpanded(true);
+        }
     }
 
     public void setState(AnimationState state)
@@ -312,6 +333,7 @@ public class UIAnimationStateEditor extends UIElement
             this.revealedSearchTrack = null;
             this.recentTrackSearches.clear();
             this.partSelection = new TimelineBodyPartSelection();
+            this.trackTree = new TrackTree();
             this.expandedTabs.collapseAll();
         }
 
@@ -367,8 +389,6 @@ public class UIAnimationStateEditor extends UIElement
 
         sheets.removeIf((v) -> v.id.equals("anchor"));
 
-        sheets.removeIf(sheet -> !this.allMode && UIReplaysEditor.categoryOf(sheet) != this.category);
-
         /* The state isn't empty by itself - so if the filter empties it, the timeline has to stay (see below). */
         boolean hadTracks = !sheets.isEmpty();
 
@@ -376,14 +396,16 @@ public class UIAnimationStateEditor extends UIElement
             && UIReplaysEditorUtils.isTrackHidden(sheet.id, UIReplaysEditor.getSheetFilterKey(sheet), UIReplaysEditor.getSheetForm(sheet)));
 
         UIReplaysEditorUtils.pruneTree(sheets);
-        this.partSelection.groupSheets(sheets, this.bodyParts, this.expandedTabs);
+        Set<String> fresh = this.trackTree.groupSheets(sheets, this.bodyParts.getList(), this.expandedTabs, false);
+
+        CategoryFold.settle(sheets, this.expandedTabs, this.category, fresh, this.trackTree.seen(this.expandedTabs));
 
         /*
          * Filtering every track off used to drop the timeline itself, and the track filter lives in its
          * context menu - so «disable all» locked the user out of the only way back. Keep the (empty)
          * timeline whenever the state had tracks before the filter ran; the dope sheet says why it's blank.
          */
-        if (!sheets.isEmpty() || hadTracks || !this.allMode)
+        if (!sheets.isEmpty() || hadTracks)
         {
             this.keyframeEditor = new UIKeyframeEditor((consumer) -> new UIAnimationStateKeyframes(this.editor, consumer)).target(this.editArea);
             this.keyframeEditor.relative(this.timelineArea).x(CATEGORY_BAR_WIDTH).w(1F, -CATEGORY_BAR_WIDTH).h(1F);
@@ -440,11 +462,13 @@ public class UIAnimationStateEditor extends UIElement
                 menu.action(Icons.FILTER, UIKeys.FILM_REPLAY_FILTER_SHEETS, () ->
                 {
                     Map<String, Integer> keyToColor = new HashMap<>();
+                    Map<String, IKey> keyToTitle = new HashMap<>();
                     for (UIKeyframeSheet listed : this.keyframeEditor.view.getSheets())
                     {
                         keyToColor.put(UIReplaysEditor.getSheetFilterKey(listed), listed.color);
+                        keyToTitle.put(UIReplaysEditor.getSheetFilterKey(listed), listed.defaultTitle);
                     }
-                    UIKeyframeSheetFilterOverlayPanel panel = new UIKeyframeSheetFilterOverlayPanel(BBSSettings.disabledSheets.get(), this.keys, keyToColor);
+                    UIKeyframeSheetFilterOverlayPanel panel = new UIKeyframeSheetFilterOverlayPanel(BBSSettings.disabledSheets.get(), this.keys, keyToColor, keyToTitle);
 
                     UIOverlay.addOverlay(this.getContext(), panel, 240, 0.9F);
 
@@ -490,7 +514,7 @@ public class UIAnimationStateEditor extends UIElement
     {
         if (this.state == null || this.root == null) return;
         AnimationState source = this.state;
-        List<TrackSearchEntry> entries = UIReplaysEditorUtils.formSearchEntries(this.root, this.bodyParts, true);
+        List<TrackSearchEntry> entries = UIReplaysEditorUtils.formSearchEntries(this.root, true);
         List<String> recent = this.recentTrackSearches.computeIfAbsent(source, id -> new ArrayList<>());
         UITrackSearchOverlayPanel.open(this.getContext(), entries, this.partSelection.activePart, recent,
             (entry, createKeyframe) -> this.state == source && this.revealTrack(entry, createKeyframe));
@@ -500,13 +524,15 @@ public class UIAnimationStateEditor extends UIElement
     {
         this.partSelection.focus(entry.path());
         this.revealedSearchTrack = entry;
-        this.allMode = false;
-        this.category = UIReplaysEditor.categoryOf(TrackId.parse(entry.key()), true);
         this.setState(this.state);
         return this.keyframeEditor != null
             && UIReplaysEditorUtils.revealSearchTrack(this.keyframeEditor, entry, createKeyframe, this.getContext());
     }
 
+    /**
+     * Bring a part's tracks into reach: a part off the timeline becomes the one the parts list
+     * shows, and its owner opens. Nothing else folds, and the view stays where it is.
+     */
     private void selectPart(String path)
     {
         if (!this.partSelection.activePart.equals(path))
@@ -514,6 +540,11 @@ public class UIAnimationStateEditor extends UIElement
             this.partSelection.focus(path);
             this.revealedSearchTrack = null;
             this.setState(this.state);
+        }
+
+        if (this.keyframeEditor != null)
+        {
+            this.keyframeEditor.view.getDopeSheet().revealSection(TrackTree.ownerId(path));
         }
     }
 
@@ -595,6 +626,12 @@ public class UIAnimationStateEditor extends UIElement
         return false;
     }
 
+    /** The locked channels of the bones the states' keyframe editor moves. */
+    public int axisLocks()
+    {
+        return GizmoLocks.of(this.root, this.keyframeEditor);
+    }
+
     public boolean startGizmo(UIContext context, int stencilIndex)
     {
         UIPropTransform transform = UIReplaysEditorUtils.getEditableTransform(this.keyframeEditor);
@@ -611,11 +648,6 @@ public class UIAnimationStateEditor extends UIElement
     private void pickFormBone(Form form, String bone, boolean insert)
     {
         this.selectForm(form);
-        if (!this.allMode && this.category != TrackCategory.FORM && form != null
-            && (!(form instanceof IPosedForm) || (bone != null && !bone.isEmpty())))
-        {
-            this.setCategory(TrackCategory.FORM);
-        }
         UIReplaysEditorUtils.pickForm(this.keyframeEditor, this.editor, form, bone, insert);
     }
 
@@ -839,6 +871,7 @@ public class UIAnimationStateEditor extends UIElement
 
                     return this.buildGizmoDrag(transform, current == null ? 0F : current.getTransition());
                 });
+                transform.axisLocks(this::axisLocks);
             }
 
             this.editArea.area.render(context.batcher, Colors.A75);

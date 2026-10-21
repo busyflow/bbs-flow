@@ -97,7 +97,6 @@ public class UIColorPicker extends UIElement
     public UIColorPalette favorite;
 
     public boolean editAlpha;
-    private boolean embedded;
 
     public Area picker = new Area();
     public Area hue = new Area();
@@ -163,7 +162,7 @@ public class UIColorPicker extends UIElement
         };
         this.input.context((menu) -> menu.action(Icons.FAVORITE, UIKeys.COLOR_CONTEXT_FAVORITES_ADD, () -> this.addToFavorites(this.color)));
 
-        this.eyedropper = new UIIcon(Icons.EYEDROPPER, (b) -> this.toggleEyedropper());
+        this.eyedropper = new UIIcon(Icons.EYEDROPPER, (b) -> this.picking = !this.picking);
         this.eyedropper.highlight(() -> this.picking, Direction.BOTTOM);
         this.eyedropper.tooltip(UIKeys.COLOR_EYEDROPPER);
 
@@ -214,19 +213,6 @@ public class UIColorPicker extends UIElement
         });
 
         this.eventPropagataion(EventPropagation.BLOCK_INSIDE).add(this.input, this.eyedropper, this.tabs, this.fields, this.favorite, this.recent);
-    }
-
-    public UIColorPicker embedded()
-    {
-        this.embedded = true;
-
-        return this;
-    }
-
-    @Override
-    public boolean isUserEditing()
-    {
-        return this.dragging != -1 || this.picking || super.isUserEditing();
     }
 
     public UIColorPicker editAlpha()
@@ -361,11 +347,6 @@ public class UIColorPicker extends UIElement
     {
         this.setValue(color);
         this.updateField();
-
-        if (this.embedded)
-        {
-            this.initial.copy(this.color);
-        }
     }
 
     public void setValue(int color)
@@ -420,68 +401,6 @@ public class UIColorPicker extends UIElement
 
     /* Eyedropper */
 
-    private void toggleEyedropper()
-    {
-        this.picking = !this.picking;
-
-        if (!this.embedded || !this.picking)
-        {
-            return;
-        }
-
-        /* A scroll view clips both rendering and clicks. Sample through the overlay instead. */
-        UIElement sampler = new UIElement()
-        {
-            @Override
-            public boolean subMouseClicked(UIContext context)
-            {
-                if (context.mouseButton == 0)
-                {
-                    UIColorPicker.this.sampled = UIColorPicker.this.readPixelUnderCursor(context);
-                    UIColorPicker.this.applySample();
-                }
-
-                UIColorPicker.this.picking = false;
-                this.removeFromParent();
-
-                return true;
-            }
-
-            @Override
-            protected boolean subKeyPressed(UIContext context)
-            {
-                if (context.isPressed(GLFW.GLFW_KEY_ESCAPE))
-                {
-                    UIColorPicker.this.picking = false;
-                    this.removeFromParent();
-
-                    return true;
-                }
-
-                return super.subKeyPressed(context);
-            }
-
-            @Override
-            public void render(UIContext context)
-            {
-                if (!UIColorPicker.this.canBeSeen() || !UIColorPicker.this.picking)
-                {
-                    UIColorPicker.this.picking = false;
-                    this.removeFromParent();
-
-                    return;
-                }
-
-                UIColorPicker.this.sampled = UIColorPicker.this.readPixelUnderCursor(context);
-                UIColorPicker.this.renderSample(context);
-            }
-        };
-
-        sampler.full(this.getContext().menu.overlay);
-        this.getContext().menu.overlay.add(sampler);
-        sampler.resize();
-    }
-
     /**
      * What the pixel under the cursor is, out of what's already been painted this frame.
      *
@@ -531,7 +450,7 @@ public class UIColorPicker extends UIElement
     /** A color chosen out of one of the palettes. */
     private void pickFromPalette(Color color)
     {
-        this.setValue(color.getARGBColor());
+        this.setColor(color.getARGBColor());
         this.notifyColorChanged();
     }
 
@@ -606,9 +525,7 @@ public class UIColorPicker extends UIElement
     @Override
     public void resize()
     {
-        int previousHeight = this.area.h;
-        int effectiveWidth = this.embedded && this.area.w > 0 ? Math.min(this.area.w, POPUP_WIDTH) : POPUP_WIDTH;
-        PickerLayout layout = this.createLayout(effectiveWidth);
+        PickerLayout layout = this.createLayout();
 
         this.layoutHsv = layout.hsv;
 
@@ -618,19 +535,6 @@ public class UIColorPicker extends UIElement
         if (this.resizer != null)
         {
             this.resizer.apply(this.area);
-        }
-
-        if (this.embedded)
-        {
-            layout = this.createLayout(Math.min(this.area.w > 0 ? this.area.w : POPUP_WIDTH, POPUP_WIDTH));
-
-            if (previousHeight != layout.height && this.hasParent())
-            {
-                this.getParent().invalidateLayout();
-            }
-
-            this.h(layout.height);
-            this.area.h = layout.height;
         }
 
         this.afterResizeApplied();
@@ -650,12 +554,12 @@ public class UIColorPicker extends UIElement
         }
     }
 
-    private PickerLayout createLayout(int width)
+    private PickerLayout createLayout()
     {
         PickerLayout layout = new PickerLayout();
 
         layout.hsv = this.isHsvPicker();
-        layout.width = width;
+        layout.width = POPUP_WIDTH;
         layout.paletteWidth = layout.width - POPUP_PADDING * 2;
         layout.favoriteHeight = this.favorite.isEmpty() ? 0 : this.favorite.getHeight(layout.paletteWidth);
         layout.recentHeight = this.recent.isEmpty() ? 0 : this.recent.getHeight(layout.paletteWidth);
@@ -813,7 +717,7 @@ public class UIColorPicker extends UIElement
             return true;
         }
 
-        if (!this.embedded && !this.area.isInside(context))
+        if (!this.area.isInside(context))
         {
             this.closePicker();
         }
@@ -824,12 +728,6 @@ public class UIColorPicker extends UIElement
     @Override
     public boolean subMouseReleased(UIContext context)
     {
-        if (this.embedded && this.dragging != -1 && !this.color.equals(this.initial))
-        {
-            this.addToRecent();
-            this.resize();
-        }
-
         this.dragging = -1;
 
         return super.subMouseReleased(context);
@@ -846,11 +744,6 @@ public class UIColorPicker extends UIElement
                 this.picking = false;
 
                 return true;
-            }
-
-            if (this.embedded)
-            {
-                return super.subKeyPressed(context);
             }
 
             this.cancelPicker();
@@ -873,15 +766,12 @@ public class UIColorPicker extends UIElement
         this.handleDragging(context);
 
         /* Before anything of this popup is painted: what the dropper sees is what's under it */
-        if (this.picking && !this.embedded)
+        if (this.picking)
         {
             this.sampled = this.readPixelUnderCursor(context);
         }
 
-        if (!this.embedded)
-        {
-            this.renderBackground(context);
-        }
+        this.renderBackground(context);
         this.renderPreview(context);
 
         if (this.layoutHsv)
@@ -897,7 +787,7 @@ public class UIColorPicker extends UIElement
 
         super.render(context);
 
-        if (this.picking && !this.embedded)
+        if (this.picking)
         {
             this.renderSample(context);
         }

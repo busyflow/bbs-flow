@@ -25,23 +25,23 @@ import org.joml.Vector3f;
  */
 public class ReplayFactory
 {
-    /** A replay standing at the given spot, optionally facing the given way. */
-    public static Replay atPosition(Film film, Vector3d position, float pitch, float yaw, boolean includeRotation)
+    /** A replay standing at the given spot, optionally facing the given way, keyed at the given tick. */
+    public static Replay atPosition(Film film, int tick, Vector3d position, float pitch, float yaw, boolean includeRotation)
     {
         Replay replay = film.replays.addReplay();
 
         replay.category.set("");
 
-        replay.keyframes.x.insert(0, position.x);
-        replay.keyframes.y.insert(0, position.y);
-        replay.keyframes.z.insert(0, position.z);
+        replay.keyframes.x.insert(tick, position.x);
+        replay.keyframes.y.insert(tick, position.y);
+        replay.keyframes.z.insert(tick, position.z);
 
         if (includeRotation)
         {
-            replay.keyframes.pitch.insert(0, (double) pitch);
-            replay.keyframes.yaw.insert(0, (double) yaw);
-            replay.keyframes.headYaw.insert(0, (double) yaw);
-            replay.keyframes.bodyYaw.insert(0, (double) yaw);
+            replay.keyframes.pitch.insert(tick, (double) pitch);
+            replay.keyframes.yaw.insert(tick, (double) yaw);
+            replay.keyframes.headYaw.insert(tick, (double) yaw);
+            replay.keyframes.bodyYaw.insert(tick, (double) yaw);
         }
 
         return replay;
@@ -86,8 +86,8 @@ public class ReplayFactory
         return replay;
     }
 
-    /** The model block's form as a replay, standing exactly where the block shows it. */
-    public static Replay fromModelBlock(Film film, ModelBlockEntity modelBlock)
+    /** The model block's form as a replay, standing exactly where the block shows it, keyed at the given tick. */
+    public static Replay fromModelBlock(Film film, int tick, ModelBlockEntity modelBlock)
     {
         Replay replay = film.replays.addReplay();
 
@@ -104,9 +104,9 @@ public class ReplayFactory
 
         replay.shadow.set(properties.isShadow());
         replay.form.set(FormUtils.copy(properties.getForm()));
-        replay.keyframes.x.insert(0, x);
-        replay.keyframes.y.insert(0, y);
-        replay.keyframes.z.insert(0, z);
+        replay.keyframes.x.insert(tick, x);
+        replay.keyframes.y.insert(tick, y);
+        replay.keyframes.z.insert(tick, z);
 
         /* Mode-aware read: on a quaternion-mode transform the euler channels are
          * stale zeros — reading them raw would take the yaw-only path with yaw 0
@@ -121,9 +121,9 @@ public class ReplayFactory
             ) {
                 double yaw = -Math.toDegrees(rotation.y);
 
-                replay.keyframes.yaw.insert(0, yaw);
-                replay.keyframes.headYaw.insert(0, yaw);
-                replay.keyframes.bodyYaw.insert(0, yaw);
+                replay.keyframes.yaw.insert(tick, yaw);
+                replay.keyframes.headYaw.insert(tick, yaw);
+                replay.keyframes.bodyYaw.insert(tick, yaw);
             }
             else
             {
@@ -141,8 +141,8 @@ public class ReplayFactory
         return replay;
     }
 
-    /** The cut region's form, dropped in at the very spot it was cut from. */
-    public static Replay fromStructure(Film film, String id, BlockPos min, Vec3i size)
+    /** The cut region's form, dropped in at the very spot it was cut from, keyed at the given tick. */
+    public static Replay fromStructure(Film film, int tick, String id, BlockPos min, Vec3i size)
     {
         StructureForm form = new StructureForm();
 
@@ -156,9 +156,9 @@ public class ReplayFactory
 
         /* The form centres its footprint and stands on its lowest layer, so this is the one
          * position at which the structure covers the blocks it was made from */
-        replay.keyframes.x.insert(0, min.getX() + size.getX() / 2D);
-        replay.keyframes.y.insert(0, (double) min.getY());
-        replay.keyframes.z.insert(0, min.getZ() + size.getZ() / 2D);
+        replay.keyframes.x.insert(tick, min.getX() + size.getX() / 2D);
+        replay.keyframes.y.insert(tick, (double) min.getY());
+        replay.keyframes.z.insert(tick, min.getZ() + size.getZ() / 2D);
 
         return replay;
     }

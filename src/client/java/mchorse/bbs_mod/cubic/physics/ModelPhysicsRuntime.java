@@ -7,17 +7,23 @@ import mchorse.bbs_mod.cubic.constraints.ModelConstraintsRuntime;
 import mchorse.bbs_mod.cubic.render.CubicRenderer.PivotFrame;
 import mchorse.bbs_mod.cubic.render.ModelPivotFrames;
 import mchorse.bbs_mod.cubic.render.ModelRotationBlender;
+import mchorse.bbs_mod.cubic.rig.RigClaim.Hold;
+import mchorse.bbs_mod.cubic.rig.RigClaim.Part;
+import mchorse.bbs_mod.cubic.rig.RigOwners;
+import mchorse.bbs_mod.cubic.rig.RigStep;
 import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.forms.utils.FormBone;
 import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
+import mchorse.bbs_mod.settings.values.base.BaseValue;
 import net.minecraft.world.World;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -156,6 +162,38 @@ public final class ModelPhysicsRuntime
     public static List<String> chainBones(IModel model, String root, String end)
     {
         return ModelPhysicsCache.buildChainIds(model, end, root);
+    }
+
+    /**
+     * The physics step's hand on the form's bones (see {@link RigOwners}): every chain the form sets
+     * up, from the root it lives on down to its end, and what its end is pinned to. The chain swings
+     * after the pose, the pose's rotation staying the base, so it never takes a rotation over. It acts
+     * when it is switched on and has a weight, read live as the film keys them.
+     */
+    public static void claim(IModel model, ModelForm form, RigOwners owners)
+    {
+        for (BaseValue value : form.bones.getAll())
+        {
+            if (!(value instanceof FormBone bone) || !bone.hasPhysicsChain())
+            {
+                continue;
+            }
+
+            String root = bone.getId();
+            PhysicsControl control = bone.physics.get();
+            List<String> chain = chainBones(model, root, bone.physicsEnd.get());
+            boolean on = control.enabled;
+            boolean live = on && control.weight > 0F && !chain.isEmpty();
+
+            /* An end that isn't below the root makes no chain, but the setting still sits on its root. */
+            if (chain.isEmpty())
+            {
+                chain = Collections.singletonList(root);
+            }
+
+            owners.chain(RigStep.PHYSICS, root, root, chain, Hold.FOLLOWS, on, live);
+            owners.reads(RigStep.PHYSICS, bone.physicsTargetBone.get(), root, Part.TARGET, chain, on, live);
+        }
     }
 
     public static void invalidate(String modelId)

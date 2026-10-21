@@ -14,21 +14,25 @@ import org.joml.Vector3f;
  * track's: the form keeps the bone's own setting, a keyframe replaces it for its stretch of the
  * take. Whether the bone shakes at all is the bone's switch, not part of this.
  *
- * <p>An axis shakes when its amplitude isn't zero, so a fresh shake holds still until one is set.
+ * <p>An axis shakes when its amplitude isn't zero; a fresh shake trembles on its rotation only.
  * Rotation is in degrees, translation and scale in the units of the pose they add onto. Numbers
  * interpolate; the variant steps, since a pattern halfway between two others doesn't exist.</p>
  */
 public class ShakeControl extends ChainControl<ShakeControl>
 {
     public static final float DEFAULT_STRENGTH = 1F;
-    public static final float DEFAULT_FREQUENCY = 5F;
-    public static final float DEFAULT_ROUGHNESS = 0.3F;
+    public static final float DEFAULT_FREQUENCY = 2F;
+    public static final float DEFAULT_ROUGHNESS = 0.2F;
+
+    /** The tremble a bone starts with: every rotation axis, so a switched on bone shows at once. */
+    public static final float DEFAULT_ROTATE = 10F;
+    public static final int DEFAULT_SEED = 42;
 
     public static final ShakeControl DEFAULT = new ShakeControl();
 
     public float strength = DEFAULT_STRENGTH;
     public final Vector3f translate = new Vector3f();
-    public final Vector3f rotate = new Vector3f();
+    public final Vector3f rotate = new Vector3f(DEFAULT_ROTATE);
     public final Vector3f scale = new Vector3f();
 
     /** Swings there and back per second. */
@@ -38,7 +42,7 @@ public class ShakeControl extends ChainControl<ShakeControl>
     public float roughness = DEFAULT_ROUGHNESS;
 
     /** Picks another pattern for the same settings. */
-    public int seed;
+    public int seed = DEFAULT_SEED;
 
     @Override
     public void identity()
@@ -46,11 +50,11 @@ public class ShakeControl extends ChainControl<ShakeControl>
         this.bindings.clear();
         this.strength = DEFAULT_STRENGTH;
         this.translate.set(0F);
-        this.rotate.set(0F);
+        this.rotate.set(DEFAULT_ROTATE);
         this.scale.set(0F);
         this.frequency = DEFAULT_FREQUENCY;
         this.roughness = DEFAULT_ROUGHNESS;
-        this.seed = 0;
+        this.seed = DEFAULT_SEED;
     }
 
     @Override
@@ -173,9 +177,9 @@ public class ShakeControl extends ChainControl<ShakeControl>
         this.strength = data.getFloat("strength", DEFAULT_STRENGTH);
         this.frequency = data.getFloat("frequency", DEFAULT_FREQUENCY);
         this.roughness = data.getFloat("roughness", DEFAULT_ROUGHNESS);
-        this.seed = data.getInt("seed", 0);
+        this.seed = data.getInt("seed", DEFAULT_SEED);
         this.translate.set(0F);
-        this.rotate.set(0F);
+        this.rotate.set(DEFAULT_ROTATE);
         this.scale.set(0F);
 
         if (data.has("translate", BaseType.TYPE_LIST)) this.translate.set(DataStorageUtils.vector3fFromData(data.getList("translate")));

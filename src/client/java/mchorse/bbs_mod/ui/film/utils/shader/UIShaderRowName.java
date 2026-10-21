@@ -9,8 +9,8 @@ import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
 /**
- * The name on the left of a row of the shader panel, in the colour the row's state calls for. A
- * search hit adds the screen it lives on in grey.
+ * The name on the left of a row of the shader pack's settings, in the colour the row's state calls
+ * for. A search hit adds the screen it lives on in grey.
  */
 public class UIShaderRowName extends UIElement
 {

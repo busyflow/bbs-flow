@@ -18,6 +18,9 @@ public final class UIConstants
     /** Height of toggles and small switches. */
     public static final int TOGGLE_HEIGHT = 14;
 
+    /** Width of a switch with no label of its own: its track and the room around it. */
+    public static final int SWITCH_WIDTH = 26;
+
     /** Padding inside scroll areas. */
     public static final int SCROLL_PADDING = 6;
 

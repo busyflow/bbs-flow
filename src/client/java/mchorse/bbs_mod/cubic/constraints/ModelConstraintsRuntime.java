@@ -3,6 +3,9 @@ package mchorse.bbs_mod.cubic.constraints;
 import mchorse.bbs_mod.cubic.IModel;
 import mchorse.bbs_mod.cubic.RigBone;
 import mchorse.bbs_mod.cubic.ModelInstance;
+import mchorse.bbs_mod.cubic.rig.RigClaim.Hold;
+import mchorse.bbs_mod.cubic.rig.RigOwners;
+import mchorse.bbs_mod.cubic.rig.RigStep;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.forms.utils.FormBone;
 import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
@@ -12,6 +15,7 @@ import org.joml.Vector3f;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class ModelConstraintsRuntime
@@ -35,6 +39,27 @@ public final class ModelConstraintsRuntime
         }
 
         applyToBones(instance.model, bones);
+    }
+
+    /**
+     * The limits' hand on the form's bones (see {@link RigOwners}): every bone with limits set up,
+     * its rotation clamped last. They act while an axis is switched on, read live as the film keys
+     * them; set up with every axis off they sit on the bone and do nothing.
+     */
+    public static void claim(IModel model, ModelForm form, RigOwners owners)
+    {
+        for (BaseValue value : form.bones.getAll())
+        {
+            if (!(value instanceof FormBone bone) || bone.constraints.get().isDefault())
+            {
+                continue;
+            }
+
+            String id = bone.getId();
+            boolean active = bone.constraints.get().isActive();
+
+            owners.chain(RigStep.LIMITS, id, id, List.of(id), Hold.CLAMPS, active, active);
+        }
     }
 
     /* One-slot per-frame memo - the walk used to run twice per form per frame (physics asks
@@ -97,7 +122,7 @@ public final class ModelConstraintsRuntime
     }
 
     /**
-     * Clamps a bone's EVALUATED rotation (the constraint-stack result so far — FK, IK, physics),
+     * Holds a bone's EVALUATED rotation (the constraint-stack result so far — FK, IK, physics),
      * not its FK channels: the evaluated rotation is decomposed to the euler branch nearest the FK
      * channels (a per-frame-stable reference, no frame-to-frame stranding), clamped per axis, and
      * written back to {@code orient}. The channels stay read-only FK truth, and an IK/physics
@@ -106,10 +131,10 @@ public final class ModelConstraintsRuntime
      * quaternion-mode bones too — the clamp reads the evaluated rotation, never a stale euler.
      */
     /**
-     * Clamps every constrained bone of the rig. The limits are authored in DEGREES whatever the
-     * skeleton stores its channels in, which is what {@link RigBone#fromDegrees()} is for; the
-     * decomposition goes against the bone's own channels so a clamp lands on angles the animator
-     * would recognise.
+     * Holds every limited bone of the rig: a locked axis goes back to where the keys put it, a
+     * limited one into its limits. The limits are authored in DEGREES whatever the skeleton stores
+     * its channels in, which is what {@link RigBone#fromDegrees()} is for; the decomposition goes
+     * against the bone's own channels so a clamp lands on angles the animator would recognise.
      */
     private static void applyToBones(IModel model, Map<String, BoneConstraint> bones)
     {
@@ -129,9 +154,29 @@ public final class ModelConstraintsRuntime
 
             Vector3f euler = bone.toCompatibleEuler(new Vector3f());
 
+            lock(euler, c, bone.getBoneTransform().rotate);
             clamp(euler, c, bone.fromDegrees());
 
             bone.setOrient(bone.orientFromEuler(euler));
+        }
+    }
+
+    /** Puts a locked axis back on the bone's own channel: the value its keys give it. */
+    private static void lock(Vector3f euler, BoneConstraint c, Vector3f channels)
+    {
+        if (c.lockX)
+        {
+            euler.x = channels.x;
+        }
+
+        if (c.lockY)
+        {
+            euler.y = channels.y;
+        }
+
+        if (c.lockZ)
+        {
+            euler.z = channels.z;
         }
     }
 

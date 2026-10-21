@@ -11,9 +11,9 @@ import java.util.Map;
  * Neutral, Iris-free snapshot of a shader pack's options menu.
  *
  * <p>Built by {@link IrisShaderMenu#buildShaderMenu()} from Iris' {@code OptionMenuContainer}, this
- * model lets the shader panel of the curve clip mirror the layout of the Iris shader-options menu
- * (screens, columns, sliders, toggles, sub-page links, profiles) without dragging Iris classes into
- * the UI layer.</p>
+ * model lets the curve picker and the pack's settings mirror the layout of the Iris
+ * shader-options menu (screens, columns, sliders, toggles, sub-page links, profiles) without
+ * dragging Iris classes into the UI layer.</p>
  */
 public class ShaderMenu
 {

@@ -6,7 +6,8 @@ import mchorse.bbs_mod.cubic.data.model.Model;
 import mchorse.bbs_mod.cubic.data.model.ModelGroup;
 import mchorse.bbs_mod.cubic.model.bobj.BOBJModel;
 import mchorse.bbs_mod.cubic.render.CubicRenderer.PivotFrame;
-import mchorse.bbs_mod.cubic.render.ModelRotationBlender;
+import mchorse.bbs_mod.cubic.rig.BonePassport;
+import mchorse.bbs_mod.cubic.rig.RigWriter;
 import mchorse.bbs_mod.utils.joml.Matrices;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -116,7 +117,7 @@ final class ClassicLimbSolver
 
         if (hinge == null)
         {
-            hinge = restBendNormal(model, workIds, rootParentRotation);
+            hinge = restBendNormal(rig, workIds, rootParentRotation);
         }
 
         if (hinge == null)
@@ -341,30 +342,17 @@ final class ClassicLimbSolver
 
     /**
      * The chain's authored bend side, in model space: the normal of the rest bend
-     * plane {@code restDir[0] x restDir[1]} — the side the limb was modelled bent
-     * towards (knee forward, elbow back) — taken in the root's local frame and
-     * lifted by the root's current parent rotation, so it tracks the limb as the
-     * shoulder/hip turns. {@code null} when the rest pose is dead straight (no
-     * plane — then only a pole or the side-axis fallback can pick a side).
+     * plane (see {@link IKRig#restBendNormal}) — the side the limb was modelled bent
+     * towards (knee forward, elbow back) — lifted by the root's current parent
+     * rotation, so it tracks the limb as the shoulder/hip turns. {@code null} when
+     * the rest pose is dead straight (no plane — then only a pole or the side-axis
+     * fallback can pick a side).
      */
-    private static Vector3f restBendNormal(IModel model, List<String> chainIds, Quaternionf rootParentRotation)
+    private static Vector3f restBendNormal(IKRig rig, List<String> chainIds, Quaternionf rootParentRotation)
     {
-        Vector3f a = restDirection(model, chainIds, 0);
-        Vector3f b = restDirection(model, chainIds, 1);
+        Vector3f normal = rig.restBendNormal(chainIds);
 
-        if (a == null || b == null)
-        {
-            return null;
-        }
-
-        Vector3f normal = new Vector3f(a).cross(b);
-
-        if (normal.lengthSquared() < EPS * EPS)
-        {
-            return null;
-        }
-
-        return rootParentRotation.transform(normal.normalize());
+        return normal == null ? null : rootParentRotation.transform(normal);
     }
 
     /**
@@ -405,7 +393,9 @@ final class ClassicLimbSolver
      * transport — a minimal-twist frame, the way a bone inherits its parent's roll
      * in Blender — seeded from the solve's bend normal, so the bend sets the roll
      * and the chain follows it without per-joint flips. Rest and solved frames are
-     * built the SAME way, so at rest they coincide (identity, no baseline twist).
+     * built the SAME way — the rest one walked through the chain's authored rest
+     * rotations ({@code initial.rotate}) as the renderer stacks them — so at rest
+     * each bone gets back exactly its rest rotation (no baseline twist).
      * The parent world frame is walked root-to-tip as the renderer would,
      * advancing by each bone's rendered (blended) orientation so children inherit
      * the same frame the renderer establishes.
@@ -447,7 +437,18 @@ final class ClassicLimbSolver
 
         boolean rootStretch = stretchGap != null && reach == 0;
 
-        Vector3f[] restNormal = transportNormals(restDir, null);
+        /* Each restDir lives in its own bone's rest frame, so the rest roll reference
+         * is transported in the frame they all share — the root's parent — and taken
+         * back into each bone's frame below, as the BOBJ branch does with relBoneMat. */
+        Quaternionf[] restFrame = cubicRestFrames(model, chainIds, bones);
+        Vector3f[] restDirShared = new Vector3f[bones];
+
+        for (int i = 0; i < bones; i++)
+        {
+            restDirShared[i] = restFrame[i].transform(new Vector3f(restDir[i]));
+        }
+
+        Vector3f[] restNormalShared = transportNormals(restDirShared, null);
         Vector3f[] solvedNormal = transportNormals(segWorld, bendSeed);
 
         Quaternionf parentWorld = new Quaternionf(rootParentRotation);
@@ -464,11 +465,10 @@ final class ClassicLimbSolver
             Quaternionf invParent = new Quaternionf(parentWorld).conjugate();
             Vector3f segLocal = invParent.transform(new Vector3f(segWorld[i]));
             Vector3f normalLocal = invParent.transform(new Vector3f(solvedNormal[i]));
+            Vector3f restNormal = new Quaternionf(restFrame[i]).conjugate().transform(new Vector3f(restNormalShared[i]));
 
-            Quaternionf localRot = Matrices.orientMirroredX(restDir[i], restNormal[i], segLocal, normalLocal);
-            Quaternionf oriented = weight >= 1F - EPS ? new Quaternionf(localRot) : bone.evaluatedRotation().slerp(localRot, weight);
-
-            bone.orient = oriented;
+            Quaternionf localRot = Matrices.orientMirroredX(restDir[i], restNormal, segLocal, normalLocal);
+            Quaternionf oriented = RigWriter.blend(bone, localRot, weight);
 
             /* Stretch: open the gap before this bone (the segment from its parent),
              * pushing it and everything below out along the limb. parentWorld is
@@ -508,18 +508,17 @@ final class ClassicLimbSolver
          * the controller's world orientation. parentWorld is now the tip's parent frame. */
         if (tipTarget != null)
         {
-            Quaternionf tipLocal = new Quaternionf(parentWorld).conjugate().mul(tipTarget);
-
-            tip.orient = weight >= 1F - EPS ? tipLocal : tip.evaluatedRotation().slerp(tipLocal, weight);
+            RigWriter.blend(tip, new Quaternionf(parentWorld).conjugate().mul(tipTarget), weight);
         }
     }
 
     /**
      * The BOBJ analogue of {@link #buildChainOrientations}: gives each BOBJ IK bone
      * a full local orientation written to {@link BOBJBone#orient}, which the
-     * armature applies in place of the euler rotate. Unlike the cubic chain, BOBJ
-     * bones carry a per-bone REST rotation (their {@code relBoneMat}), so the rest
-     * and solved frames are walked separately: the rest frame advances by
+     * armature applies in place of the euler rotate. Unlike a cubic bone, whose rest
+     * rotation ({@code initial.rotate}) is part of the very rotation the solve
+     * replaces, a BOBJ bone carries its REST rotation apart (its {@code relBoneMat}),
+     * so the rest and solved frames are walked separately: the rest frame advances by
      * {@code relBoneMat} alone, the solved frame by each bone's applied orientation
      * then {@code relBoneMat}. Both build the roll reference by parallel transport
      * in world, so at rest the two frames coincide and the orientation is identity
@@ -528,6 +527,7 @@ final class ClassicLimbSolver
     static void buildChainOrientationsBobj(BOBJModel model, List<String> chainIds, List<Vector3f> solved, Quaternionf rootParentRotation, float weight, Quaternionf tipTarget, Vector3f stretchGap, Vector3f bendSeed)
     {
         int bones = chainIds.size() - 1;
+        BonePassport passport = BonePassport.of(model);
         Map<String, BOBJBone> bonesMap = model.getArmature().bones;
         BOBJBone[] chainBones = new BOBJBone[bones];
         Vector3f[] restDir = new Vector3f[bones];
@@ -547,7 +547,7 @@ final class ClassicLimbSolver
             }
 
             chainBones[i] = bone;
-            relRot[i] = bone.relBoneMat.getNormalizedRotation(new Quaternionf());
+            relRot[i] = passport.restRotation(chainIds.get(i));
             segWorld[i] = seg.normalize();
         }
 
@@ -584,9 +584,7 @@ final class ClassicLimbSolver
             Vector3f restNormalLocal = new Quaternionf(restFrame[i]).conjugate().transform(new Vector3f(restNormalWorld[i]));
 
             Quaternionf localRot = Matrices.orientMirroredX(restDir[i], restNormalLocal, segLocal, normalLocal);
-            Quaternionf oriented = weight >= 1F - EPS ? new Quaternionf(localRot) : chainBones[i].evaluatedRotation().slerp(localRot, weight);
-
-            chainBones[i].orient = oriented;
+            Quaternionf oriented = RigWriter.blend(chainBones[i], localRot, weight);
 
             if (i + 1 < bones)
             {
@@ -603,11 +601,9 @@ final class ClassicLimbSolver
 
             if (tip != null)
             {
-                Quaternionf tipRelRot = tip.relBoneMat.getNormalizedRotation(new Quaternionf());
-                Quaternionf tipParent = new Quaternionf(originRot).mul(chainBones[bones - 1].orient).mul(tipRelRot);
-                Quaternionf tipLocal = tipParent.conjugate().mul(tipTarget);
+                Quaternionf tipParent = new Quaternionf(originRot).mul(chainBones[bones - 1].orient).mul(passport.restRotation(chainIds.get(chainIds.size() - 1)));
 
-                tip.orient = weight >= 1F - EPS ? new Quaternionf(tipLocal) : tip.evaluatedRotation().slerp(tipLocal, weight);
+                RigWriter.blend(tip, tipParent.conjugate().mul(tipTarget), weight);
             }
         }
 
@@ -758,44 +754,72 @@ final class ClassicLimbSolver
     }
 
     /**
-     * The bone's local rest direction towards its child, taken exactly as that
-     * model's renderer takes it (cubic: pivot difference; BOBJ: the renderer's own
-     * {@link ModelRotationBlender#getBobjRestDirection}), so the orientation pass
-     * reconstructs the same swing the renderer applies.
+     * The local rest direction from the chain's i-th bone towards the next, normalised, taken
+     * exactly as the rotation writer takes it ({@link BonePassport#restAxisPastTip}), so the
+     * orientation pass reconstructs the same swing the renderer applies. Null when the model is
+     * not a skeleton the passport knows or a bone is missing.
      */
     private static Vector3f restDirection(IModel model, List<String> chainIds, int i)
     {
-        IKRig rig = IKRig.of(model);
+        BonePassport passport = BonePassport.of(model);
+        Vector3f axis = passport == null ? null : passport.restAxisPastTip(chainIds.get(i), chainIds.get(i + 1), i > 0 ? chainIds.get(i - 1) : null);
 
-        return rig == null ? null : rig.restDirection(chainIds, i);
+        return axis == null ? null : normalizeRest(axis);
     }
 
-    /** See {@link IKRig.CubicIKRig#restDirection}. */
-    static Vector3f cubicRestDirection(Model model, List<String> chainIds, int i)
+    /**
+     * The frames a cubic chain's {@link #restDirection}s live in, relative to the
+     * root's parent frame: a pivot difference is measured after its bone's authored
+     * rest rotation ({@code initial.rotate}) and those of the chain bones above it, so
+     * frame {@code i} is their product walked from the root, the way the renderer
+     * stacks them. Identity throughout on a rig without rest rotations.
+     */
+    private static Quaternionf[] cubicRestFrames(Model model, List<String> chainIds, int bones)
     {
-        ModelGroup bone = model.getGroup(chainIds.get(i));
-        ModelGroup child = model.getGroup(chainIds.get(i + 1));
+        BonePassport passport = BonePassport.of(model);
+        Quaternionf[] frames = new Quaternionf[bones];
+        Quaternionf walk = new Quaternionf();
 
-        if (bone == null || child == null)
+        for (int i = 0; i < bones; i++)
+        {
+            walk.mul(passport.restRotation(chainIds.get(i)));
+            frames[i] = new Quaternionf(walk);
+        }
+
+        return frames;
+    }
+
+    /** See {@link IKRig.CubicIKRig#restBendNormal}. */
+    static Vector3f cubicRestBendNormal(Model model, List<String> chainIds)
+    {
+        Vector3f a = restDirection(model, chainIds, 0);
+        Vector3f b = restDirection(model, chainIds, 1);
+
+        if (a == null || b == null)
         {
             return null;
         }
 
-        return normalizeRest(new Vector3f(child.initial.translate).sub(bone.initial.translate));
+        Quaternionf[] restFrame = cubicRestFrames(model, chainIds, 2);
+
+        return bendNormal(restFrame[0].transform(a), restFrame[1].transform(b));
     }
 
-    /** See {@link IKRig.BobjIKRig#restDirection}. */
-    static Vector3f bobjRestDirection(BOBJModel model, List<String> chainIds, int i)
+    /** See {@link IKRig.BobjIKRig#restBendNormal}. */
+    static Vector3f bobjRestBendNormal(BOBJModel model, List<String> chainIds)
     {
-        BOBJBone bone = model.getArmature().bones.get(chainIds.get(i));
-        BOBJBone child = model.getArmature().bones.get(chainIds.get(i + 1));
+        Vector3f a = restDirection(model, chainIds, 0);
+        Vector3f b = restDirection(model, chainIds, 1);
 
-        if (bone == null)
-        {
-            return null;
-        }
+        return a == null || b == null ? null : bendNormal(a, b);
+    }
 
-        return normalizeRest(ModelRotationBlender.getBobjRestDirection(model, bone, child, chainIds, i));
+    /** The unit normal {@code a x b}, {@code null} when the two are parallel. */
+    private static Vector3f bendNormal(Vector3f a, Vector3f b)
+    {
+        Vector3f normal = new Vector3f(a).cross(b);
+
+        return normal.lengthSquared() < EPS * EPS ? null : normal.normalize();
     }
 
     private static Vector3f normalizeRest(Vector3f restDir)

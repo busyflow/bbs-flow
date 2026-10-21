@@ -14,6 +14,7 @@ import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.ui.ValueOnionSkin;
+import mchorse.bbs_mod.ui.film.replays.UIReplaysEditorUtils;
 import mchorse.bbs_mod.utils.CollectionUtils;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
@@ -295,6 +296,7 @@ public class FilmEditorController extends BaseFilmController
         return super.getFilmControllerContext(context, replay, entity)
             .transition(this.getTransition(entity, context.tickDelta()))
             .gizmoTarget(target)
+            .gizmoMask(UIReplaysEditorUtils.getFilmGizmoMask(this.controller.panel, target))
             /* The UI camera is copied later in the frame. Use the view that is
              * actually drawing this pass, before any actor transforms go on it. */
             .gizmoView(context.matrixStack().peek().getPositionMatrix())

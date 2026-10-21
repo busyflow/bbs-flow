@@ -126,6 +126,15 @@ public class RowStyle
      */
     public static void row(Batcher2D batcher, int x, int y, int w, int h, int color, boolean header, boolean hover, boolean picked)
     {
+        row(batcher, x, y, w, h, color, header, hover, picked, STRIPE);
+    }
+
+    /**
+     * The same marks with a bar of another width — a timeline heading wears a double one, and that
+     * is all that sets it apart from the tracks under it.
+     */
+    public static void row(Batcher2D batcher, int x, int y, int w, int h, int color, boolean header, boolean hover, boolean picked, int barWidth)
+    {
         if (header)
         {
             wash(batcher, x, y, w, h, tint(color), HEADER_NEAR, HEADER_FAR);
@@ -146,7 +155,7 @@ public class RowStyle
 
         if (bar != 0)
         {
-            bar(batcher, x, y, h, bar);
+            batcher.box(x, y, x + barWidth, y + h, Colors.A100 | bar);
         }
     }
 

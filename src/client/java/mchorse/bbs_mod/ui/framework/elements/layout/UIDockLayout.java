@@ -66,7 +66,7 @@ public class UIDockLayout extends UIElement
     private static final float DROP_HIGHLIGHT_RATIO = 0.2F;
     private static final int DOCK_STACK_TABS_HEIGHT_PX = 20;
     /** Splitter drags stop where a side would become too small to use, measured in pixels. */
-    private static final int MIN_PANEL_SIZE_PX = 80;
+    public static final int MIN_PANEL_SIZE_PX = 80;
     /** Movement (px, manhattan) before a pressed tab turns into a panel drag instead of a click. */
     private static final int DRAG_START_THRESHOLD_PX = 4;
     /** Dwell time over another stack's tab, mid-drag, before that tab is flipped open. */

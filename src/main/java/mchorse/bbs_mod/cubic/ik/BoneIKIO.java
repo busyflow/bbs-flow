@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.cubic.ik;
 
+import mchorse.bbs_mod.cubic.constraints.BoneConstraint;
 import mchorse.bbs_mod.data.types.BaseType;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.forms.forms.utils.FormBone;
@@ -8,9 +9,10 @@ import mchorse.bbs_mod.settings.values.base.BaseValue;
 
 /**
  * The IK exchange format: {@code {"chains": {tip: {...}}, "bones": {bone: {...}}}} — chains keyed
- * by their tip bone, per-bone joint freedom keyed by bone. It is what IK presets are saved as, and
- * what forms saved before the bones group stored in their {@code ik} blob — one reader serves both.
- * The form itself now persists IK inside {@link ValueBones}, per bone.
+ * by their tip bone, per-bone extras keyed by bone (the controller marker; before the limits took it
+ * over, the joint freedom too). It is what IK presets are saved as, and what forms saved before the
+ * bones group stored in their {@code ik} blob — one reader serves both. The form itself now persists
+ * IK inside {@link ValueBones}, per bone.
  *
  * <p>Data written before the joints existed was the flat chains map itself (no wrapper); it is
  * still read: a map WITHOUT a "chains" key is taken as the legacy flat form. That missing wrapper
@@ -28,9 +30,10 @@ public final class BoneIKIO
     }
 
     /**
-     * Reads the exchange format into the bones group. With {@code reset}, every bone's chain and
-     * joint are neutralized first — a preset is a complete state, so a chain absent from it ends
-     * up gone (legacy form loading passes false: the group is fresh).
+     * Reads the exchange format into the bones group. With {@code reset}, every bone's chain is
+     * neutralized first — a preset is a complete state, so a chain absent from it ends up gone
+     * (legacy form loading passes false: the group is fresh). A joint freedom in it goes into the
+     * bone's limits, which belong to no chain, so the reset leaves them be.
      */
     public static void read(MapType root, ValueBones bones, boolean reset)
     {
@@ -44,15 +47,11 @@ public final class BoneIKIO
                 }
 
                 bone.boneController.set(false);
+                bone.boneControllerColor.set(FormBone.CONTROLLER_COLOR);
 
                 if (bone.hasChain() || !bone.ik.get().isDefault())
                 {
                     clearChain(bone);
-                }
-
-                if (!bone.joint.get().isFree())
-                {
-                    bone.joint.set(new JointDoF());
                 }
             }
         }
@@ -116,30 +115,31 @@ public final class BoneIKIO
                     continue;
                 }
 
-                JointDoF joint = new JointDoF();
-
                 MapType entry = bonesMap.getMap(name);
-                joint.fromData(entry);
 
                 if (entry.getBool("controller", false))
                 {
                     bones.getOrCreate(name).boneController.set(true);
                 }
 
-                if (!joint.isFree())
+                if (entry.has("lock") || entry.has("limited") || entry.has("stiffness"))
                 {
-                    bones.getOrCreate(name).joint.set(joint);
+                    FormBone bone = bones.getOrCreate(name);
+                    BoneConstraint constraint = bone.constraints.get().copy();
+
+                    constraint.readJoint(entry);
+                    bone.constraints.set(constraint);
                 }
             }
         }
     }
 
-    /** Writes every configured chain and non-free joint in the exchange format; empty means none. */
+    /** Writes every configured chain and controller in the exchange format; empty means none. */
     public static MapType write(ValueBones bones)
     {
         MapType root = new MapType();
         MapType chains = new MapType();
-        MapType joints = new MapType();
+        MapType controllers = new MapType();
 
         for (BaseValue value : bones.getAll())
         {
@@ -209,32 +209,25 @@ public final class BoneIKIO
                 chains.put(bone.getId(), entry);
             }
 
-            JointDoF joint = bone.joint.get();
-
-            if (!joint.isFree() || bone.boneController.get())
+            if (bone.boneController.get())
             {
                 MapType map = new MapType();
 
-                joint.toData(map);
-
-                if (bone.boneController.get())
-                {
-                    map.putBool("controller", true);
-                }
-                joints.put(bone.getId(), map);
+                map.putBool("controller", true);
+                controllers.put(bone.getId(), map);
             }
         }
 
-        if (chains.isEmpty() && joints.isEmpty())
+        if (chains.isEmpty() && controllers.isEmpty())
         {
             return root;
         }
 
         root.put("chains", chains);
 
-        if (!joints.isEmpty())
+        if (!controllers.isEmpty())
         {
-            root.put("bones", joints);
+            root.put("bones", controllers);
         }
 
         return root;
@@ -244,6 +237,7 @@ public final class BoneIKIO
     public static void clearChain(FormBone bone)
     {
         bone.ikTarget.set("");
+        bone.ikTargetColor.set(FormBone.TARGET_COLOR);
         bone.ikPoleTarget.set("");
         bone.ikChainLength.set(0);
         bone.ikTipRotation.set(false);

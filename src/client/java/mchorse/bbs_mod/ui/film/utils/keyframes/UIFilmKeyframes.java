@@ -185,21 +185,6 @@ public class UIFilmKeyframes extends UIKeyframes
     }
 
     @Override
-    public boolean stopPlaybackOnValueChange()
-    {
-        if (this.editor == null || BBSSettings.autoKeyframe.get() || BBSSettings.liveRecording.get() || !this.editor.isRunning())
-        {
-            return false;
-        }
-
-        float tick = this.getOffset() + this.getClipOffset();
-        this.editor.togglePlayback();
-        this.editor.setCursor(tick);
-
-        return true;
-    }
-
-    @Override
     public boolean isRunning()
     {
         return this.editor != null && this.editor.isRunning();
@@ -255,7 +240,11 @@ public class UIFilmKeyframes extends UIKeyframes
             int cx = this.toGraphX(cursor);
             String label = TimeUtils.formatCursorTime(cursor) + "/" + TimeUtils.formatTime(this.getDuration());
 
-            this.markers.render(context, this.graphArea, this.getXAxis(), (int) this.getClipOffset());
+            /* Without a ruler of their own the markers are read off the timeline right above */
+            if (this.getTopMargin() > 0)
+            {
+                this.markers.render(context, this.graphArea, this.getXAxis(), (int) this.getClipOffset());
+            }
 
             context.batcher.clip(this.graphArea, context);
             UITimelineCanvas.renderCursor(context, label, this.area, cx - 1);

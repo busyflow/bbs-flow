@@ -67,7 +67,7 @@ public class UIKeyframeClip extends UIClip<KeyframeClip>
     {
         super.registerPanels();
 
-        this.panels.add(this.section(UIKeys.CAMERA_PANELS_KEYFRAMES, this.edit));
+        this.panels.add(this.section(UIKeys.CAMERA_PANELS_KEYFRAMES, this.edit, this.keyFields(this.keyframes)));
     }
 
     @Override

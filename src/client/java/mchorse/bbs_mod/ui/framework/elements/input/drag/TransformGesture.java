@@ -1,8 +1,7 @@
 package mchorse.bbs_mod.ui.framework.elements.input.drag;
 
 import mchorse.bbs_mod.BBSSettings;
-import mchorse.bbs_mod.cubic.ik.ModelIKRuntime;
-import mchorse.bbs_mod.cubic.physics.ModelPhysicsRuntime;
+import mchorse.bbs_mod.cubic.rig.RigStep;
 import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.framework.UIContext;
@@ -10,10 +9,12 @@ import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.input.UITrackpad;
 import mchorse.bbs_mod.ui.utils.Gizmo;
 import mchorse.bbs_mod.ui.utils.GizmoDrag;
+import mchorse.bbs_mod.ui.utils.GizmoLocks;
 import mchorse.bbs_mod.ui.utils.keys.KeyAction;
 import mchorse.bbs_mod.utils.Axis;
 import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.Timer;
+import mchorse.bbs_mod.utils.joml.Matrices;
 import mchorse.bbs_mod.utils.pose.Transform;
 import net.minecraft.client.MinecraftClient;
 import org.joml.Quaternionf;
@@ -75,6 +76,12 @@ public class TransformGesture implements DragContext
 
         /** Whether rotation channels are gimbal angles with no third axis to spare. */
         boolean isRotationChannelOnly();
+
+        /** The channels the edited bones lock ({@link GizmoLocks}), three bits per operation; none by default. */
+        default int axisLocks()
+        {
+            return 0;
+        }
 
         /** Per-pixel step of the additive (non-ray) drag for the given operation. */
         float additiveFactor(TransformOp op);
@@ -177,11 +184,21 @@ public class TransformGesture implements DragContext
         GizmoDrag drag = BBSSettings.simpleKeyboardTransform.get() ? null : this.host.freshHotkeyDrag();
         boolean ray = drag != null;
 
+        if (this.enableLocked(op, drag))
+        {
+            return;
+        }
+
         /* G/S/R walk their handles in the *_hotkey_order the user configured, wrapping
          * past the end. Only ray-driven steps with no rendered gizmo drop out — HIDING an
          * element does not drop its step, or a stripped-bare gizmo would take a whole
          * operation away from the keyboard. Scale's uniform lever is a step like any other. */
         HotkeyTarget target = this.nextHotkeyTarget(op, ray);
+
+        if (target == null)
+        {
+            return;
+        }
 
         if (target == HotkeyTarget.VIEW)
         {
@@ -229,9 +246,80 @@ public class TransformGesture implements DragContext
         return HotkeyTarget.X;
     }
 
+    /** The next step of the walk, past the axes the bones lock; null when every step is locked. */
     private HotkeyTarget nextHotkeyTarget(TransformOp op, boolean ray)
     {
-        return HotkeyTarget.next(op, ray, this.currentHotkeyTarget(op));
+        HotkeyTarget target = HotkeyTarget.next(op, ray, this.currentHotkeyTarget(op));
+        int steps = HotkeyTarget.steps(op, ray).size();
+
+        for (int i = 0; i < steps && this.isAxisLocked(op, target.axis); i++)
+        {
+            target = HotkeyTarget.next(op, ray, target);
+        }
+
+        return this.isAxisLocked(op, target.axis) ? null : target;
+    }
+
+    /**
+     * G, R or S on bones whose limits lock some of the operation's axes: all three locked do
+     * nothing, and a single free one is driven straight away — the walk's free steps (the screen
+     * grab, the view spin, the uniform lever) would only leak into it — in the frame where its
+     * handle moves exactly that channel ({@link #channelSpace}). Returns whether the locks decided
+     * the press; with two free axes the walk goes on.
+     */
+    private boolean enableLocked(TransformOp op, GizmoDrag drag)
+    {
+        int locks = this.host.axisLocks();
+
+        if (GizmoLocks.isLockedFully(locks, op))
+        {
+            return true;
+        }
+
+        Axis free = GizmoLocks.onlyFree(locks, op);
+
+        if (free == null)
+        {
+            return false;
+        }
+
+        /* Already on it: a second press must not rewind the edit to start over. */
+        if (this.editing && this.getOp() == op && this.axis == free && this.axis2 == null
+            && !this.isViewRotate() && !this.isSphereRotate() && !this.isScreenTranslate() && !this.isScaleAll())
+        {
+            return true;
+        }
+
+        this.startEdit(op, free, null, DragStrategyFactory.Variant.AXIS, drag, true, this.channelSpace(op));
+
+        return true;
+    }
+
+    /**
+     * The frame an axis edit of {@code op} moves exactly its own channel in, or null when the
+     * picked one does: the move channels are the parent's axes, the rotation ones turn in the
+     * bone's own frames (LOCAL, PARENT), and scale works on the bone's own axes in any frame.
+     */
+    private TransformSpace channelSpace(TransformOp op)
+    {
+        TransformSpace space = this.host.pickedSpace();
+
+        if (op == TransformOp.TRANSLATE)
+        {
+            return space == TransformSpace.PARENT ? null : TransformSpace.PARENT;
+        }
+
+        if (op == TransformOp.ROTATE)
+        {
+            return space == TransformSpace.LOCAL || space == TransformSpace.PARENT ? null : TransformSpace.PARENT;
+        }
+
+        return null;
+    }
+
+    private boolean isAxisLocked(TransformOp op, Axis axis)
+    {
+        return GizmoLocks.isLocked(this.host.axisLocks(), op, axis);
     }
 
     public void enableMode(TransformOp op, Axis axis)
@@ -327,13 +415,19 @@ public class TransformGesture implements DragContext
         this.startEdit(TransformOp.TRANSLATE, Axis.X, Axis.Y, DragStrategyFactory.Variant.SCREEN, drag, hotkeyMode);
     }
 
+    private void startEdit(TransformOp op, Axis axis, Axis axis2, DragStrategyFactory.Variant variant, GizmoDrag drag, boolean hotkeyMode)
+    {
+        this.startEdit(op, axis, axis2, variant, drag, hotkeyMode, null);
+    }
+
     /**
      * The one edit-start ritual every entry point funnels into: close any
      * previous edit, snapshot the transform, build the strategy for the
      * request and anchor it at the cursor, then raise the accept/reject
-     * overlay.
+     * overlay. {@code space} is the frame the edit starts in, null for the
+     * picker's.
      */
-    private void startEdit(TransformOp op, Axis axis, Axis axis2, DragStrategyFactory.Variant variant, GizmoDrag drag, boolean hotkeyMode)
+    private void startEdit(TransformOp op, Axis axis, Axis axis2, DragStrategyFactory.Variant variant, GizmoDrag drag, boolean hotkeyMode, TransformSpace space)
     {
         UIContext context = this.host.getContext();
 
@@ -352,9 +446,10 @@ public class TransformGesture implements DragContext
         {
             /* Arm the physics rewind for this gesture. Only on a fresh one: re-entering while editing
              * (switching the op mid-drag) rewinds the transform to the SAME start snapshot, so the sim
-             * the gesture must be able to return to is still the one captured back then. */
+             * the gesture must be able to return to is still the one captured back then. The IK solve
+             * dump is scoped to the gesture too (see ModelIKRuntime#logGesture). */
             this.host.beginGesture();
-            ModelPhysicsRuntime.checkpoint();
+            RigStep.gestureStarted();
         }
 
         this.editing = true;
@@ -364,16 +459,12 @@ public class TransformGesture implements DragContext
         this.simpleKeyboardTransform = hotkeyMode && BBSSettings.simpleKeyboardTransform.get();
         this.drag = this.simpleKeyboardTransform ? null : drag;
 
-        /* Every fresh operation starts back in the picker's frame with the walk at zero
-         * — G/S/R, a handle pick and the walk's own release all come through here. */
-        this.editSpace = null;
+        /* Every fresh operation starts back in the picker's frame (or the one asked for) with
+         * the walk at zero — G/S/R, a handle pick and the walk's own release all come through here. */
+        this.editSpace = space;
         this.axisWalkAxis = null;
         this.axisWalkPlane = false;
         this.axisWalkStep = 0;
-
-        /* Scope the IK solve dump to this gesture — the log then holds exactly
-         * the drag being investigated (see ModelIKRuntime#logGesture). */
-        ModelIKRuntime.logGesture(true);
 
         this.cache.copy(this.host.getTransform());
         Gizmo.INSTANCE.trackGesture(this);
@@ -399,6 +490,14 @@ public class TransformGesture implements DragContext
     public void setAxis(Axis axis)
     {
         boolean plane = Window.isShiftPressed();
+        TransformOp op = this.getOp();
+
+        /* A locked channel is no constraint to switch to; a plane goes while one of its two axes is free. */
+        if (plane ? this.isAxisLocked(op, next(axis, 1)) && this.isAxisLocked(op, next(axis, 2)) : this.isAxisLocked(op, axis))
+        {
+            return;
+        }
+
         boolean same = this.editing && axis == this.axisWalkAxis && plane == this.axisWalkPlane;
         int step = same ? this.axisWalkStep + 1 : 0;
         List<TransformSpace> spaces = this.simpleKeyboardTransform
@@ -452,6 +551,11 @@ public class TransformGesture implements DragContext
         }
 
         this.rebuildConstrainedGesture();
+    }
+
+    private static Axis next(Axis axis, int steps)
+    {
+        return Axis.values()[(axis.ordinal() + steps) % 3];
     }
 
     /** Rewind to the start values and rebuild the live edit as a plain axis drag on the
@@ -547,8 +651,7 @@ public class TransformGesture implements DragContext
 
     private void disable()
     {
-        ModelIKRuntime.logGesture(false);
-        ModelPhysicsRuntime.dropCheckpoint();
+        RigStep.gestureEnded();
 
         this.editing = false;
         this.axis2 = null;
@@ -604,7 +707,7 @@ public class TransformGesture implements DragContext
 
         /* The pose is back where it started, so the simulation it drove goes back too — otherwise the
          * chains stay where the drag flung them and lash home over a single tick. */
-        ModelPhysicsRuntime.rewindToCheckpoint();
+        RigStep.gestureRejected();
 
         this.disable();
         this.host.refreshFields();
@@ -1056,6 +1159,13 @@ public class TransformGesture implements DragContext
     }
 
     @Override
+    public int axisLocks()
+    {
+        return this.host.axisLocks();
+    }
+    }
+
+    @Override
     public String targetName()
     {
         return this.host.targetName();
@@ -1094,28 +1204,70 @@ public class TransformGesture implements DragContext
         this.host.refreshFields();
     }
 
+    /* The writes every strategy funnels through, so the bones' locked channels are kept here once:
+     * a locked channel is written back with its value from the gesture's start. That holds in any
+     * frame — a move along a scene axis, a free spin or the uniform lever keep only what the free
+     * channels can carry, as Blender's locks do. */
+
     @Override
     public void writeTranslate(float x, float y, float z)
     {
-        this.host.setT(null, x, y, z);
+        int locks = GizmoLocks.axes(this.host.axisLocks(), TransformOp.TRANSLATE);
+        Vector3f start = this.cache.translate;
+
+        this.host.setT(null, held(locks, Axis.X, x, start.x), held(locks, Axis.Y, y, start.y), held(locks, Axis.Z, z, start.z));
     }
 
     @Override
     public void writeScale(float x, float y, float z)
     {
-        this.host.setS(null, x, y, z);
+        int locks = GizmoLocks.axes(this.host.axisLocks(), TransformOp.SCALE);
+        Vector3f start = this.cache.scale;
+
+        this.host.setS(null, held(locks, Axis.X, x, start.x), held(locks, Axis.Y, y, start.y), held(locks, Axis.Z, z, start.z));
     }
 
     @Override
     public void writeRotateDeg(float xDeg, float yDeg, float zDeg)
     {
+        int locks = GizmoLocks.axes(this.host.axisLocks(), TransformOp.ROTATE);
+
+        if (locks != 0)
+        {
+            Vector3f start = RotationDragMath.cacheSourceEuler(this);
+
+            xDeg = held(locks, Axis.X, xDeg, MathUtils.toDeg(start.x));
+            yDeg = held(locks, Axis.Y, yDeg, MathUtils.toDeg(start.y));
+            zDeg = held(locks, Axis.Z, zDeg, MathUtils.toDeg(start.z));
+        }
+
         this.host.setR(null, xDeg, yDeg, zDeg);
     }
 
     @Override
     public void writeRotationQuat(Quaternionf quat)
     {
+        int locks = GizmoLocks.axes(this.host.axisLocks(), TransformOp.ROTATE);
+
+        if (locks != 0)
+        {
+            Vector3f start = RotationDragMath.cacheSourceEuler(this);
+            Vector3f euler = Matrices.toCompatibleEulerZYXRadians(quat, start, new Vector3f());
+
+            quat = Matrices.toQuaternionZYXRadians(
+                held(locks, Axis.X, euler.x, start.x),
+                held(locks, Axis.Y, euler.y, start.y),
+                held(locks, Axis.Z, euler.z, start.z)
+            );
+        }
+
         this.host.setRQuat(quat);
+    }
+
+    /** {@code value}, or {@code start} on an axis of {@code axes} (one operation's XYZ bits). */
+    private static float held(int axes, Axis axis, float value, float start)
+    {
+        return (axes & 1 << axis.ordinal()) != 0 ? start : value;
     }
 
     private class AcceptRejectOverlay extends UIElement

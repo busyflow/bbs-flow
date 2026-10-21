@@ -1,27 +1,18 @@
 package mchorse.bbs_mod.ui.forms.editors.panels;
 
 import mchorse.bbs_mod.cubic.ModelInstance;
-import mchorse.bbs_mod.utils.presets.DataManager;
-import mchorse.bbs_mod.data.types.MapType;
+import mchorse.bbs_mod.cubic.rig.RigOwners;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.forms.utils.FormBone;
 import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
-import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.forms.editors.forms.UIForm;
-import mchorse.bbs_mod.settings.values.ui.ValueModelDebug;
-import mchorse.bbs_mod.ui.forms.editors.utils.UIDebugOverlayContextMenu;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
-import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
-import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
-import mchorse.bbs_mod.ui.utils.icons.Icons;
-import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UISearchList;
 import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.bones.BoneRoles;
 import mchorse.bbs_mod.ui.utils.bones.UIBoneTreeList;
-import mchorse.bbs_mod.ui.utils.presets.UIDataContextMenu;
 import mchorse.bbs_mod.ui.utils.values.UIValues;
 
 import java.util.ArrayList;
@@ -29,12 +20,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 /**
- * The shared skeleton of the per-bone solver panels: a searchable bone tree and fields
- * for the selected bone. Each solver owns its data and optional preset menu, and says
- * what it has on which bone ({@link #describeBones}) so the tree reads it at a glance.
+ * The skeleton of a panel that edits a model by bone: a searchable bone tree and fields for the
+ * selected bone. The panel says what it has on which bone ({@link #describeBones}) so the tree
+ * reads it at a glance.
  */
 public abstract class UIBoneListFormPanel extends UIFormPanel<ModelForm>
 {
@@ -45,17 +35,6 @@ public abstract class UIBoneListFormPanel extends UIFormPanel<ModelForm>
     protected String selectedBone = "";
     protected ModelInstance modelInstance;
     protected String presetGroup = "";
-
-    /** A trackpad for one axis of an angle, tinted with that axis' colour. */
-    protected static UISliderTrackpad axisTrackpad(Consumer<Double> callback, int color, IKey tooltip)
-    {
-        UISliderTrackpad trackpad = new UISliderTrackpad(callback).angle180();
-
-        trackpad.textbox.setColor(color);
-        trackpad.tooltip(tooltip);
-
-        return trackpad;
-    }
 
     public UIBoneListFormPanel(UIForm editor)
     {
@@ -78,29 +57,6 @@ public abstract class UIBoneListFormPanel extends UIFormPanel<ModelForm>
         this.bonesSearch.h(20 + UIConstants.LIST_ITEM_HEIGHT * 8).expand();
     }
 
-    /** The solver's debug toggle with its settings gear beside it, on one row. */
-    protected UIElement debugRow(UIToggle debug, ValueModelDebug config)
-    {
-        UIIcon settings = new UIIcon(Icons.GEAR, (b) -> this.getContext().replaceContextMenu(new UIDebugOverlayContextMenu(config)));
-
-        settings.tooltip(UIKeys.MODEL_DEBUG_CONFIGURE);
-        settings.wh(20, 14);
-
-        UIElement row = new UIElement();
-
-        row.row(0).preferred(0).height(14);
-        row.add(debug, settings);
-
-        return row;
-    }
-
-    /** Hang the preset copy/paste menu on the bone list; each panel names its own store and labels. */
-    protected void bonePresets(DataManager manager, String copyId, IKey copy, IKey paste, IKey reset, IKey save, IKey name,
-        Supplier<MapType> read, Consumer<MapType> apply)
-    {
-        this.bones.context(() -> new UIDataContextMenu(manager, this.presetGroup, read, apply).tooltips(copyId, copy, paste, reset, save, name));
-    }
-
     /** Push the selected bone's values into the fields. */
     protected abstract void updateFields();
 
@@ -110,6 +66,12 @@ public abstract class UIBoneListFormPanel extends UIFormPanel<ModelForm>
      * is right now — no cache to keep in step with edits, undo or a playing film.
      */
     protected abstract void describeBones(BoneRoles roles);
+
+    /** Who has a hand on which bone of the form, as the rig's steps report it right now. */
+    protected RigOwners owners()
+    {
+        return RigOwners.of(this.modelInstance == null ? null : this.modelInstance.model, this.form);
+    }
 
     /** Every bone entry the form has; bones never edited have none. */
     protected void forEachFormBone(Consumer<FormBone> consumer)

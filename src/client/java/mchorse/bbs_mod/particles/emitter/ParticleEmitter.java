@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.particles.emitter;
 
+import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.camera.Camera;
@@ -510,12 +511,22 @@ public class ParticleEmitter
 
             /* Of Bedrock's materials only particles_blend blends the texture's (and the
              * particle's own) alpha, while particles_opaque and particles_alpha merely cut out
-             * transparent pixels, which the particle shader does on its own. Picking passes
-             * disallow blending: their colors are form IDs rather than pixels */
+             * transparent pixels, which the particle shader does on its own. particles_add
+             * adds the alpha-weighted color on top (glow), without writing depth, so glowing
+             * particles don't cut each other out. Picking passes disallow blending: their
+             * colors are form IDs rather than pixels */
+            boolean additive = blend && this.scheme.material == ParticleMaterial.ADD;
+
             if (blend && this.scheme.material == ParticleMaterial.BLEND)
             {
                 RenderSystem.enableBlend();
                 RenderSystem.defaultBlendFunc();
+            }
+            else if (additive)
+            {
+                RenderSystem.enableBlend();
+                RenderSystem.blendFunc(GlStateManager.SrcFactor.SRC_ALPHA, GlStateManager.DstFactor.ONE);
+                RenderSystem.depthMask(false);
             }
             else
             {
@@ -525,6 +536,12 @@ public class ParticleEmitter
             RenderSystem.disableCull();
             BufferRenderer.drawWithGlobalProgram(builder.end());
             RenderSystem.enableCull();
+
+            if (additive)
+            {
+                RenderSystem.depthMask(true);
+                RenderSystem.defaultBlendFunc();
+            }
         }
 
         for (IComponentParticleRender component : renders)

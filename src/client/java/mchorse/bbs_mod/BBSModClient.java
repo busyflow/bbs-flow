@@ -364,6 +364,38 @@ public class BBSModClient implements ClientModInitializer
     }
 
     /**
+     * The world is gone: nothing of this session may reach the next one.
+     *
+     * <p>Called at the end of the game's own disconnect (see {@code MinecraftClientMixin}), on the
+     * client thread. It used to be a task queued from Fabric's disconnect event, which comes from
+     * Netty's thread - but the game's disconnect empties the client's task queue, and a task that
+     * got in before that was dropped without a trace: the next world then got this dashboard, with
+     * the old world's film still open in it, and its first save wrote that film into the new world.</p>
+     */
+    public static void leaveWorld()
+    {
+        dashboard = null;
+        DashboardWarmup.reset();
+        worldExportSession.stop();
+        videos.delete();
+
+        /* Corners are raw coordinates: kept across a world change they would point the wand
+         * at whatever now stands in their place */
+        StructureSelection.clear();
+
+        /* A panel export dies with its dashboard without finishing - the sound
+         * capture must not keep accumulating into the next session */
+        minecraftSoundCapture.end();
+
+        films = new Films();
+
+        ClientNetwork.resetHandshake();
+        films.reset();
+        cameraController.reset();
+        BBSResources.leaveWorld();
+    }
+
+    /**
      * Whether BBS's UI is on screen right now, i.e. whether the ui_scale setting
      * should drive the window's scale factor (see WindowMixin).
      */
@@ -791,37 +823,6 @@ public class BBSModClient implements ClientModInitializer
             {
                 BBSResources.enterWorld();
             }
-        }));
-
-        /* Fabric can deliver disconnect on Netty's IO thread. All resource disposal below
-         * belongs to the client thread, where the OpenGL context is current. */
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> client.execute(() ->
-        {
-            /* An old connection must not reset a new session if its cleanup was delayed. */
-            if (client.getNetworkHandler() != null && client.getNetworkHandler() != handler)
-            {
-                return;
-            }
-
-            dashboard = null;
-            DashboardWarmup.reset();
-            worldExportSession.stop();
-            videos.delete();
-
-            /* Corners are raw coordinates: kept across a world change they would point the wand
-             * at whatever now stands in their place */
-            StructureSelection.clear();
-
-            /* A panel export dies with its dashboard without finishing - the sound
-             * capture must not keep accumulating into the next session */
-            minecraftSoundCapture.end();
-
-            films = new Films();
-
-            ClientNetwork.resetHandshake();
-            films.reset();
-            cameraController.reset();
-            BBSResources.leaveWorld();
         }));
 
         ClientTickEvents.START_CLIENT_TICK.register((client) ->
