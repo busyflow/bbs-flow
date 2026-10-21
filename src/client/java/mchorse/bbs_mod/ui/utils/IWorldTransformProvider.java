@@ -19,4 +19,9 @@ public interface IWorldTransformProvider
     /** Sample the element's absolute world matrix (translation, rotation and scale) for its current
      *  transform values, re-evaluating the scene so live edits to the transform are reflected. */
     boolean getWorldMatrix(Matrix4f out);
+
+    default boolean getWorldMatrix(String bone, Matrix4f out)
+    {
+        return this.getWorldMatrix(out);
+    }
 }

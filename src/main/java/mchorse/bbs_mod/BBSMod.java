@@ -395,12 +395,12 @@ public class BBSMod implements ModInitializer
      * them looks the method up by its full signature, so a narrower return type is a crash on
      * load, not a harmless refinement. The palette asks for the factory itself below.
      */
-    public static MapFactory<Clip, ClipFactoryData> getFactoryCameraClips()
+    public static ClipFactory getFactoryCameraClips()
     {
         return factoryCameraClips;
     }
 
-    public static MapFactory<Clip, ClipFactoryData> getFactoryActionClips()
+    public static ClipFactory getFactoryActionClips()
     {
         return factoryActionClips;
     }

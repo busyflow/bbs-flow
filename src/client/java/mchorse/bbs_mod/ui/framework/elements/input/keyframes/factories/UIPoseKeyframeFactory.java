@@ -23,7 +23,12 @@ import mchorse.bbs_mod.utils.pose.PoseFixInPlace;
 import mchorse.bbs_mod.utils.pose.PoseTransform;
 import mchorse.bbs_mod.utils.pose.Transform;
 
+import mchorse.bbs_mod.ui.film.replays.FilmBoneWorldProvider;
+import mchorse.bbs_mod.ui.utils.WorldTransformClipboard;
+import org.joml.Matrix4f;
+
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -315,5 +320,155 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
             this.refillTransform();
         }
 
+        @Override
+        public boolean canCopyWorldTransform()
+        {
+            return this.worldProvider != null && this.editor != null && this.editor.groups.hasBones();
+        }
+
+        @Override
+        public boolean canPasteWorldTransform()
+        {
+            return this.worldProvider != null && WorldTransformClipboard.has();
+        }
+
+        @Override
+        protected void copyWorldTransform()
+        {
+            if (this.worldProvider == null || this.editor == null)
+            {
+                return;
+            }
+
+            List<String> selected = this.editor.groups.list.getCurrent();
+
+            if (selected == null || selected.isEmpty())
+            {
+                String first = this.editor.groups.list.getCurrentFirst();
+
+                if (first != null && !first.isEmpty())
+                {
+                    selected = List.of(first);
+                }
+            }
+
+            if (selected != null && !selected.isEmpty())
+            {
+                Map<String, Matrix4f> captured = new LinkedHashMap<>();
+
+                for (String bone : selected)
+                {
+                    Matrix4f matrix = new Matrix4f();
+
+                    if (this.worldProvider.getWorldMatrix(bone, matrix))
+                    {
+                        captured.put(bone, matrix);
+                    }
+                }
+
+                if (!captured.isEmpty())
+                {
+                    WorldTransformClipboard.setBones(captured);
+
+                    return;
+                }
+            }
+
+            super.copyWorldTransform();
+        }
+
+        @Override
+        protected void pasteWorldTransform()
+        {
+            if (this.worldProvider == null || !WorldTransformClipboard.has())
+            {
+                return;
+            }
+
+            if (WorldTransformClipboard.hasBones())
+            {
+                this.pasteBonesWorldTransform(WorldTransformClipboard.getBones());
+
+                return;
+            }
+
+            String currentBone = this.editor.groups.list.getCurrentFirst();
+
+            if (currentBone != null && !currentBone.isEmpty())
+            {
+                this.pasteBonesWorldTransform(Map.of(currentBone, WorldTransformClipboard.get()));
+
+                return;
+            }
+
+            super.pasteWorldTransform();
+        }
+
+        private void pasteBonesWorldTransform(Map<String, Matrix4f> bones)
+        {
+            if (bones == null || bones.isEmpty() || this.editor == null || this.editor.track == null)
+            {
+                return;
+            }
+
+            boolean isOverlay = this.editor.track.sheet != null
+                && this.editor.track.sheet.id != null
+                && this.editor.track.sheet.id.contains("pose_overlay");
+
+            float tick = this.editor.track.getValueTick();
+
+            this.beginGesture();
+
+            try
+            {
+                List<String> orderedBones = new ArrayList<>();
+
+                for (String bone : this.editor.groups.list.getList())
+                {
+                    if (bones.containsKey(bone))
+                    {
+                        orderedBones.add(bone);
+                    }
+                }
+
+                for (String bone : bones.keySet())
+                {
+                    if (!orderedBones.contains(bone))
+                    {
+                        orderedBones.add(bone);
+                    }
+                }
+
+                List<String> pastedBones = new ArrayList<>();
+
+                this.editor.track.edit((pose) ->
+                {
+                    for (String boneName : orderedBones)
+                    {
+                        Matrix4f targetWorld = bones.get(boneName);
+
+                        if (this.worldProvider instanceof FilmBoneWorldProvider filmProvider)
+                        {
+                            if (filmProvider.solveBoneWorldTransform(pose, boneName, targetWorld, tick, isOverlay))
+                            {
+                                pastedBones.add(boneName);
+                            }
+                        }
+                    }
+                });
+
+                if (!pastedBones.isEmpty())
+                {
+                    this.editor.groups.list.setCurrent(pastedBones);
+                    this.editor.groups.list.setCurrentScroll(pastedBones.get(0));
+                    this.editor.pickBones(pastedBones);
+                    this.editor.refreshPose(this.editor.track.getValue());
+                }
+            }
+            finally
+            {
+                this.endGesture();
+            }
+        }
     }
 }

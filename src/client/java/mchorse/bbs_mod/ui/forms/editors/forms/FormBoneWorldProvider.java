@@ -44,4 +44,25 @@ public class FormBoneWorldProvider implements IWorldTransformProvider
         return true;
     }
 
+    @Override
+    public boolean getWorldMatrix(String bone, Matrix4f out)
+    {
+        UIFormEditor editor = this.form.editor;
+
+        if (editor == null || bone == null || bone.isEmpty())
+        {
+            return false;
+        }
+
+        Matrix4f matrix = this.form.getOrigin(editor.getSamplingTick(), bone, mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace.LOCAL);
+
+        if (matrix == null)
+        {
+            return false;
+        }
+
+        out.set(matrix);
+
+        return true;
+    }
 }

@@ -526,7 +526,7 @@ public class UIPoseEditor extends UIElement
         this.pickBones(Collections.singletonList(bone));
     }
 
-    protected void pickBones(List<String> bones)
+    public void pickBones(List<String> bones)
     {
         if (bones == null || bones.isEmpty())
         {

@@ -7,11 +7,17 @@ import mchorse.bbs_mod.ui.framework.elements.input.UIColor;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UITrackValue;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.pose.UIPoseEditor;
-import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UITrackValue;
+import mchorse.bbs_mod.film.replays.tracks.TrackId;
+import mchorse.bbs_mod.film.replays.tracks.TrackKind;
+import mchorse.bbs_mod.ui.film.replays.FilmBoneWorldProvider;
+import mchorse.bbs_mod.ui.utils.WorldTransformClipboard;
+import mchorse.bbs_mod.utils.pose.Pose;
 import mchorse.bbs_mod.utils.pose.PoseTransform;
 import mchorse.bbs_mod.utils.pose.Transform;
+import org.joml.Matrix4f;
 
 import java.util.function.Consumer;
 
@@ -150,6 +156,81 @@ public class UIPoseTransformKeyframeFactory extends UIKeyframeFactory<PoseTransf
                 PoseTransform transform = (PoseTransform) selected;
                 consumer.accept(transform);
             });
+        }
+
+        @Override
+        public boolean canPasteWorldTransform()
+        {
+            return this.worldProvider != null && WorldTransformClipboard.has();
+        }
+
+        @Override
+        protected void pasteWorldTransform()
+        {
+            if (this.worldProvider == null || !WorldTransformClipboard.has())
+            {
+                return;
+            }
+
+            TrackId poseBonePath = TrackId.parse(this.editor.track.sheet.id, TrackKind.BONE);
+            String bone = poseBonePath != null ? poseBonePath.subjectPath() : null;
+
+            Matrix4f targetWorld = null;
+
+            if (bone != null && WorldTransformClipboard.hasBone(bone))
+            {
+                targetWorld = WorldTransformClipboard.getBone(bone);
+            }
+            else
+            {
+                targetWorld = WorldTransformClipboard.get();
+            }
+
+            if (targetWorld == null || bone == null)
+            {
+                super.pasteWorldTransform();
+
+                return;
+            }
+
+            if (this.worldProvider instanceof FilmBoneWorldProvider filmProvider)
+            {
+                Pose tempPose = new Pose();
+                PoseTransform pt = tempPose.getOrCreate(bone);
+                pt.copy(this.editor.track.getValue());
+
+                float tick = 0F;
+
+                if (this.editor.editor != null && this.editor.editor.getSelectedKeyframe() != null)
+                {
+                    tick = this.editor.editor.getSelectedKeyframe().getTick();
+                }
+
+                boolean isOverlay = this.editor.track.sheet != null
+                    && this.editor.track.sheet.id != null
+                    && this.editor.track.sheet.id.contains("overlay");
+
+                this.beginGesture();
+
+                try
+                {
+                    if (filmProvider.solveBoneWorldTransform(tempPose, bone, targetWorld, tick, isOverlay))
+                    {
+                        PoseTransform solved = tempPose.get(bone);
+
+                        apply(this.editor.track, (current) -> current.copy(solved));
+                        this.editor.transform.setTransform(this.editor.track.getValue());
+                    }
+                }
+                finally
+                {
+                    this.endGesture();
+                }
+
+                return;
+            }
+
+            super.pasteWorldTransform();
         }
     }
 }

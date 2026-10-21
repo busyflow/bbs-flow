@@ -453,7 +453,7 @@ public class UIReplaysEditorUtils
          * and the world context actions stay hidden there). The replay's own placement has no
          * keyframe editor behind it at all, which is also why this is read defensively. */
         UIKeyframeEditor hotkeyEditor = panel.replayEditor.keyframeEditor;
-        boolean pose = hotkeyEditor != null && hotkeyEditor.editor instanceof UIPoseKeyframeFactory;
+        boolean pose = hotkeyEditor != null && (hotkeyEditor.editor instanceof UIPoseKeyframeFactory || hotkeyEditor.editor instanceof UIPoseTransformKeyframeFactory);
 
         transform.worldTransform(pose ? new FilmBoneWorldProvider(panel) : null);
         transform.rotationConstrained(pose ? () -> isFilmBoneRotationConstrained(panel) : null);

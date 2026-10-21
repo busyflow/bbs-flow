@@ -60,7 +60,7 @@ public abstract class UITransform extends UIElement
     private static final int WORLD_PASTE_ITERATIONS = 6;
 
     /** Host hook for world-space copy/paste; when null those context actions don't appear. */
-    private IWorldTransformProvider worldProvider;
+    protected IWorldTransformProvider worldProvider;
 
     public UITransform()
     {
@@ -152,11 +152,14 @@ public abstract class UITransform extends UIElement
                 menu.action(Icons.REFRESH, UIKeys.TRANSFORMS_CONTEXT_PASTE_ROTATION, () -> this.pasteRotation(this.getVector(innerList, 6)));
             }
 
-            if (this.worldProvider != null && this.worldProvider.getWorldMatrix(new Matrix4f()))
+            if (this.worldProvider != null)
             {
-                menu.action(Icons.GLOBE, UIKeys.TRANSFORMS_CONTEXT_COPY_WORLD, this::copyWorldTransform);
+                if (this.canCopyWorldTransform())
+                {
+                    menu.action(Icons.GLOBE, UIKeys.TRANSFORMS_CONTEXT_COPY_WORLD, this::copyWorldTransform);
+                }
 
-                if (WorldTransformClipboard.has())
+                if (WorldTransformClipboard.has() && this.canPasteWorldTransform())
                 {
                     menu.action(Icons.GLOBE, UIKeys.TRANSFORMS_CONTEXT_PASTE_WORLD, this::pasteWorldTransform);
                 }
@@ -480,8 +483,18 @@ public abstract class UITransform extends UIElement
         return this;
     }
 
+    public boolean canCopyWorldTransform()
+    {
+        return this.worldProvider != null && this.worldProvider.getWorldMatrix(new Matrix4f());
+    }
+
+    public boolean canPasteWorldTransform()
+    {
+        return this.worldProvider != null && (this.worldProvider.getWorldMatrix(new Matrix4f()) || WorldTransformClipboard.hasBones());
+    }
+
     /** Capture the element's current full world matrix into the shared world clipboard. */
-    private void copyWorldTransform()
+    protected void copyWorldTransform()
     {
         if (this.worldProvider == null)
         {
@@ -517,7 +530,7 @@ public abstract class UITransform extends UIElement
      * they are refined over a few passes around the current pose using the renderer's true
      * per-channel rotation axes.
      */
-    private void pasteWorldTransform()
+    protected void pasteWorldTransform()
     {
         Matrix4f cached = WorldTransformClipboard.get();
         Transform transform = this.getEditedTransform();
@@ -617,20 +630,16 @@ public abstract class UITransform extends UIElement
             transform.rotationMode = startMode;
         }
 
-        this.fillSetT(finalTranslate.x, finalTranslate.y, finalTranslate.z);
-        this.fillSetS(finalScale.x, finalScale.y, finalScale.z);
+        this.pasteTranslation(new org.joml.Vector3d(finalTranslate));
+        this.pasteScale(new org.joml.Vector3d(finalScale));
 
         if (wasQuaternion)
         {
-            /* A per-channel euler delivery (fillSetR) is measured by the delta
-             * editors against a quaternion bone's STALE channels — a delta with
-             * the wrong basis. Hand the solved rotation over whole instead;
-             * setRQuat applies it mode-aware in every editor. */
             this.setRQuat(Matrices.toQuaternionZYXRadians(finalRotate.x, finalRotate.y, finalRotate.z));
         }
         else
         {
-            this.fillSetR(MathUtils.toDeg(finalRotate.x), MathUtils.toDeg(finalRotate.y), MathUtils.toDeg(finalRotate.z));
+            this.pasteRotation(new org.joml.Vector3d(MathUtils.toDeg(finalRotate.x), MathUtils.toDeg(finalRotate.y), MathUtils.toDeg(finalRotate.z)));
         }
     }
 
