@@ -48,7 +48,6 @@ public class UIAnimationStateKeyframes extends UIKeyframes
     {
         return this.editor != null && (BBSSettings.autoKeyframe.get() || this.editor.isRunning()) ? this.getOffset() : null;
     }
-    }
 
     @Override
     public boolean isRunning()

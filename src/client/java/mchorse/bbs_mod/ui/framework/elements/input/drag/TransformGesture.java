@@ -1163,7 +1163,6 @@ public class TransformGesture implements DragContext
     {
         return this.host.axisLocks();
     }
-    }
 
     @Override
     public String targetName()
