@@ -1660,21 +1660,12 @@ public class UIReplayList extends UIList<ReplayListEntry>
 
                 if (f != null)
                 {
-                    String tag = !f.nameTag.get().isEmpty() ? f.nameTag.get() : f.name.get();
-
-                    if (!tag.isEmpty())
-                    {
-                        replay.nameTag.set(tag);
-                    }
-
-                    if (f.nameTagHeight.get() != 0F || !f.nameTag.get().isEmpty())
-                    {
-                        replay.nameTagHeight.set(f.nameTagHeight.get());
-                    }
+                    replay.nameTag.set(f.nameTag.get());
+                    replay.nameTagHeight.set(f.nameTagHeight.get());
 
                     if (replay.label.get().isEmpty())
                     {
-                        replay.label.set(!f.name.get().isEmpty() ? f.name.get() : tag);
+                        replay.label.set(!f.name.get().isEmpty() ? f.name.get() : f.nameTag.get());
                     }
                 }
             }
