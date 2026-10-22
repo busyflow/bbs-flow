@@ -47,6 +47,7 @@ public class UIUserFormCategory extends UIFormCategory
 
             if (form != null)
             {
+                this.nameTagPresetAction(menu, form);
                 this.removeFormAction(menu, form);
             }
             else

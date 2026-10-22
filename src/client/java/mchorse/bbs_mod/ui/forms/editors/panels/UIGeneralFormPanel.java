@@ -37,6 +37,8 @@ public class UIGeneralFormPanel extends UIFormPanel
     
     public UITextbox trackName;
     public UITextbox name;
+    public UITextbox nameTag;
+    public UITrackpad nameTagHeight;
     public UIPropTransform transform;
 
     public UIToggle hitbox;
@@ -76,6 +78,10 @@ public class UIGeneralFormPanel extends UIFormPanel
         this.trackName = UIValues.textbox(120, () -> this.form.trackName);
         this.trackName.tooltip(UIKeys.FORMS_EDITORS_GENERAL_TRACK_NAME_TOOLTIP);
         this.name = UIValues.textbox(120, () -> this.form.name);
+        this.nameTag = UIValues.textbox(1000, () -> this.form.nameTag);
+        this.nameTag.textbox.setPlaceholder(UIKeys.FILM_REPLAY_NAME_TAG);
+        this.nameTagHeight = UIValues.trackpad(() -> this.form.nameTagHeight);
+        this.nameTagHeight.tooltip(UIKeys.FILM_REPLAY_NAME_TAG_HEIGHT);
 
         this.transform = new UIPropTransform().callbacks(() -> this.form.transform).barBackground();
         this.transform.enableHotkeys();
@@ -105,6 +111,11 @@ public class UIGeneralFormPanel extends UIFormPanel
             this.hotkey, this.visible, this.pickable
         );
 
+        UISection nameTagSection = new UISection(UIKeys.FILM_REPLAY_NAME_TAG);
+
+        nameTagSection.fields.add(this.nameTag, this.nameTagHeight);
+        nameTagSection.setExpanded(false);
+
         UISection tracks = new UISection(UIKeys.FORMS_EDITORS_GENERAL_SECTION_TRACKS);
 
         tracks.fields.add(this.filterTracks, this.boneTracks, this.trackName);
@@ -132,6 +143,7 @@ public class UIGeneralFormPanel extends UIFormPanel
 
         this.options.add(
             display,
+            nameTagSection,
             tracks,
             transform,
             hitbox,

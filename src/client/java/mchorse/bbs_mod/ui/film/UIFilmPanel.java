@@ -8,6 +8,7 @@ import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.actions.ActionState;
 import mchorse.bbs_mod.camera.Camera;
 import mchorse.bbs_mod.camera.clips.modifiers.TranslateClip;
+import mchorse.bbs_mod.camera.clips.misc.AudioClip;
 import mchorse.bbs_mod.camera.clips.overwrite.IdleClip;
 import mchorse.bbs_mod.camera.controller.CameraController;
 import mchorse.bbs_mod.camera.controller.RunnerCameraController;
@@ -73,6 +74,7 @@ import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.joml.Vectors;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
+import mchorse.bbs_mod.utils.keyframes.KeyframeLoop;
 import mchorse.bbs_mod.utils.keyframes.KeyframeSegment;
 import mchorse.bbs_mod.utils.presets.PresetManager;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
@@ -1120,6 +1122,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             Film data = this.createDuplicateFilm(name, this.data);
 
             this.fill(data);
+            this.setCursor(0);
             this.save();
         }
     }
@@ -1127,30 +1130,86 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     private Film createDuplicateFilm(String name, Film source)
     {
         Film data = new Film();
-        Position position = new Position();
-        IdleClip idle = new IdleClip();
         int tick = this.getCursor();
 
-        position.set(this.getCamera());
-        idle.duration.set(BBSSettings.getDefaultDuration());
-        idle.position.set(position);
-        data.camera.addClip(idle);
         data.setId(name);
         data.stampCreationTimeNow();
 
+        data.hp.set(source.hp.get());
+        data.hunger.set(source.hunger.get());
+        data.xpLevel.set(source.xpLevel.get());
+        data.xpProgress.set(source.xpProgress.get());
+        data.mobRecordingRadius.set(source.mobRecordingRadius.get());
+        data.replayCategories.copy(source.replayCategories);
+
+        /* Trim and shift camera and audio clips */
+        this.trimAndShiftClips(source.camera, data.camera, tick);
+
+        boolean hasCameraClip = false;
+
+        for (Clip clip : data.camera.getClips(0))
+        {
+            if (!(clip instanceof AudioClip))
+            {
+                hasCameraClip = true;
+                break;
+            }
+        }
+
+        if (!hasCameraClip)
+        {
+            Position position = new Position();
+            IdleClip idle = new IdleClip();
+
+            position.set(this.getCamera());
+            idle.duration.set(BBSSettings.getDefaultDuration());
+            idle.position.set(position);
+            idle.layer.set(data.camera.findFreeLayer(idle));
+            data.camera.addClip(idle);
+        }
+
+        /* Shift markers */
+        for (FilmMarker marker : source.markers.getAllTyped())
+        {
+            if (marker.tick.get() >= tick)
+            {
+                FilmMarker copy = data.markers.addMarker(marker.tick.get() - tick);
+                copy.title.set(marker.title.get());
+                copy.color.set(marker.color.get());
+            }
+        }
+
+        /* Trim and shift replays */
         for (Replay replay : source.replays.getList())
         {
             Replay copy = new Replay(replay.getId());
 
             copy.form.set(FormUtils.copy(replay.form.get()));
+            copy.label.set(replay.label.get());
+            copy.category.set(replay.category.get());
+            copy.nameTag.set(replay.nameTag.get());
+            copy.nameTagHeight.set(replay.nameTagHeight.get());
+            copy.enabled.set(replay.enabled.get());
+            copy.actor.set(replay.actor.get());
+            copy.actorPickup.set(replay.actorPickup.get());
+            copy.fp.set(replay.fp.get());
+            copy.relative.set(replay.relative.get());
+            copy.relativeOffset.set(replay.relativeOffset.get().copy());
+            copy.shadow.set(replay.shadow.get());
+            copy.shadowSize.set(replay.shadowSize.get());
+            copy.shadowFollow.set(replay.shadowFollow.get());
+            copy.shadowOffset.set(replay.shadowOffset.get().copy());
+            copy.looping.set(replay.looping.get());
+            copy.anchor.set(replay.anchor.get().copy());
+            copy.axesPreview.set(replay.axesPreview.get());
+            copy.axesPreviewBone.set(replay.axesPreviewBone.get());
 
             for (KeyframeChannel<?> channel : replay.keyframes.getChannels())
             {
                 if (!channel.isEmpty())
                 {
                     KeyframeChannel newChannel = (KeyframeChannel) copy.keyframes.get(channel.getId());
-
-                    newChannel.insert(0, channel.interpolate(tick));
+                    trimAndShiftChannel(channel, newChannel, tick);
                 }
             }
 
@@ -1164,12 +1223,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                 }
 
                 KeyframeChannel newChannel = new KeyframeChannel(channel.getId(), channel.getFactory());
-                KeyframeSegment segment = channel.find(tick);
-
-                if (segment != null)
-                {
-                    newChannel.insert(0, segment.createInterpolated());
-                }
+                trimAndShiftChannel(channel, newChannel, tick);
 
                 if (!newChannel.isEmpty())
                 {
@@ -1177,10 +1231,109 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                 }
             }
 
+            this.trimAndShiftClips(replay.actions, copy.actions, tick);
+
             data.replays.add(copy);
         }
 
         return data;
+    }
+
+    private void trimAndShiftClips(Clips sourceClips, Clips targetClips, int splitTick)
+    {
+        for (Clip clip : sourceClips.get())
+        {
+            int start = clip.tick.get();
+            int dur = clip.duration.get();
+            int end = start + dur;
+
+            if (end <= splitTick)
+            {
+                continue;
+            }
+
+            if (start >= splitTick)
+            {
+                Clip copy = clip.copy();
+                copy.tick.set(start - splitTick);
+                targetClips.addClip(copy);
+            }
+            else
+            {
+                int offset = splitTick - start;
+                Clip breakdown = clip.breakDown(offset);
+
+                if (breakdown != null)
+                {
+                    breakdown.tick.set(0);
+                    targetClips.addClip(breakdown);
+                }
+                else
+                {
+                    Clip copy = clip.copy();
+                    copy.tick.set(0);
+                    copy.duration.set(end - splitTick);
+                    targetClips.addClip(copy);
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void trimAndShiftChannel(KeyframeChannel sourceChannel, KeyframeChannel targetChannel, int splitTick)
+    {
+        if (sourceChannel.isEmpty())
+        {
+            return;
+        }
+
+        Object valueAtSplit = sourceChannel.interpolate(splitTick);
+        KeyframeSegment segment = sourceChannel.findSegment(splitTick);
+        int firstIndex = targetChannel.insert(0, valueAtSplit);
+        Keyframe firstKf = (Keyframe) targetChannel.get(firstIndex);
+
+        if (firstKf != null && segment != null && segment.a != null)
+        {
+            firstKf.copyOverExtra(segment.a);
+        }
+
+        for (Object obj : sourceChannel.getKeyframes())
+        {
+            Keyframe kf = (Keyframe) obj;
+
+            if (kf.getTick() > splitTick)
+            {
+                float newTick = kf.getTick() - splitTick;
+                Object val = kf.getFactory() != null ? kf.getFactory().copy(kf.getValue()) : kf.getValue();
+                int idx = targetChannel.insert(newTick, val);
+                Keyframe inserted = (Keyframe) targetChannel.get(idx);
+
+                if (inserted != null)
+                {
+                    inserted.copyOverExtra(kf);
+                }
+            }
+        }
+
+        for (Object obj : sourceChannel.getLoops())
+        {
+            KeyframeLoop loop = (KeyframeLoop) obj;
+
+            if (loop.end() <= splitTick)
+            {
+                continue;
+            }
+
+            float start = Math.max(0, loop.start() - splitTick);
+            float sourceEnd = Math.max(0, loop.sourceEnd() - splitTick);
+            float end = loop.end() - splitTick;
+            KeyframeLoop newLoop = new KeyframeLoop(loop.id(), start, sourceEnd, end);
+
+            if (newLoop.isValid())
+            {
+                targetChannel.putLoop(newLoop);
+            }
+        }
     }
 
     /**

@@ -70,6 +70,8 @@ public abstract class Form extends ValueGroup
     public static final int LAYER_CUTOUT = 2;
     public static final int LAYER_TRANSLUCENT = 3;
     public final ValueString name = new ValueString("name", "");
+    public final ValueString nameTag = new ValueString("name_tag", "");
+    public final ValueFloat nameTagHeight = new ValueFloat("name_tag_height", 0F);
     public final ValueTransform transform = new ValueTransform("transform", new Transform());
     public final ValueTransform transformOverlay = new ValueTransform("transform_overlay", new Transform());
     public final ValueBoolean shaderShadow = new ValueBoolean("shaderShadow", true);
@@ -135,6 +137,8 @@ public abstract class Form extends ValueGroup
         this.disabledTracks.invisible();
         this.trackName.animatable(false).invisible();
         this.name.animatable(false).invisible();
+        this.nameTag.animatable(false).invisible();
+        this.nameTagHeight.animatable(false).invisible();
         this.shaderShadow.animatable(false).invisible();
         this.additiveColor.animatable(false).invisible();
 
@@ -152,6 +156,8 @@ public abstract class Form extends ValueGroup
         this.add(this.renderLayer);
         this.add(this.renderLast);
         this.add(this.name);
+        this.add(this.nameTag);
+        this.add(this.nameTagHeight);
         this.add(this.transform);
         this.add(this.transformOverlay);
 

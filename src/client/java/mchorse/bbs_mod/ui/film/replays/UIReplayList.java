@@ -1657,6 +1657,26 @@ public class UIReplayList extends UIList<ReplayListEntry>
             for (Replay replay : this.getSelectedReplays())
             {
                 replay.form.set(FormUtils.copy(f));
+
+                if (f != null)
+                {
+                    String tag = !f.nameTag.get().isEmpty() ? f.nameTag.get() : f.name.get();
+
+                    if (!tag.isEmpty())
+                    {
+                        replay.nameTag.set(tag);
+                    }
+
+                    if (f.nameTagHeight.get() != 0F || !f.nameTag.get().isEmpty())
+                    {
+                        replay.nameTagHeight.set(f.nameTagHeight.get());
+                    }
+
+                    if (replay.label.get().isEmpty())
+                    {
+                        replay.label.set(!f.name.get().isEmpty() ? f.name.get() : tag);
+                    }
+                }
             }
 
             this.updateFilmEditor();

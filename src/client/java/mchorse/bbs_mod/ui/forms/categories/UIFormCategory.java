@@ -19,6 +19,7 @@ import mchorse.bbs_mod.ui.dashboard.UIDashboard;
 import mchorse.bbs_mod.ui.forms.FormCellRenderer;
 import mchorse.bbs_mod.ui.forms.FormGridLayout;
 import mchorse.bbs_mod.ui.forms.UIFormList;
+import mchorse.bbs_mod.ui.forms.UINameTagPresetOverlayPanel;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIScrollView;
 import mchorse.bbs_mod.ui.framework.elements.UISection;
@@ -135,6 +136,31 @@ public class UIFormCategory extends UIItemGrid<Form>
         }).label(UIKeys.FORMS_CATEGORIES_CONTEXT_REMOVE_FORM);
     }
 
+    protected void nameTagPresetAction(ContextMenuManager menu, Form form)
+    {
+        if (form == null || !this.category.canModify(form))
+        {
+            return;
+        }
+
+        menu.action(Icons.USER, UIKeys.FILM_REPLAY_NAME_TAG, () ->
+        {
+            UINameTagPresetOverlayPanel panel = new UINameTagPresetOverlayPanel(
+                UIKeys.FILM_REPLAY_NAME_TAG,
+                UIKeys.FILM_REPLAY_NAME_TAG_HEIGHT,
+                form,
+                (tag, height) ->
+                {
+                    form.nameTag.set(tag);
+                    form.nameTagHeight.set(height);
+                    this.category.replaceForm(this.category.getForms().indexOf(form), form);
+                }
+            );
+
+            UIOverlay.addOverlay(this.getContext(), panel);
+        });
+    }
+
     /**
      * Whether a menu opened over a form should act on the whole multi-selection instead —
      * the form is one of several picked.
@@ -175,6 +201,11 @@ public class UIFormCategory extends UIItemGrid<Form>
 
             this.list.palette.toggleEditor();
         });
+
+        if (form != null && this.category.canModify(form))
+        {
+            this.nameTagPresetAction(menu, form);
+        }
 
         if (form instanceof ModelForm modelForm)
         {
