@@ -57,41 +57,23 @@ public class ModelBlockItemRenderer implements BuiltinItemRendererRegistry.Dynam
 
         if (item != null)
         {
+            item.expiration = 20;
+
             ModelProperties properties = item.entity.getProperties();
-
-            if (UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.getProperties() != null)
-            {
-                properties = editorMenu.getProperties();
-            }
-
             Form form = properties.getForm(mode);
             Transform transform = properties.getTransform(mode);
 
-            if (UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.getProperties() != null)
+            if (mode != ModelTransformationMode.GUI && UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.getProperties() == properties)
             {
-                ModelProperties props = editorMenu.getProperties();
-
                 if (editorMenu.currentSection == editorMenu.sectionDefault)
                 {
-                    form = props.getForm();
-                    transform = props.getTransform();
-                }
-                else if (editorMenu.currentSection == editorMenu.sectionTp)
-                {
-                    form = props.getFormThirdPerson() != null ? props.getFormThirdPerson() : props.getForm();
-                    transform = props.getTransformThirdPerson();
-                }
-                else if (editorMenu.currentSection == editorMenu.sectionFp)
-                {
-                    form = props.getFormFirstPerson() != null ? props.getFormFirstPerson() : props.getForm();
-                    transform = props.getTransformFirstPerson();
+                    form = properties.getForm();
+                    transform = properties.getTransform();
                 }
             }
 
             if (form != null)
             {
-                item.expiration = 20;
-
                 matrices.push();
                 matrices.translate(0.5F, 0F, 0.5F);
                 MatrixStackUtils.applyTransform(matrices, transform);

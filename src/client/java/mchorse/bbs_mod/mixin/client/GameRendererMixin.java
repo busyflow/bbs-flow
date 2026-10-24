@@ -80,12 +80,20 @@ public class GameRendererMixin
     @Inject(method = "renderHand", at = @At("HEAD"), cancellable = true)
     public void onRenderHand(CallbackInfo info)
     {
+        GameRendererPreHandMixin.restoreScreen();
+
         ICameraController current = BBSModClient.getCameraController().getCurrent();
 
         if (current instanceof PlayCameraController)
         {
             info.cancel();
         }
+    }
+
+    @Inject(method = "renderHand", at = @At("RETURN"))
+    public void onRenderHandReturn(CallbackInfo info)
+    {
+        GameRendererPreHandMixin.restoreScreen();
     }
 
     /**

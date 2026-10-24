@@ -55,13 +55,9 @@ public class GunItemRenderer implements BuiltinItemRendererRegistry.DynamicItemR
 
         if (item != null)
         {
+            item.expiration = 20;
+
             GunProperties properties = item.properties;
-
-            if (UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.getGunProperties() != null)
-            {
-                properties = editorMenu.getGunProperties();
-            }
-
             Form form = properties.getForm(mode);
             Transform transform = properties.getTransform(mode);
             boolean zoom = mode.isFirstPerson() && BBSModClient.getGunZoom() != null && properties.getZoomForm() != null;
@@ -72,37 +68,22 @@ public class GunItemRenderer implements BuiltinItemRendererRegistry.DynamicItemR
                 transform = properties.zoomTransform;
             }
 
-            /* Preview active section */
-            if (UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.getGunProperties() != null)
+            if (mode != ModelTransformationMode.GUI && UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.getGunProperties() == properties)
             {
-                GunProperties gun = editorMenu.getGunProperties();
-
                 if (editorMenu.currentSection == editorMenu.sectionDefault)
                 {
-                    form = gun.getForm();
-                    transform = gun.getTransform();
-                }
-                else if (editorMenu.currentSection == editorMenu.sectionTp)
-                {
-                    form = gun.getFormThirdPerson() != null ? gun.getFormThirdPerson() : gun.getForm();
-                    transform = gun.getTransformThirdPerson();
-                }
-                else if (editorMenu.currentSection == editorMenu.sectionFp)
-                {
-                    form = gun.getFormFirstPerson() != null ? gun.getFormFirstPerson() : gun.getForm();
-                    transform = gun.getTransformFirstPerson();
+                    form = properties.getForm();
+                    transform = properties.getTransform();
                 }
                 else if (editorMenu.currentSection == editorMenu.sectionZoom)
                 {
-                    form = gun.getZoomForm() != null ? gun.getZoomForm() : gun.getForm();
-                    transform = gun.zoomTransform;
+                    form = properties.getZoomForm() != null ? properties.getZoomForm() : properties.getForm();
+                    transform = properties.zoomTransform;
                 }
             }
 
             if (form != null)
             {
-                item.expiration = 20;
-
                 matrices.push();
                 matrices.translate(0.5F, 0F, 0.5F);
                 MatrixStackUtils.applyTransform(matrices, transform);
