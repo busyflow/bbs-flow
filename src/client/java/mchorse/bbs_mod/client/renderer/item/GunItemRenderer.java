@@ -56,6 +56,12 @@ public class GunItemRenderer implements BuiltinItemRendererRegistry.DynamicItemR
         if (item != null)
         {
             GunProperties properties = item.properties;
+
+            if (UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.getGunProperties() != null)
+            {
+                properties = editorMenu.getGunProperties();
+            }
+
             Form form = properties.getForm(mode);
             Transform transform = properties.getTransform(mode);
             boolean zoom = mode.isFirstPerson() && BBSModClient.getGunZoom() != null && properties.getZoomForm() != null;
@@ -66,11 +72,31 @@ public class GunItemRenderer implements BuiltinItemRendererRegistry.DynamicItemR
                 transform = properties.zoomTransform;
             }
 
-            /* Preview zoom form */
-            if (UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.currentSection == editorMenu.sectionZoom)
+            /* Preview active section */
+            if (UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.getGunProperties() != null)
             {
-                form = editorMenu.getGunProperties().getZoomForm();
-                transform = editorMenu.getGunProperties().zoomTransform;
+                GunProperties gun = editorMenu.getGunProperties();
+
+                if (editorMenu.currentSection == editorMenu.sectionDefault)
+                {
+                    form = gun.getForm();
+                    transform = gun.getTransform();
+                }
+                else if (editorMenu.currentSection == editorMenu.sectionTp)
+                {
+                    form = gun.getFormThirdPerson() != null ? gun.getFormThirdPerson() : gun.getForm();
+                    transform = gun.getTransformThirdPerson();
+                }
+                else if (editorMenu.currentSection == editorMenu.sectionFp)
+                {
+                    form = gun.getFormFirstPerson() != null ? gun.getFormFirstPerson() : gun.getForm();
+                    transform = gun.getTransformFirstPerson();
+                }
+                else if (editorMenu.currentSection == editorMenu.sectionZoom)
+                {
+                    form = gun.getZoomForm() != null ? gun.getZoomForm() : gun.getForm();
+                    transform = gun.zoomTransform;
+                }
             }
 
             if (form != null)
