@@ -80,14 +80,12 @@ public class UIModelBlockEditorMenu extends UIBaseMenu
     /* Camera */
     private UIOrbitCamera uiOrbitCamera;
     private OrbitCameraController orbitCameraController;
-    private Perspective originalPerspective;
 
     private UICopyPasteController copyPasteController;
 
     public UIModelBlockEditorMenu(ModelProperties properties)
     {
         this.properties = properties;
-        this.originalPerspective = MinecraftClient.getInstance().options.getPerspective();
 
         if (properties instanceof GunProperties gunProperties)
         {
@@ -427,10 +425,7 @@ public class UIModelBlockEditorMenu extends UIBaseMenu
 
         this.saveSection();
         BBSModClient.getCameraController().remove(this.orbitCameraController);
-        if (this.originalPerspective != null)
-        {
-            MinecraftClient.getInstance().options.setPerspective(this.originalPerspective);
-        }
+        MinecraftClient.getInstance().options.setPerspective(Perspective.FIRST_PERSON);
         ClientNetwork.sendModelBlockTransforms(this.properties.toData());
     }
 
@@ -443,11 +438,9 @@ public class UIModelBlockEditorMenu extends UIBaseMenu
     {
         if (element != this.currentSection)
         {
-            boolean thirdPerson = element == this.sectionDefault || element == this.sectionTp;
+            this.uiOrbitCamera.setEnabled(element == this.sectionTp);
 
-            this.uiOrbitCamera.setEnabled(thirdPerson);
-
-            if (thirdPerson)
+            if (element == this.sectionTp)
             {
                 MinecraftClient.getInstance().options.setPerspective(Perspective.THIRD_PERSON_FRONT);
                 BBSModClient.getCameraController().add(this.orbitCameraController);
