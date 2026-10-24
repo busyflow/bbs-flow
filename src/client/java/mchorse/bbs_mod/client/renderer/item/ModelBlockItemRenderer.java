@@ -10,8 +10,6 @@ import mchorse.bbs_mod.forms.entities.StubEntity;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.forms.renderers.FormRenderType;
 import mchorse.bbs_mod.forms.renderers.FormRenderingContext;
-import mchorse.bbs_mod.ui.framework.UIScreen;
-import mchorse.bbs_mod.ui.model_blocks.UIModelBlockEditorMenu;
 import mchorse.bbs_mod.utils.MatrixStackUtils;
 import mchorse.bbs_mod.utils.pose.Transform;
 import net.fabricmc.fabric.api.client.rendering.v1.BuiltinItemRendererRegistry;
@@ -57,23 +55,15 @@ public class ModelBlockItemRenderer implements BuiltinItemRendererRegistry.Dynam
 
         if (item != null)
         {
-            item.expiration = 20;
-
             ModelProperties properties = item.entity.getProperties();
             Form form = properties.getForm(mode);
-            Transform transform = properties.getTransform(mode);
-
-            if (mode != ModelTransformationMode.GUI && UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.getProperties() == properties)
-            {
-                if (editorMenu.currentSection == editorMenu.sectionDefault)
-                {
-                    form = properties.getForm();
-                    transform = properties.getTransform();
-                }
-            }
 
             if (form != null)
             {
+                item.expiration = 20;
+
+                Transform transform = properties.getTransform(mode);
+
                 matrices.push();
                 matrices.translate(0.5F, 0F, 0.5F);
                 MatrixStackUtils.applyTransform(matrices, transform);

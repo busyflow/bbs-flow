@@ -55,8 +55,6 @@ public class GunItemRenderer implements BuiltinItemRendererRegistry.DynamicItemR
 
         if (item != null)
         {
-            item.expiration = 20;
-
             GunProperties properties = item.properties;
             Form form = properties.getForm(mode);
             Transform transform = properties.getTransform(mode);
@@ -68,22 +66,17 @@ public class GunItemRenderer implements BuiltinItemRendererRegistry.DynamicItemR
                 transform = properties.zoomTransform;
             }
 
-            if (mode != ModelTransformationMode.GUI && UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.getGunProperties() == properties)
+            /* Preview zoom form */
+            if (UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu editorMenu && editorMenu.currentSection == editorMenu.sectionZoom)
             {
-                if (editorMenu.currentSection == editorMenu.sectionDefault)
-                {
-                    form = properties.getForm();
-                    transform = properties.getTransform();
-                }
-                else if (editorMenu.currentSection == editorMenu.sectionZoom)
-                {
-                    form = properties.getZoomForm() != null ? properties.getZoomForm() : properties.getForm();
-                    transform = properties.zoomTransform;
-                }
+                form = editorMenu.getGunProperties().getZoomForm();
+                transform = editorMenu.getGunProperties().zoomTransform;
             }
 
             if (form != null)
             {
+                item.expiration = 20;
+
                 matrices.push();
                 matrices.translate(0.5F, 0F, 0.5F);
                 MatrixStackUtils.applyTransform(matrices, transform);

@@ -9,23 +9,14 @@ import mchorse.bbs_mod.camera.controller.PlayCameraController;
 import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.client.PixelArt;
 import mchorse.bbs_mod.items.GunZoom;
-import mchorse.bbs_mod.ui.framework.UIScreen;
-import mchorse.bbs_mod.ui.model_blocks.UIModelBlockEditorMenu;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.ShaderProgram;
-import net.minecraft.client.render.BufferBuilderStorage;
-import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.GameRenderer;
-import net.minecraft.client.render.LightmapTextureManager;
-import net.minecraft.client.render.item.HeldItemRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.RotationAxis;
 import org.joml.Matrix4f;
 import org.objectweb.asm.Opcodes;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
@@ -33,45 +24,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(GameRenderer.class)
-public abstract class GameRendererMixin
+public class GameRendererMixin
 {
-    @Shadow
-    @Final
-    MinecraftClient client;
-
-    @Shadow
-    @Final
-    public HeldItemRenderer firstPersonRenderer;
-
-    @Shadow
-    @Final
-    private BufferBuilderStorage buffers;
-
-    @Shadow
-    @Final
-    private LightmapTextureManager lightmapTextureManager;
-
-    @Shadow
-    @Final
-    private Camera camera;
-
-    @Shadow
-    protected abstract double getFov(Camera camera, float tickDelta, boolean changingFov);
-
-    @Shadow
-    protected abstract void tiltViewWhenHurt(MatrixStack matrices, float tickDelta);
-
-    @Shadow
-    protected abstract void bobView(MatrixStack matrices, float tickDelta);
-
-    @Shadow
-    public abstract void loadProjectionMatrix(Matrix4f projectionMatrix);
-
-    @Shadow
-    public abstract Matrix4f getBasicProjectionMatrix(double fov);
-
-    @Unique
-    private boolean bbs$handRendered;
     /**
      * This injection cancels bobbing when camera controller takes over
      */
@@ -126,54 +80,11 @@ public abstract class GameRendererMixin
     @Inject(method = "renderHand", at = @At("HEAD"), cancellable = true)
     public void onRenderHand(CallbackInfo info)
     {
-        this.bbs$handRendered = true;
-
         ICameraController current = BBSModClient.getCameraController().getCurrent();
 
         if (current instanceof PlayCameraController)
         {
             info.cancel();
-        }
-    }
-
-    @Inject(
-        method = "renderWorld",
-        at = @At(
-            value = "INVOKE",
-            target = "Lnet/minecraft/client/render/GameRenderer;renderHand(Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/Camera;F)V",
-            shift = At.Shift.AFTER
-        )
-    )
-    private void onAfterRenderHand(float tickDelta, long limitTime, MatrixStack matrices, CallbackInfo info)
-    {
-        if (!this.bbs$handRendered
-            && !BBSRendering.isIrisShadersEnabled()
-            && UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu
-            && BBSModClient.getCameraController().getCurrent() == null
-            && this.client.options.getPerspective().isFirstPerson()
-            && !this.client.options.hudHidden
-            && this.client.player != null)
-        {
-            this.loadProjectionMatrix(this.getBasicProjectionMatrix(this.getFov(this.camera, tickDelta, false)));
-            matrices.loadIdentity();
-            matrices.push();
-            this.tiltViewWhenHurt(matrices, tickDelta);
-
-            if (this.client.options.getBobView().getValue())
-            {
-                this.bobView(matrices, tickDelta);
-            }
-
-            this.lightmapTextureManager.enable();
-            this.firstPersonRenderer.renderItem(
-                tickDelta,
-                matrices,
-                this.buffers.getEntityVertexConsumers(),
-                this.client.player,
-                this.client.getEntityRenderDispatcher().getLight(this.client.player, tickDelta)
-            );
-            this.lightmapTextureManager.disable();
-            matrices.pop();
         }
     }
 
@@ -193,7 +104,6 @@ public abstract class GameRendererMixin
     @Inject(at = @At("HEAD"), method = "renderWorld")
     private void onWorldRenderBegin(float tickDelta, long limitTime, MatrixStack matrices, CallbackInfo callbackInfo)
     {
-        this.bbs$handRendered = false;
         BBSRendering.onWorldRenderBegin();
 
         CameraController controller = BBSModClient.getCameraController();

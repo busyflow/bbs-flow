@@ -107,7 +107,7 @@ public class UIScreen extends Screen implements IFileDropListener
     @Override
     public void onDisplayed()
     {
-        BBSModClient.setCustomGUIScale(!(this.menu instanceof mchorse.bbs_mod.ui.model_blocks.UIModelBlockEditorMenu));
+        BBSModClient.setCustomGUIScale(true);
         MinecraftClient.getInstance().onResolutionChanged();
 
         super.onDisplayed();

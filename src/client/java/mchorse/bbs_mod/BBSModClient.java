@@ -410,11 +410,6 @@ public class BBSModClient implements ClientModInitializer
      */
     public static float getCustomGUIScale()
     {
-        if (UIScreen.getCurrentMenu() instanceof UIModelBlockEditorMenu)
-        {
-            return 0F;
-        }
-
         return customGUIScale ? BBSSettings.userIntefaceScale.get() : 0F;
     }
 

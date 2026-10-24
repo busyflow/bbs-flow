@@ -129,11 +129,6 @@ public class UIModelBlockEditorMenu extends UIBaseMenu
         this.createUI();
     }
 
-    public ModelProperties getProperties()
-    {
-        return this.properties;
-    }
-
     public GunProperties getGunProperties()
     {
         return this.gunProperties;
@@ -395,7 +390,7 @@ public class UIModelBlockEditorMenu extends UIBaseMenu
     private UIElement createTransform(Transform transform, Supplier<Form> formSupplier, Consumer<Form> formConsumer)
     {
         UIElement section = UI.column();
-        UINestedEdit uiPickEdit = new UINestedEdit((edit) -> UIFormPalette.open(this.main, edit, formSupplier.get() != null ? formSupplier.get() : this.properties.getForm(), (f) ->
+        UINestedEdit uiPickEdit = new UINestedEdit((edit) -> UIFormPalette.open(this.main, edit, formSupplier.get(), (f) ->
         {
             formConsumer.accept(FormUtils.copy(f));
             section.getChildren(UINestedEdit.class).get(0).setForm(f);
@@ -425,7 +420,6 @@ public class UIModelBlockEditorMenu extends UIBaseMenu
 
         this.saveSection();
         BBSModClient.getCameraController().remove(this.orbitCameraController);
-        MinecraftClient.getInstance().options.setPerspective(Perspective.FIRST_PERSON);
         ClientNetwork.sendModelBlockTransforms(this.properties.toData());
     }
 
