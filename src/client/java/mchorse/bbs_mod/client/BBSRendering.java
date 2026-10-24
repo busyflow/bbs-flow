@@ -75,6 +75,16 @@ public class BBSRendering
 
     public static boolean renderingWorld;
     public static int lastAction;
+    public static net.minecraft.client.gui.screen.Screen savedHandScreen;
+
+    public static void restoreHandScreen()
+    {
+        if (savedHandScreen != null)
+        {
+            MinecraftClient.getInstance().currentScreen = savedHandScreen;
+            savedHandScreen = null;
+        }
+    }
 
     private static boolean customSize;
     private static boolean iris;
