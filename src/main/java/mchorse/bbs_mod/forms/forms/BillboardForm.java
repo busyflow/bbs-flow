@@ -14,7 +14,7 @@ import org.joml.Vector4f;
 public class BillboardForm extends Form
 {
     /** Also what its main tab in the form editor wears — see {@link Form#getIcon()}. */
-    public static final Icon ICON = Icons.MATERIAL;
+    public static final Icon ICON = Icons.IMAGE;
 
     public final ValueLink texture = new ValueLink("texture", null);
     public final ValueBoolean billboard = new ValueBoolean("billboard", false);

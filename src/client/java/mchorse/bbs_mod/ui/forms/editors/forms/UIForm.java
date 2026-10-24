@@ -110,8 +110,6 @@ public abstract class UIForm <T extends Form> extends UIPanelBase<UIFormPanel<T>
             return poseEditor.transform;
         }
 
-        this.setPanel(this.generalPanel);
-
         return this.general;
     }
 

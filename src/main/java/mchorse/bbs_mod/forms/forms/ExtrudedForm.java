@@ -11,7 +11,7 @@ import mchorse.bbs_mod.utils.colors.Color;
 public class ExtrudedForm extends Form
 {
     /** Also what its main tab in the form editor wears — see {@link Form#getIcon()}. */
-    public static final Icon ICON = Icons.MATERIAL;
+    public static final Icon ICON = Icons.IMAGE;
 
     public final ValueLink texture = new ValueLink("texture", null);
     public final ValueColor color = new ValueColor("color", Color.white());
