@@ -318,8 +318,6 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         /* Setup elements */
 
-        this.updateCameraTimelineMounting(false);
-        BBSSettings.editorSeparateCameraTimeline.postCallback((v, f) -> this.updateCameraTimelineMounting(true));
         this.add(this.controller);
         this.overlay.namesList.setFileIcon(Icons.FILM);
 
@@ -413,6 +411,9 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         this.dock.addPanel(PANEL_REPLAY_PROPS_ID, this.replayEditor.replayProperties, Icons.PROPERTIES, UIKeys.FILM_PANELS_REPLAY_PROPS);
         this.dock.mount();
         this.editor.add(this.dock);
+
+        this.updateCameraTimelineMounting(false);
+        BBSSettings.editorSeparateCameraTimeline.postCallback((v, f) -> this.updateCameraTimelineMounting(true));
 
         this.fill(null);
 
@@ -527,6 +528,11 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
     private void updateMainEditorVisibility(boolean hasFilm)
     {
+        if (this.dock == null)
+        {
+            return;
+        }
+
         boolean mainActive = this.dock.isPanelActive(PANEL_MAIN_ID);
         boolean editAreaActive = this.dock.isPanelActive(PANEL_EDIT_AREA_ID);
 
@@ -786,7 +792,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             this.replayEditor.full(this.main);
             this.main.add(this.replayEditor);
 
-            if (userToggled)
+            if (this.dock != null && userToggled)
             {
                 EditorLayoutNode root = this.getCurrentFilmLayoutRoot();
                 HashSet<String> ids = new HashSet<>();
@@ -804,7 +810,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             this.replayEditor.full(this.main);
             this.main.add(this.cameraEditor, this.replayEditor);
 
-            if (userToggled)
+            if (this.dock != null && userToggled)
             {
                 EditorLayoutNode root = this.getCurrentFilmLayoutRoot();
 
@@ -816,7 +822,12 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         }
 
         this.updateMainEditorVisibility(this.hasFilmInCurrentTab());
-        this.dock.refresh();
+
+        if (this.dock != null)
+        {
+            this.dock.refresh();
+        }
+
         this.resize();
     }
 
