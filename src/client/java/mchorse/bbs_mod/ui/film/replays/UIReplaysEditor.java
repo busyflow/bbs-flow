@@ -379,9 +379,30 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         this.layoutActionsToggle();
 
         TrackCategories.registerShortcuts(this.keys(), () -> TrackCategories.values().stream()
-            .filter(category -> (this.isSeparateFormTimeline() && category == TrackCategory.FORM) || this.tabButtons.get(category).getParent() != null).toList(), this::setCategory);
+            .filter(category -> this.tabButtons.get(category).getParent() != null).toList(), this::setCategory);
+        this.keys().register(Keys.REPLAYS_TAB_2, () ->
+        {
+            if (this.isSeparateFormTimeline())
+            {
+                this.setActionsMode(true);
+            }
+            else
+            {
+                this.setCategory(TrackCategory.FORM);
+            }
+        }).active(this::isSeparateFormTimeline).category(UIKeys.FILM_REPLAY_TITLE);
         this.keys().register(new KeyCombo(IKey.EMPTY, GLFW.GLFW_KEY_KP_1), () -> this.setCategory(TrackCategory.REPLAY)).category(UIKeys.FILM_REPLAY_TITLE);
-        this.keys().register(new KeyCombo(IKey.EMPTY, GLFW.GLFW_KEY_KP_2), () -> this.setCategory(TrackCategory.FORM)).category(UIKeys.FILM_REPLAY_TITLE);
+        this.keys().register(new KeyCombo(IKey.EMPTY, GLFW.GLFW_KEY_KP_2), () ->
+        {
+            if (this.isSeparateFormTimeline())
+            {
+                this.setActionsMode(true);
+            }
+            else
+            {
+                this.setCategory(TrackCategory.FORM);
+            }
+        }).category(UIKeys.FILM_REPLAY_TITLE);
 
         this.add(this.iconBar, this.sectionsToggle, this.actionsToggle, this.replayTransform);
         this.partHeader.relative(this).x(CATEGORY_BAR_WIDTH).y(0).w(120).h(TimelineRulerRenderer.RULER_BLOCK_HEIGHT);
