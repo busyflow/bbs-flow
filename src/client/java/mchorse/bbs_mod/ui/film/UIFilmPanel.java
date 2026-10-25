@@ -737,9 +737,25 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     {
         if (this.isSeparateCameraTimeline())
         {
-            return (this.selectedMainEditorPanel == null || this.selectedMainEditorPanel == this.cameraEditor)
-                ? (this.lastMainEditorPanel != null ? this.lastMainEditorPanel : this.replayEditor)
-                : this.selectedMainEditorPanel;
+            if (this.selectedMainEditorPanel != null && this.selectedMainEditorPanel != this.cameraEditor)
+            {
+                return this.selectedMainEditorPanel;
+            }
+
+            for (UIElement panel : this.panels)
+            {
+                if (panel != this.cameraEditor && panel.isVisible())
+                {
+                    return panel;
+                }
+            }
+
+            if (this.lastMainEditorPanel != null && this.lastMainEditorPanel != this.cameraEditor)
+            {
+                return this.lastMainEditorPanel;
+            }
+
+            return this.replayEditor;
         }
 
         return this.selectedMainEditorPanel == null ? this.cameraEditor : this.selectedMainEditorPanel;
@@ -1542,7 +1558,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
             for (UIElement panel : this.panels)
             {
-                if (panel != this.cameraEditor)
+                if (panel != this.cameraEditor && !nonCameraPanels.contains(panel))
                 {
                     nonCameraPanels.add(panel);
                 }
@@ -1553,8 +1569,8 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                 return;
             }
 
-            UIElement activeMain = this.getActiveNonCameraEditor();
-            int currentIndex = nonCameraPanels.indexOf(activeMain);
+            UIElement current = this.getActiveNonCameraEditor();
+            int currentIndex = nonCameraPanels.indexOf(current);
             int nextIndex = currentIndex >= 0 ? (currentIndex + 1) % nonCameraPanels.size() : 0;
 
             this.showPanel(nonCameraPanels.get(nextIndex));
@@ -1581,7 +1597,14 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         for (int i = 0; i < this.panels.size(); i++)
         {
-            if (this.panels.get(i).isVisible())
+            UIElement panel = this.panels.get(i);
+
+            if (this.isSeparateCameraTimeline() && panel == this.cameraEditor)
+            {
+                continue;
+            }
+
+            if (panel.isVisible())
             {
                 return i;
             }
@@ -1641,6 +1664,8 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         this.applyTimelineViewport(element);
         this.applyPreviewSizeToBBS();
+
+        this.resize();
 
         if (this.isFlying())
         {

@@ -63,7 +63,7 @@ public abstract class UIForm <T extends Form> extends UIPanelBase<UIFormPanel<T>
         super(Direction.RIGHT);
 
         this.buttons.activeEdge(Direction.RIGHT);
-        this.keys().register(Keys.FILM_CONTROLLER_CYCLE_EDITORS, this::cyclePanels);
+        this.keys().register(Keys.FILM_CONTROLLER_CYCLE_EDITORS, this::cyclePanels).inside();
 
         /* Digits follow the tab strip from the top, like the track categories of the keyframe editor */
         for (int i = 0; i < TAB_KEYS.length; i++)
