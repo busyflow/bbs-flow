@@ -1166,7 +1166,6 @@
 	"bbs.ui.film.panels.replays_list": "Replays",
 	"bbs.ui.film.panels.replay_props": "Replay properties",
 	"bbs.ui.film.panels.camera": "Camera timeline",
-	"bbs.ui.film.panels.camera_props": "Camera properties",
 	"bbs.ui.film.separate_camera_timeline": "Separate camera window",
 	"bbs.ui.film.shader.pending": "Waiting for a reload: %s",
 	"bbs.ui.film.shader.apply": "Apply",

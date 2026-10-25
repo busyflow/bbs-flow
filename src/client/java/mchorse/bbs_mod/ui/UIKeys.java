@@ -366,7 +366,6 @@ public class UIKeys
     public static final IKey FILM_PANELS_REPLAYS_LIST = L10n.lang("bbs.ui.film.panels.replays_list");
     public static final IKey FILM_PANELS_REPLAY_PROPS = L10n.lang("bbs.ui.film.panels.replay_props");
     public static final IKey FILM_PANELS_CAMERA = L10n.lang("bbs.ui.film.panels.camera");
-    public static final IKey FILM_PANELS_CAMERA_PROPS = L10n.lang("bbs.ui.film.panels.camera_props");
     public static final IKey FILM_SEPARATE_CAMERA_TIMELINE = L10n.lang("bbs.ui.film.separate_camera_timeline");
     public static final IKey FILM_SHADER_PENDING = L10n.lang("bbs.ui.film.shader.pending");
     public static final IKey FILM_SHADER_APPLY = L10n.lang("bbs.ui.film.shader.apply");

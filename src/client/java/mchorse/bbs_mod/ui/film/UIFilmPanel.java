@@ -172,11 +172,9 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     private static final String PANEL_REPLAYS_LIST_ID = "replaysList";
     private static final String PANEL_REPLAY_PROPS_ID = "replayProps";
     public static final String PANEL_CAMERA_TIMELINE_ID = "cameraTimeline";
-    public static final String PANEL_CAMERA_PROPS_ID = "cameraProps";
     private UIElement selectedMainEditorPanel;
 
     public UIElement cameraTimeline;
-    public UIElement cameraProps;
 
     /**
      * Initialize the camera editor with a camera profile.
@@ -228,7 +226,6 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                 return super.subMouseClicked(context);
             }
         };
-        this.cameraProps = new UIElement();
         this.main = new UIElement()
         {
             @Override
@@ -405,7 +402,6 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         this.dock.addPanel(PANEL_EDIT_AREA_ID, this.editArea, Icons.EDITOR, UIKeys.FILM_PANELS_EDIT_AREA);
         this.dock.addPanel(PANEL_MAIN_ID, this.main, Icons.FILM, UIKeys.FILM_PANELS_MAIN);
         this.dock.addPanel(PANEL_CAMERA_TIMELINE_ID, this.cameraTimeline, Icons.FRUSTUM, UIKeys.FILM_PANELS_CAMERA);
-        this.dock.addPanel(PANEL_CAMERA_PROPS_ID, this.cameraProps, Icons.PROPERTIES, UIKeys.FILM_PANELS_CAMERA_PROPS);
         this.dock.addPanel(PANEL_PREVIEW_ID, this.preview, Icons.VIDEO_CAMERA, UIKeys.FILM_PANELS_PREVIEW);
         this.dock.addPanel(PANEL_REPLAYS_LIST_ID, this.replayEditor.replaysList, Icons.LIST, UIKeys.FILM_PANELS_REPLAYS_LIST);
         this.dock.addPanel(PANEL_REPLAY_PROPS_ID, this.replayEditor.replayProperties, Icons.PROPERTIES, UIKeys.FILM_PANELS_REPLAY_PROPS);
@@ -539,24 +535,15 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         if (this.isSeparateCameraTimeline())
         {
             boolean cameraActive = this.dock.isPanelActive(PANEL_CAMERA_TIMELINE_ID);
-            boolean cameraPropsActive = this.dock.isPanelActive(PANEL_CAMERA_PROPS_ID);
-
-            UIElement cameraTarget = cameraPropsActive ? this.cameraProps : this.editArea;
-
-            if (this.cameraEditor.getTarget() != cameraTarget)
-            {
-                this.cameraEditor.setTarget(cameraTarget);
-            }
-
             boolean isCamera = this.selectedMainEditorPanel == this.cameraEditor;
 
             this.cameraEditor.setVisible(hasFilm && cameraActive);
             this.cameraEditor.setTimelineVisible(hasFilm && cameraActive);
-            this.cameraEditor.setPropertiesVisible(hasFilm && (cameraPropsActive || (editAreaActive && isCamera)));
+            this.cameraEditor.setPropertiesVisible(hasFilm && editAreaActive && isCamera);
 
             this.replayEditor.setVisible(hasFilm && mainActive);
             this.replayEditor.setTimelineVisible(hasFilm && mainActive);
-            this.replayEditor.setPropertiesVisible(hasFilm && editAreaActive && (cameraPropsActive || !isCamera));
+            this.replayEditor.setPropertiesVisible(hasFilm && editAreaActive && !isCamera);
         }
         else
         {
@@ -752,8 +739,23 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             out = EditorLayoutNode.copyWithInsertSplitAt(out, PANEL_REPLAYS_LIST_ID, PANEL_REPLAY_PROPS_ID, EditorLayoutNode.EDGE_RIGHT);
         }
 
+        if (EditorLayoutNode.containsPanel(out, "cameraProps"))
+        {
+            if (!ids.contains(PANEL_CAMERA_TIMELINE_ID) && !EditorLayoutNode.containsPanel(out, PANEL_CAMERA_TIMELINE_ID))
+            {
+                out = EditorLayoutNode.copyWithSwappedPanels(out, "cameraProps", PANEL_CAMERA_TIMELINE_ID);
+            }
+            out = EditorLayoutNode.copyWithRemovedPanel(out, "cameraProps");
+        }
+        this.getFilmLayoutSettings().getHiddenPanels(this.currentLayoutId()).remove("cameraProps");
+
         if (this.isSeparateCameraTimeline())
         {
+            this.getFilmLayoutSettings().getHiddenPanels(this.currentLayoutId()).remove(PANEL_CAMERA_TIMELINE_ID);
+
+            ids.clear();
+            EditorLayoutNode.collectPanelIds(out, ids);
+
             boolean hasCamera = ids.contains(PANEL_CAMERA_TIMELINE_ID);
 
             if (!hasCamera)

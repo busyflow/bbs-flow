@@ -904,7 +904,7 @@ public class BBSSettings {
 		builder.category("workspace", Icons.EDITOR);
 		builder.register(editorLayoutSettings = new ValueEditorLayout("layout"));
 		editorResizablePanels = builder.getBoolean("resizable_panels", true);
-		editorSeparateCameraTimeline = builder.getBoolean("separate_camera_timeline", false);
+		editorSeparateCameraTimeline = builder.getBoolean("separate_camera_timeline", true);
 		editorPeriodicSave = builder.getInt("periodic_save", 60, 0, 3600);
 		editorMinutesBackup = builder.getBoolean("minutes_backup", true);
 		editorKeepFrameOnExit = builder.getBoolean("keep_frame_on_exit", false);
