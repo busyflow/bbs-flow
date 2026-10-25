@@ -195,6 +195,7 @@ public class BBSSettings {
 	public static ValueBoolean editorMinutesBackup;
 	public static ValueBoolean editorResizablePanels;
 	public static ValueBoolean editorSeparateCameraTimeline;
+	public static ValueBoolean editorSeparateFormTimeline;
 	public static ValueInt editorTrackWidth;
 	public static ValueKeyframeStyle keyframeDefaultStyle;
 	public static ValueString keyframeDefaultInterpolation;
@@ -905,6 +906,7 @@ public class BBSSettings {
 		builder.register(editorLayoutSettings = new ValueEditorLayout("layout"));
 		editorResizablePanels = builder.getBoolean("resizable_panels", true);
 		editorSeparateCameraTimeline = builder.getBoolean("separate_camera_timeline", true);
+		editorSeparateFormTimeline = builder.getBoolean("separate_form_timeline", false);
 		editorPeriodicSave = builder.getInt("periodic_save", 60, 0, 3600);
 		editorMinutesBackup = builder.getBoolean("minutes_backup", true);
 		editorKeepFrameOnExit = builder.getBoolean("keep_frame_on_exit", false);

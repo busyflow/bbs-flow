@@ -238,7 +238,9 @@ public class FilmControllerHud
             return null;
         }
 
-        UIKeyframeEditor editor = this.controller.panel.replayEditor.keyframeEditor;
+        UIKeyframeEditor editor = (target.is(FilmTarget.Kind.BONE) || target.is(FilmTarget.Kind.SPLINE_POINT))
+            ? this.controller.panel.replayEditor.getBoneKeyframeEditor()
+            : this.controller.panel.replayEditor.keyframeEditor;
         String label = editor == null ? null : editor.getTargetLabel();
 
         /* Nothing to ask (the track was rebuilt under us) — the path is still better than nothing. */

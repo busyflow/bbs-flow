@@ -273,7 +273,9 @@ public class UIReplaysEditorUtils
      */
     public static UIPropTransform getFilmGizmoTransform(UIFilmPanel panel, float transition)
     {
-        if (panel.getController().getEditTarget().is(FilmTarget.Kind.ROOT))
+        FilmTarget target = panel.getController().getEditTarget();
+
+        if (target.is(FilmTarget.Kind.ROOT))
         {
             UIReplayPropTransform replayTransform = panel.replayEditor.replayTransform;
 
@@ -287,7 +289,11 @@ public class UIReplaysEditorUtils
             return replayTransform;
         }
 
-        return getEditableTransform(panel.replayEditor.keyframeEditor);
+        UIKeyframeEditor editor = (target.is(FilmTarget.Kind.BONE) || target.is(FilmTarget.Kind.SPLINE_POINT))
+            ? panel.replayEditor.getBoneKeyframeEditor()
+            : panel.replayEditor.keyframeEditor;
+
+        return getEditableTransform(editor);
     }
 
     public static boolean startFilmGizmo(UIFilmPanel panel, UIContext context, int stencilIndex, float gizmoTransition)
@@ -344,18 +350,27 @@ public class UIReplaysEditorUtils
             transition
         ));
 
-        UIPropTransform transform = getEditableTransform(panel.replayEditor.keyframeEditor);
+        UIKeyframeEditor hotkeyEditor = panel.replayEditor.getBoneKeyframeEditor();
+        UIPropTransform transform = getEditableTransform(hotkeyEditor);
+
+        if (transform == null && panel.replayEditor.keyframeEditor != null)
+        {
+            hotkeyEditor = panel.replayEditor.keyframeEditor;
+            transform = getEditableTransform(hotkeyEditor);
+        }
 
         if (transform == null)
         {
             return;
         }
 
+        final UIPropTransform finalTransform = transform;
+
         transform.hotkeyDrag(() -> buildFilmGizmoDrag(
             panel,
             panel.getCamera(),
             panel.preview.getViewport(),
-            transform,
+            finalTransform,
             panel.replayEditor.getContext() == null ? 0F : panel.replayEditor.getContext().getTransition()
         ));
 
@@ -363,7 +378,6 @@ public class UIReplaysEditorUtils
          * matrix provider is wired solely for the pose editor's transform (other tracks leave it off
          * and the world context actions stay hidden there). The replay's own placement has no
          * keyframe editor behind it at all, which is also why this is read defensively. */
-        UIKeyframeEditor hotkeyEditor = panel.replayEditor.keyframeEditor;
         boolean pose = hotkeyEditor != null && (hotkeyEditor.editor instanceof UIPoseKeyframeFactory || hotkeyEditor.editor instanceof UIPoseTransformKeyframeFactory);
 
         transform.worldTransform(pose ? new FilmBoneWorldProvider(panel) : null);
@@ -376,7 +390,7 @@ public class UIReplaysEditorUtils
     {
         IEntity entity = panel.getController().getCurrentEntity();
 
-        return entity == null ? 0 : GizmoLocks.of(entity.getForm(), panel.replayEditor.keyframeEditor);
+        return entity == null ? 0 : GizmoLocks.of(entity.getForm(), panel.replayEditor.getBoneKeyframeEditor());
     }
 
     /** The handles the film's gizmo may show on {@code target}: a bone's locked channels take theirs off. */
@@ -392,7 +406,7 @@ public class UIReplaysEditorUtils
      */
     private static boolean isFilmBoneRotationConstrained(UIFilmPanel panel)
     {
-        UIKeyframeEditor keyframeEditor = panel.replayEditor.keyframeEditor;
+        UIKeyframeEditor keyframeEditor = panel.replayEditor.getBoneKeyframeEditor();
 
         if (keyframeEditor == null || !(keyframeEditor.editor instanceof UIPoseKeyframeFactory))
         {
@@ -463,7 +477,10 @@ public class UIReplaysEditorUtils
             return drag;
         }
 
-        UIKeyframeEditor keyframeEditor = panel.replayEditor.keyframeEditor;
+        FilmTarget editTarget = panel.getController().getEditTarget();
+        UIKeyframeEditor keyframeEditor = (editTarget.is(FilmTarget.Kind.BONE) || editTarget.is(FilmTarget.Kind.SPLINE_POINT))
+            ? panel.replayEditor.getBoneKeyframeEditor()
+            : panel.replayEditor.keyframeEditor;
 
         if (keyframeEditor == null)
         {
@@ -489,7 +506,9 @@ public class UIReplaysEditorUtils
         {
             /* The anchor track has no model bone: its transform parents the whole
              * form, so sample the form's resolved anchor matrix instead. */
-            if (keyframeEditor.isReplayAnchorTrack() && replay != null && entity != null)
+            UIKeyframeEditor anchorEditor = panel.replayEditor.keyframeEditor;
+
+            if (anchorEditor != null && anchorEditor.isReplayAnchorTrack() && replay != null && entity != null)
             {
                 buildAnchorGizmoDrag(panel, camera, drag, transform, replay, entity, transition);
             }
@@ -675,7 +694,12 @@ public class UIReplaysEditorUtils
     /** Re-evaluate the displayed form for every probe, then restore its unperturbed pose. */
     private static void sampleGizmoAxes(UIFilmPanel panel, GizmoDrag drag, UIPropTransform transform, Replay replay, IEntity entity, float transition, Supplier<Matrix4f> composite)
     {
-        Supplier<Matrix4f> matrixSampler = keyframeGizmoSampler(panel.replayEditor.keyframeEditor, transform, () ->
+        FilmTarget target = panel.getController().getEditTarget();
+        UIKeyframeEditor editor = (target.is(FilmTarget.Kind.BONE) || target.is(FilmTarget.Kind.SPLINE_POINT))
+            ? panel.replayEditor.getBoneKeyframeEditor()
+            : panel.replayEditor.keyframeEditor;
+
+        Supplier<Matrix4f> matrixSampler = keyframeGizmoSampler(editor, transform, () ->
         {
             applyFormProperties(panel, replay, entity, transition);
 

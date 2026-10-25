@@ -47,7 +47,7 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
 
     public float getSamplingTick()
     {
-        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.keyframeEditor;
+        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.getBoneKeyframeEditor();
 
         if (keyframeEditor != null && keyframeEditor.editor != null && keyframeEditor.editor.getKeyframe() != null)
         {
@@ -68,7 +68,7 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
             return null;
         }
 
-        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.keyframeEditor;
+        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.getBoneKeyframeEditor();
         UIKeyframeSheet sheet = keyframeEditor != null && keyframeEditor.editor != null ? keyframeEditor.editor.getSheet() : null;
 
         if (sheet != null)
@@ -98,7 +98,7 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
     @Override
     public boolean getWorldMatrix(Matrix4f out)
     {
-        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.keyframeEditor;
+        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.getBoneKeyframeEditor();
         Pair<String, TransformSpace> bone = keyframeEditor == null ? null : keyframeEditor.getBone();
 
         return bone != null && this.getWorldMatrix(bone.a, out);
@@ -183,7 +183,7 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
             return false;
         }
 
-        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.keyframeEditor;
+        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.getBoneKeyframeEditor();
         UIKeyframeSheet sheet = keyframeEditor != null && keyframeEditor.editor != null ? keyframeEditor.editor.getSheet() : null;
         ValuePose property = (sheet != null && sheet.property instanceof ValuePose vp) ? vp : null;
 

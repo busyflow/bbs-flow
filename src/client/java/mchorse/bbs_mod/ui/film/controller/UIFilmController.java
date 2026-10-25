@@ -98,8 +98,8 @@ public class UIFilmController extends UIElement implements GizmoViewport
     private void renderShapeControllers(UIContext context)
     {
         if (this.isCovered() || this.isRecording() || this.panel.isFlying()
-            || this.panel.replayEditor.keyframeEditor == null
-            || !(this.panel.replayEditor.keyframeEditor.editor instanceof UIShapeKeysKeyframeFactory keys))
+            || this.panel.replayEditor.getBoneKeyframeEditor() == null
+            || !(this.panel.replayEditor.getBoneKeyframeEditor().editor instanceof UIShapeKeysKeyframeFactory keys))
         { this.shapeOverlay.clear(); return; }
         IEntity entity = this.getCurrentEntity();
         Replay replay = this.panel.replayEditor.getReplay();
@@ -124,8 +124,8 @@ public class UIFilmController extends UIElement implements GizmoViewport
         if (context.mouseButton == 0 && this.canShowGizmo() && stencil >= Gizmo.STENCIL_X && stencil <= Gizmo.STENCIL_MAX) return false;
         var hit = this.splineOverlay.pick(context.mouseX, context.mouseY);
         if (context.mouseButton == 0 && Window.isCtrlPressed() && !context.isFocused()
-            && this.panel.replayEditor.keyframeEditor != null
-            && this.panel.replayEditor.keyframeEditor.editor instanceof SplineKeyframeEditor spline
+            && this.panel.replayEditor.getBoneKeyframeEditor() != null
+            && this.panel.replayEditor.getBoneKeyframeEditor().editor instanceof SplineKeyframeEditor spline
             && !spline.pointEditor().position.isEditing())
         {
             var insertion = this.splineOverlay.insertionAt(context.mouseX, context.mouseY);
@@ -160,7 +160,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
     private void renderSplineOverlay(UIContext context)
     {
-        SplineEditorUtils.viewportHover(this.panel.replayEditor.keyframeEditor, null);
+        SplineEditorUtils.viewportHover(this.panel.replayEditor.getBoneKeyframeEditor(), null);
         if (!this.splineOverlay.begin()) return;
         if (this.isCovered() || this.isRecording()) return;
         var camera = this.panel.getCamera();
@@ -188,13 +188,13 @@ public class UIFilmController extends UIElement implements GizmoViewport
                 }
                 if (parent == null) continue;
                 this.splineOverlay.draw(context, new Matrix4f(camera.view).mul(parent), camera.projection, this.panel.preview.getViewport(),
-                    source, entity == this.getCurrentEntity() ? SplineEditorUtils.selectedPoints(this.panel.replayEditor.keyframeEditor, source) : java.util.Set.of(),
-                    entity == this.getCurrentEntity() ? SplineEditorUtils.hoveredPoint(this.panel.replayEditor.keyframeEditor, context, source) : "");
+                    source, entity == this.getCurrentEntity() ? SplineEditorUtils.selectedPoints(this.panel.replayEditor.getBoneKeyframeEditor(), source) : java.util.Set.of(),
+                    entity == this.getCurrentEntity() ? SplineEditorUtils.hoveredPoint(this.panel.replayEditor.getBoneKeyframeEditor(), context, source) : "");
             }
         }
         if (Window.isCtrlPressed() && !context.isFocused() && !this.panel.isFlying()
-            && this.panel.replayEditor.keyframeEditor != null
-            && this.panel.replayEditor.keyframeEditor.editor instanceof SplineKeyframeEditor spline
+            && this.panel.replayEditor.getBoneKeyframeEditor() != null
+            && this.panel.replayEditor.getBoneKeyframeEditor().editor instanceof SplineKeyframeEditor spline
             && !spline.pointEditor().position.isEditing())
         {
             var insertion = this.splineOverlay.insertionAt(context.mouseX, context.mouseY);
@@ -205,7 +205,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
         var hovered = this.panel.preview.getViewport().isInside(context) ? this.splineOverlay.pick(context.mouseX, context.mouseY) : null;
         if (hovered != null && (this.getCurrentEntity() == null || FormUtils.getRoot(
             SplineEditorUtils.owner(hovered.chain())) != this.getCurrentEntity().getForm())) hovered = null;
-        SplineEditorUtils.viewportHover(this.panel.replayEditor.keyframeEditor, hovered);
+        SplineEditorUtils.viewportHover(this.panel.replayEditor.getBoneKeyframeEditor(), hovered);
     }
     private static final List<Function<UIFilmController, FilmEditorTool>> TOOL_FACTORIES = new ArrayList<>();
     private final List<FilmEditorTool> addonTools = new ArrayList<>();
@@ -835,8 +835,8 @@ public class UIFilmController extends UIElement implements GizmoViewport
     {
         if (!context.isFocused() && context.isPressed(GLFW.GLFW_KEY_DELETE) && !this.isCovered()
             && !this.isRecording() && !this.panel.isFlying() && this.panel.preview.getViewport().isInside(context)
-            && this.panel.replayEditor.keyframeEditor != null
-            && this.panel.replayEditor.keyframeEditor.editor instanceof SplineKeyframeEditor spline)
+            && this.panel.replayEditor.getBoneKeyframeEditor() != null
+            && this.panel.replayEditor.getBoneKeyframeEditor().editor instanceof SplineKeyframeEditor spline)
             return spline.pointEditor().removeSelected();
         for (var tool : this.addonTools) if (tool.key(context)) return true;
 
@@ -1215,7 +1215,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
     public Pair<String, TransformSpace> getBone()
     {
-        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.keyframeEditor;
+        UIKeyframeEditor keyframeEditor = this.panel.replayEditor.getBoneKeyframeEditor();
 
         return keyframeEditor != null ? keyframeEditor.getBone() : null;
     }
@@ -1268,10 +1268,10 @@ public class UIFilmController extends UIElement implements GizmoViewport
             return FilmTarget.NONE;
         }
 
-        String point = SplineEditorUtils.selectedPath(this.panel.replayEditor.keyframeEditor);
+        String point = SplineEditorUtils.selectedPath(this.panel.replayEditor.getBoneKeyframeEditor());
         if (point != null)
         {
-            return FilmTarget.splinePoint(point, this.panel.replayEditor.keyframeEditor.getBoneSpace());
+            return FilmTarget.splinePoint(point, this.panel.replayEditor.getBoneKeyframeEditor().getBoneSpace());
         }
 
         Pair<String, TransformSpace> bone = this.getBone();

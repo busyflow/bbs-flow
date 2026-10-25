@@ -58,6 +58,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeDopeSheet;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
+import mchorse.bbs_mod.ui.utils.context.ContextMenuManager;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIRenderable;
 import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCanvas;
 import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCategoryBar;
@@ -129,6 +130,17 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
 
     /* Keyframes */
     public UIKeyframeEditor keyframeEditor;
+    public final UIElement posePanel = new UIElement()
+    {
+        @Override
+        public void render(UIContext context)
+        {
+            UIReplaysEditor.this.syncTimelineViews(context);
+            super.render(context);
+        }
+    };
+    public UIKeyframeEditor poseKeyframeEditor;
+    private UIIcon replayGraphButton;
 
     /**
      * The gizmo target for the replay's own placement in the world. It has no fields on
@@ -377,23 +389,29 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         UILabel partName = new UILabel(this::getSelectedPartName).color(0xffaaaaaa, false).labelAnchor(0F, 0.5F);
         partName.relative(this.partHeader).x(5).y(0).w(1F, -UIConstants.ICON_SIZE - 10).h(1F);
         partName.tooltip(() -> L10n.lang("bbs.ui.film.replays.selected_body_part").format(this.getSelectedPartName()).get());
-        UIIcon graph = UIKeyframes.modeButton(() -> this.keyframeEditor == null ? null : this.keyframeEditor.view);
+        UIIcon graph = UIKeyframes.modeButton(() -> this.isSeparateFormTimeline() && this.poseKeyframeEditor != null ? this.poseKeyframeEditor.view : (this.keyframeEditor == null ? null : this.keyframeEditor.view));
         graph.relative(this.partHeader).x(1F, -UIConstants.ICON_SIZE).y(0.5F).anchorY(0.5F);
         this.partHeader.add(partName, graph);
         this.add(this.partHeader);
+
+        this.replayGraphButton = UIKeyframes.modeButton(() -> this.keyframeEditor == null ? null : this.keyframeEditor.view);
+        this.replayGraphButton.relative(this).x(CATEGORY_BAR_WIDTH + 2).y(2).w(UIConstants.ICON_SIZE).h(UIConstants.ICON_SIZE);
+        this.replayGraphButton.setVisible(false);
+        this.add(this.replayGraphButton);
         this.markContainer();
     }
 
     private void toggleAllSections()
     {
-        if (this.keyframeEditor == null)
+        UIKeyframeEditor editor = this.getActiveKeyframeEditor();
+        if (editor == null)
         {
             return;
         }
 
-        if (this.keyframeEditor.view.getDopeSheet().hasExpandedSections())
+        if (editor.view.getDopeSheet().hasExpandedSections())
         {
-            this.keyframeEditor.view.getDopeSheet().setAllSectionsExpanded(false);
+            editor.view.getDopeSheet().setAllSectionsExpanded(false);
         }
         else
         {
@@ -406,6 +424,14 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
     {
         this.setActionsMode(false);
         this.category = c;
+        if (this.isSeparateFormTimeline())
+        {
+            if (c == TrackCategory.FORM && this.filmPanel != null && this.filmPanel.dock != null)
+            {
+                this.filmPanel.dock.unhidePanel(UIFilmPanel.PANEL_POSE_TIMELINE_ID);
+                return;
+            }
+        }
         CategoryFold.apply(this.keyframeEditor, this.getExpandedTracks(), c);
     }
 
@@ -415,6 +441,11 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         if (this.keyframeEditor != null)
         {
             this.keyframeEditor.view.getDopeSheet().revealSection(id);
+        }
+
+        if (this.isSeparateFormTimeline() && this.poseKeyframeEditor != null)
+        {
+            this.poseKeyframeEditor.view.getDopeSheet().revealSection(id);
         }
     }
 
@@ -596,6 +627,327 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         }
     }
 
+    public boolean isSeparateFormTimeline()
+    {
+        return this.filmPanel != null && this.filmPanel.isSeparateFormTimeline();
+    }
+
+    public UIKeyframeEditor getPoseKeyframeEditor()
+    {
+        return this.poseKeyframeEditor;
+    }
+
+    public UIKeyframeEditor getBoneKeyframeEditor()
+    {
+        if (this.isSeparateFormTimeline() && this.poseKeyframeEditor != null)
+        {
+            if (this.filmPanel != null)
+            {
+                UIElement active = this.filmPanel.getActiveNonCameraEditor();
+
+                if (active != null && active != this)
+                {
+                    return this.keyframeEditor;
+                }
+            }
+
+            return this.poseKeyframeEditor;
+        }
+
+        return this.keyframeEditor;
+    }
+
+    public UIKeyframeEditor getActiveKeyframeEditor()
+    {
+        if (this.isSeparateFormTimeline() && this.poseKeyframeEditor != null && this.poseKeyframeEditor.isVisible())
+        {
+            UIContext context = this.getContext();
+
+            if (context != null && this.posePanel.area.isInside(context))
+            {
+                return this.poseKeyframeEditor;
+            }
+        }
+
+        return this.keyframeEditor;
+    }
+
+    public void setPoseTimelineVisible(boolean visible)
+    {
+        this.posePanel.setVisible(visible);
+
+        if (this.poseKeyframeEditor != null)
+        {
+            this.poseKeyframeEditor.setVisible(visible);
+        }
+    }
+
+    public void mountPoseTimeline(UIElement target)
+    {
+        this.posePanel.removeFromParent();
+        this.posePanel.full(target);
+        target.add(this.posePanel);
+    }
+
+    public void unmountPoseTimeline(UIElement target)
+    {
+        this.posePanel.removeFromParent();
+        target.removeAll();
+    }
+
+    public void syncTimelineViews(UIContext context)
+    {
+        if (!this.isSeparateFormTimeline() || this.keyframeEditor == null || this.poseKeyframeEditor == null)
+        {
+            return;
+        }
+
+        UIKeyframes replayView = this.keyframeEditor.view;
+        UIKeyframes poseView = this.poseKeyframeEditor.view;
+
+        if (replayView == null || poseView == null)
+        {
+            return;
+        }
+
+        boolean replayActive = replayView.isNavigating() || (context != null && replayView.area.isInside(context));
+        boolean poseActive = poseView.isNavigating() || (context != null && poseView.area.isInside(context));
+
+        if (poseActive && !replayActive)
+        {
+            syncView(poseView, replayView);
+        }
+        else if (replayActive && !poseActive)
+        {
+            syncView(replayView, poseView);
+        }
+    }
+
+    private static void syncView(UIKeyframes source, UIKeyframes target)
+    {
+        double min = source.getXAxis().getMinValue();
+        double max = source.getXAxis().getMaxValue();
+
+        if (Math.abs(target.getXAxis().getMinValue() - min) > 0.001 || Math.abs(target.getXAxis().getMaxValue() - max) > 0.001)
+        {
+            target.getXAxis().view(min, max);
+        }
+    }
+
+    private void fillSheetFilterMenu(ContextMenuManager menu, UIKeyframeEditor targetEditor)
+    {
+        menu.action(Icons.FILTER, UIKeys.FILM_REPLAY_FILTER_SHEETS, () ->
+        {
+            Set<String> disabledSet = BBSSettings.disabledSheets.get();
+            Map<String, Integer> keyToColor = new HashMap<>();
+            Map<String, IKey> keyToTitle = new HashMap<>();
+            if (targetEditor != null && targetEditor.view != null)
+            {
+                for (UIKeyframeSheet listed : targetEditor.view.getSheets())
+                {
+                    keyToColor.put(getSheetFilterKey(listed), listed.color);
+                    keyToTitle.put(getSheetFilterKey(listed), listed.defaultTitle);
+                }
+            }
+            UIKeyframeSheetFilterOverlayPanel panel = new UIKeyframeSheetFilterOverlayPanel(
+                    disabledSet,
+                    this.keys,
+                    keyToColor,
+                    keyToTitle
+            );
+
+            UIOverlay.addOverlay(this.getContext(), panel, 240, 0.9F);
+
+            panel.onClose(e ->
+            {
+                this.revealedSearchTrack = null;
+                BBSSettings.disabledSheets.set(disabledSet);
+                this.updateChannelsList();
+            });
+        });
+    }
+
+    private void fillReplayContextMenu(ContextMenuManager menu)
+    {
+        menu.action(Icons.SEARCH, Keys.FILM_TRACK_SEARCH.label, this::openTrackSearch);
+        int mouseY = this.getContext().mouseY;
+        UIKeyframeSheet sheet = this.keyframeEditor == null ? null : this.keyframeEditor.view.getGraph().getSheet(this.getContext().mouseX, mouseY);
+
+        UIReplaysEditorUtils.addOverlayTrackAction(menu, sheet, parent ->
+        {
+            this.getExpandedTracks().set(parent.toKey(), true);
+            this.updateChannelsList();
+        });
+
+        this.fillSheetFilterMenu(menu, this.keyframeEditor);
+    }
+
+    private void fillPoseContextMenu(ContextMenuManager menu)
+    {
+        menu.action(Icons.SEARCH, Keys.FILM_TRACK_SEARCH.label, this::openTrackSearch);
+        int mouseY = this.getContext().mouseY;
+        UIKeyframeSheet sheet = this.poseKeyframeEditor == null ? null : this.poseKeyframeEditor.view.getGraph().getSheet(this.getContext().mouseX, mouseY);
+
+        UIReplaysEditorUtils.addOverlayTrackAction(menu, sheet, parent ->
+        {
+            this.getExpandedTracks().set(parent.toKey(), true);
+            this.updateChannelsList();
+        });
+
+        ModelForm poseModelForm = sheet == null ? null : sheet.getPoseForm();
+        IPosedForm posedForm = sheet == null ? null : sheet.getPosedForm();
+
+        if (poseModelForm != null)
+        {
+            menu.action(Icons.POSE, UIKeys.FILM_REPLAY_CONTEXT_ANIMATION_TO_KEYFRAMES, () ->
+            {
+                ModelInstance model = ModelFormRenderer.getModel(poseModelForm);
+
+                if (model != null)
+                {
+                    UIOverlay.addOverlay(
+                        this.getContext(),
+                        new UIAnimationToPoseOverlayPanel(
+                            (animationKey, onlyKeyframes, length, step) ->
+                            {
+                                float current = this.poseKeyframeEditor.view.getTick();
+                                IEntity entity = this.filmPanel.getController().getCurrentEntity();
+
+                                UIReplaysEditorUtils.animationToPoseKeyframes(this.poseKeyframeEditor, sheet, poseModelForm, entity, current, animationKey, onlyKeyframes, length, step);
+                            },
+                        poseModelForm, sheet), 200, 197
+                    );
+                }
+            });
+        }
+
+        if (posedForm != null && sheet.selection.hasAny() && posedForm.hasBoneTracks())
+        {
+            menu.action(Icons.LIMB, UIKeys.FILM_REPLAY_CONTEXT_POSES_TO_LIMBS, () ->
+            {
+                if (UIReplaysEditorUtils.posesToLimbTracks(this.replay.properties, sheet))
+                {
+                    this.getExpandedTracks().set(sheet.id, true);
+                    this.updateChannelsList();
+                }
+            });
+        }
+
+        if (this.replay != null && this.replay.form.get() instanceof ModelForm modelForm)
+        {
+            ModelInstance instance = ModelFormRenderer.getModel(modelForm);
+            Map<String, List<String>> chains = instance == null
+                ? Collections.emptyMap()
+                : ModelIKRuntime.getChains(instance.model, modelForm);
+
+            if (!chains.isEmpty())
+            {
+                menu.action(Icons.KEY, UIKeys.FILM_REPLAY_CONTEXT_BAKE_IK, () ->
+                {
+                    int lastTick = (int) Math.ceil(this.replay.getLastKeyframeTick());
+
+                    if (lastTick < 0)
+                    {
+                        lastTick = Math.max(0, this.film.calculateDuration() - 1);
+                    }
+
+                    UIOverlay.addOverlay(this.getContext(), new UIBakeIKOverlayPanel(chains.keySet(), lastTick, (tips, start, end, step, disable) ->
+                    {
+                        if (IKBake.bake(this.film, this.replay, tips, start, end, step, disable))
+                        {
+                            this.updateChannelsList();
+                        }
+                    }), 240, 240);
+                });
+            }
+        }
+
+        this.fillSheetFilterMenu(menu, this.poseKeyframeEditor);
+    }
+
+    private void fillCombinedContextMenu(ContextMenuManager menu)
+    {
+        menu.action(Icons.SEARCH, Keys.FILM_TRACK_SEARCH.label, this::openTrackSearch);
+        int mouseY = this.getContext().mouseY;
+        UIKeyframeSheet sheet = this.keyframeEditor == null ? null : this.keyframeEditor.view.getGraph().getSheet(this.getContext().mouseX, mouseY);
+
+        UIReplaysEditorUtils.addOverlayTrackAction(menu, sheet, parent ->
+        {
+            this.getExpandedTracks().set(parent.toKey(), true);
+            this.updateChannelsList();
+        });
+
+        ModelForm poseModelForm = sheet == null ? null : sheet.getPoseForm();
+        IPosedForm posedForm = sheet == null ? null : sheet.getPosedForm();
+
+        if (poseModelForm != null)
+        {
+            menu.action(Icons.POSE, UIKeys.FILM_REPLAY_CONTEXT_ANIMATION_TO_KEYFRAMES, () ->
+            {
+                ModelInstance model = ModelFormRenderer.getModel(poseModelForm);
+
+                if (model != null)
+                {
+                    UIOverlay.addOverlay(
+                        this.getContext(),
+                        new UIAnimationToPoseOverlayPanel(
+                            (animationKey, onlyKeyframes, length, step) ->
+                            {
+                                float current = this.keyframeEditor.view.getTick();
+                                IEntity entity = this.filmPanel.getController().getCurrentEntity();
+
+                                UIReplaysEditorUtils.animationToPoseKeyframes(this.keyframeEditor, sheet, poseModelForm, entity, current, animationKey, onlyKeyframes, length, step);
+                            },
+                        poseModelForm, sheet), 200, 197
+                    );
+                }
+            });
+        }
+
+        if (posedForm != null && sheet.selection.hasAny() && posedForm.hasBoneTracks())
+        {
+            menu.action(Icons.LIMB, UIKeys.FILM_REPLAY_CONTEXT_POSES_TO_LIMBS, () ->
+            {
+                if (UIReplaysEditorUtils.posesToLimbTracks(this.replay.properties, sheet))
+                {
+                    this.getExpandedTracks().set(sheet.id, true);
+                    this.updateChannelsList();
+                }
+            });
+        }
+
+        if (this.replay != null && this.replay.form.get() instanceof ModelForm modelForm)
+        {
+            ModelInstance instance = ModelFormRenderer.getModel(modelForm);
+            Map<String, List<String>> chains = instance == null
+                ? Collections.emptyMap()
+                : ModelIKRuntime.getChains(instance.model, modelForm);
+
+            if (!chains.isEmpty())
+            {
+                menu.action(Icons.KEY, UIKeys.FILM_REPLAY_CONTEXT_BAKE_IK, () ->
+                {
+                    int lastTick = (int) Math.ceil(this.replay.getLastKeyframeTick());
+
+                    if (lastTick < 0)
+                    {
+                        lastTick = Math.max(0, this.film.calculateDuration() - 1);
+                    }
+
+                    UIOverlay.addOverlay(this.getContext(), new UIBakeIKOverlayPanel(chains.keySet(), lastTick, (tips, start, end, step, disable) ->
+                    {
+                        if (IKBake.bake(this.film, this.replay, tips, start, end, step, disable))
+                        {
+                            this.updateChannelsList();
+                        }
+                    }), 240, 240);
+                });
+            }
+        }
+
+        this.fillSheetFilterMenu(menu, this.keyframeEditor);
+    }
+
     public void updateChannelsList()
     {
         this.poseOverlayCount = BBSSettings.recordingPoseOverlays.get();
@@ -614,6 +966,14 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             this.keyframeEditor = null;
         }
 
+        UIKeyframes lastPoseEditor = this.poseKeyframeEditor != null ? this.poseKeyframeEditor.view : null;
+        if (this.poseKeyframeEditor != null)
+        {
+            this.rememberTimeView(lastReplayId + "_pose", lastPoseEditor);
+            this.poseKeyframeEditor.removeFromParent();
+            this.poseKeyframeEditor = null;
+        }
+
         this.timelineReplayId = null;
 
         if (this.replay == null)
@@ -625,11 +985,17 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         catalog.removeIf(track -> !this.partSelection.includes(track.id().formPath()));
         catalog = TrackCatalog.ordered(catalog);
 
-        List<UIKeyframeSheet> sheets = new ArrayList<>();
+        boolean separateForm = this.isSeparateFormTimeline();
 
-        /* Replay channels remain accessible alongside any selected part's own properties. */
-        this.collectCuratedSheets(sheets);
-        UIReplaysEditorUtils.buildSheets(catalog, sheets, this.replay.properties);
+        List<UIKeyframeSheet> replaySheets = new ArrayList<>();
+        List<UIKeyframeSheet> formSheets = new ArrayList<>();
+
+        this.collectCuratedSheets(replaySheets);
+        UIReplaysEditorUtils.buildSheets(catalog, formSheets, this.replay.properties);
+
+        List<UIKeyframeSheet> sheets = new ArrayList<>();
+        sheets.addAll(replaySheets);
+        sheets.addAll(formSheets);
 
         for (TrackCategory category : TrackCategories.values())
         {
@@ -640,11 +1006,21 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         for (TrackCategory category : TrackCategories.values())
         {
             UIIcon button = this.tabButtons.get(category);
-            if (button.getParent() != null)
+            if (button != null && button.getParent() != null)
             {
                 button.removeFromParent();
                 this.iconBar.add(button);
             }
+        }
+
+        if (separateForm)
+        {
+            UIIcon formButton = this.tabButtons.get(TrackCategory.FORM);
+            if (formButton != null)
+            {
+                formButton.removeFromParent();
+            }
+            this.category = TrackCategory.REPLAY;
         }
 
         this.keys.clear();
@@ -657,6 +1033,22 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         /* The replay isn't empty by itself - so if the filter empties it, the timeline has to stay (see below). */
         boolean hadTracks = !sheets.isEmpty();
 
+        replaySheets.removeIf((v) ->
+        {
+            if (this.revealedSearchTrack != null && this.revealedSearchTrack.key().equals(v.id)
+                && this.revealedSearchTrack.owned() == (getSheetForm(v) != null)) return false;
+
+            return UIReplaysEditorUtils.isTrackHidden(v.id, getSheetFilterKey(v), getSheetForm(v));
+        });
+
+        formSheets.removeIf((v) ->
+        {
+            if (this.revealedSearchTrack != null && this.revealedSearchTrack.key().equals(v.id)
+                && this.revealedSearchTrack.owned() == (getSheetForm(v) != null)) return false;
+
+            return UIReplaysEditorUtils.isTrackHidden(v.id, getSheetFilterKey(v), getSheetForm(v));
+        });
+
         sheets.removeIf((v) ->
         {
             if (this.revealedSearchTrack != null && this.revealedSearchTrack.key().equals(v.id)
@@ -665,22 +1057,25 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             return UIReplaysEditorUtils.isTrackHidden(v.id, getSheetFilterKey(v), getSheetForm(v));
         });
 
-        /*
-         * Filtering every track off used to drop the timeline itself, and the track filter lives in its
-         * context menu - so «disable all» locked the user out of the only way back. Keep the (empty)
-         * timeline whenever the replay had tracks before the filter ran; the dope sheet says why it's blank.
-         */
-        boolean filteredOutEverything = hadTracks && sheets.isEmpty();
-
-        UIReplaysEditorUtils.pruneTree(sheets);
-        Set<String> fresh = this.trackTree.groupSheets(sheets, UIForms.entries(this.replay.form.get()), this.getExpandedTracks(), true);
-
-        CategoryFold.settle(sheets, this.getExpandedTracks(), this.category, fresh, this.trackTree.seen(this.getExpandedTracks()));
-
-        if (!sheets.isEmpty() || filteredOutEverything)
+        if (separateForm)
         {
-            this.keyframeEditor = new UIKeyframeEditor((consumer) -> new UIFilmKeyframes(this.filmPanel.cameraEditor, consumer).absolute())
-                .target(this.filmPanel.editArea);
+            UIReplaysEditorUtils.pruneTree(replaySheets);
+            UIReplaysEditorUtils.pruneTree(formSheets);
+
+            Set<String> freshReplay = this.trackTree.groupSheets(replaySheets, Collections.emptyList(), this.getExpandedTracks(), true);
+            CategoryFold.settle(replaySheets, this.getExpandedTracks(), TrackCategory.REPLAY, freshReplay, this.trackTree.seen(this.getExpandedTracks()));
+
+            Set<String> freshForm = this.trackTree.groupSheets(formSheets, UIForms.entries(this.replay.form.get()), this.getExpandedTracks(), true);
+            CategoryFold.settle(formSheets, this.getExpandedTracks(), TrackCategory.FORM, freshForm, this.trackTree.seen(this.getExpandedTracks()));
+
+            this.keyframeEditor = new UIKeyframeEditor((consumer) -> new UIFilmKeyframes(this.filmPanel.cameraEditor, () ->
+            {
+                if (this.keyframeEditor != null && this.poseKeyframeEditor != null && this.keyframeEditor.view.getPickedKeyframe() != null)
+                {
+                    this.poseKeyframeEditor.view.pickKeyframe(null);
+                }
+                consumer.run();
+            }).absolute()).target(this.filmPanel.editArea);
             this.keyframeEditor.relative(this).x(CATEGORY_BAR_WIDTH).y(0).w(1F, -CATEGORY_BAR_WIDTH).h(1F);
             this.keyframeEditor.setUndoId("replay_keyframe_editor");
             this.keyframeEditor.view.getDopeSheet().setEmptyState(UIKeys.KEYFRAMES_EMPTY_FILTERED, UIKeys.KEYFRAMES_EMPTY_FILTERED_HINT);
@@ -688,123 +1083,10 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             this.layoutActionsToggle();
 
             this.keyframeEditor.view.rulerRenderer((context) -> renderRuler(context, this.keyframeEditor.view, this.filmPanel.cameraEditor, this.film.camera, 0));
-            this.keyframeEditor.view.duration(() -> this.film.camera.calculateDuration());
-            this.keyframeEditor.view.context(menu ->
-            {
-                menu.action(Icons.SEARCH, Keys.FILM_TRACK_SEARCH.label, this::openTrackSearch);
-                int mouseY = this.getContext().mouseY;
-                UIKeyframeSheet sheet = this.keyframeEditor.view.getGraph().getSheet(this.getContext().mouseX, mouseY);
+            this.keyframeEditor.view.duration(() -> this.film != null && this.film.camera != null ? this.film.camera.calculateDuration() : 0);
+            this.keyframeEditor.view.context(this::fillReplayContextMenu);
 
-                UIReplaysEditorUtils.addOverlayTrackAction(menu, sheet, parent ->
-                {
-                    this.getExpandedTracks().set(parent.toKey(), true);
-                    this.updateChannelsList();
-                });
-
-                ModelForm poseModelForm = sheet == null ? null : sheet.getPoseForm();
-                IPosedForm posedForm = sheet == null ? null : sheet.getPosedForm();
-
-                if (poseModelForm != null)
-                {
-                    menu.action(Icons.POSE, UIKeys.FILM_REPLAY_CONTEXT_ANIMATION_TO_KEYFRAMES, () ->
-                    {
-                        ModelInstance model = ModelFormRenderer.getModel(poseModelForm);
-
-                        if (model != null)
-                        {
-                            UIOverlay.addOverlay(
-                                this.getContext(),
-                                new UIAnimationToPoseOverlayPanel(
-                                    (animationKey, onlyKeyframes, length, step) ->
-                                    {
-                                        float current = this.keyframeEditor.view.getTick();
-                                        IEntity entity = this.filmPanel.getController().getCurrentEntity();
-
-                                        UIReplaysEditorUtils.animationToPoseKeyframes(this.keyframeEditor, sheet, poseModelForm, entity, current, animationKey, onlyKeyframes, length, step);
-                                    },
-                                poseModelForm, sheet), 200, 197
-                            );
-                        }
-                    });
-
-                }
-
-                /* Not gated on a MODEL form: baking a pose into per-bone tracks is a pose
-                 * operation, and a mob form has a skeleton to bake onto just the same. */
-                if (posedForm != null && sheet.selection.hasAny() && posedForm.hasBoneTracks())
-                {
-                    menu.action(Icons.LIMB, UIKeys.FILM_REPLAY_CONTEXT_POSES_TO_LIMBS, () ->
-                    {
-                        if (UIReplaysEditorUtils.posesToLimbTracks(this.replay.properties, sheet))
-                        {
-                            this.getExpandedTracks().set(sheet.id, true);
-                            this.updateChannelsList();
-                        }
-                    });
-                }
-
-                if (this.replay.form.get() instanceof ModelForm modelForm)
-                {
-                    ModelInstance instance = ModelFormRenderer.getModel(modelForm);
-                    Map<String, List<String>> chains = instance == null
-                        ? Collections.emptyMap()
-                        : ModelIKRuntime.getChains(instance.model, modelForm);
-
-                    if (!chains.isEmpty())
-                    {
-                        menu.action(Icons.KEY, UIKeys.FILM_REPLAY_CONTEXT_BAKE_IK, () ->
-                        {
-                            /* The range on offer ends where the replay's own motion ends — past its
-                             * last keyframe the solve only repeats itself, and a film is usually
-                             * longer than any one replay in it. A replay without keyframes gets the film. */
-                            int lastTick = (int) Math.ceil(this.replay.getLastKeyframeTick());
-
-                            if (lastTick < 0)
-                            {
-                                lastTick = Math.max(0, this.film.calculateDuration() - 1);
-                            }
-
-                            UIOverlay.addOverlay(this.getContext(), new UIBakeIKOverlayPanel(chains.keySet(), lastTick, (tips, start, end, step, disable) ->
-                            {
-                                if (IKBake.bake(this.film, this.replay, tips, start, end, step, disable))
-                                {
-                                    this.updateChannelsList();
-                                }
-                            }), 240, 240);
-                        });
-                    }
-                }
-
-                menu.action(Icons.FILTER, UIKeys.FILM_REPLAY_FILTER_SHEETS, () ->
-                {
-                    Set<String> disabledSet = BBSSettings.disabledSheets.get();
-                    Map<String, Integer> keyToColor = new HashMap<>();
-                    Map<String, IKey> keyToTitle = new HashMap<>();
-                    for (UIKeyframeSheet listed : this.keyframeEditor.view.getSheets())
-                    {
-                        keyToColor.put(getSheetFilterKey(listed), listed.color);
-                        keyToTitle.put(getSheetFilterKey(listed), listed.defaultTitle);
-                    }
-                    UIKeyframeSheetFilterOverlayPanel panel = new UIKeyframeSheetFilterOverlayPanel(
-                            disabledSet,
-                            this.keys,
-                            keyToColor,
-                            keyToTitle
-                    );
-
-                    UIOverlay.addOverlay(this.getContext(), panel, 240, 0.9F);
-
-                    panel.onClose(e ->
-                    {
-                        this.revealedSearchTrack = null;
-                        BBSSettings.disabledSheets.set(disabledSet);
-                        this.updateChannelsList();
-                    });
-                });
-
-            });
-
-            for (UIKeyframeSheet sheet : sheets)
+            for (UIKeyframeSheet sheet : replaySheets)
             {
                 this.keyframeEditor.view.addSheet(sheet);
             }
@@ -817,10 +1099,100 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             }
 
             this.add(this.keyframeEditor);
+
+            /* Pose timeline editor */
+            this.poseKeyframeEditor = new UIKeyframeEditor((consumer) -> new UIFilmKeyframes(this.filmPanel.cameraEditor, () ->
+            {
+                if (this.poseKeyframeEditor != null && this.keyframeEditor != null && this.poseKeyframeEditor.view.getPickedKeyframe() != null)
+                {
+                    this.keyframeEditor.view.pickKeyframe(null);
+                }
+                consumer.run();
+            }).absolute()).target(this.filmPanel.editArea);
+            this.poseKeyframeEditor.setEmptyState(null);
+            this.poseKeyframeEditor.relative(this.posePanel).x(0).y(0).w(1F).h(1F);
+            this.poseKeyframeEditor.setUndoId("pose_keyframe_editor");
+            this.poseKeyframeEditor.view.getDopeSheet().setEmptyState(UIKeys.KEYFRAMES_EMPTY_FILTERED, UIKeys.KEYFRAMES_EMPTY_FILTERED_HINT);
+
+            this.poseKeyframeEditor.view.rulerRenderer((context) -> renderRuler(context, this.poseKeyframeEditor.view, this.filmPanel.cameraEditor, this.film.camera, 0));
+            this.poseKeyframeEditor.view.duration(() -> this.film != null && this.film.camera != null ? this.film.camera.calculateDuration() : 0);
+            this.poseKeyframeEditor.view.context(this::fillPoseContextMenu);
+
+            for (UIKeyframeSheet sheet : formSheets)
+            {
+                this.poseKeyframeEditor.view.addSheet(sheet);
+            }
+
+            this.poseKeyframeEditor.view.getDopeSheet().setExpanded(this.getExpandedTracks());
+            if (lastPoseEditor != null)
+            {
+                this.poseKeyframeEditor.view.copyViewport(lastPoseEditor);
+                this.poseKeyframeEditor.view.copySelection(lastPoseEditor);
+            }
+            else if (this.keyframeEditor != null)
+            {
+                this.poseKeyframeEditor.view.copyViewport(this.keyframeEditor.view);
+            }
+
+            this.posePanel.add(this.poseKeyframeEditor);
+
+            this.partHeader.removeFromParent();
+            this.partHeader.relative(this.posePanel).x(0).y(0).w(120).h(TimelineRulerRenderer.RULER_BLOCK_HEIGHT);
+            this.posePanel.add(this.partHeader);
+
+            if (this.replayGraphButton != null) this.replayGraphButton.setVisible(true);
+
             this.timelineReplayId = this.replay.getId();
-            /* Category bar + actions toggle on top so they overlay the track names column. */
             this.bringBarToFront();
             this.updateTimelineModeVisibility();
+        }
+        else
+        {
+            boolean filteredOutEverything = hadTracks && sheets.isEmpty();
+
+            UIReplaysEditorUtils.pruneTree(sheets);
+            Set<String> fresh = this.trackTree.groupSheets(sheets, UIForms.entries(this.replay.form.get()), this.getExpandedTracks(), true);
+
+            CategoryFold.settle(sheets, this.getExpandedTracks(), this.category, fresh, this.trackTree.seen(this.getExpandedTracks()));
+
+            if (!sheets.isEmpty() || filteredOutEverything)
+            {
+                this.keyframeEditor = new UIKeyframeEditor((consumer) -> new UIFilmKeyframes(this.filmPanel.cameraEditor, consumer).absolute())
+                    .target(this.filmPanel.editArea);
+                this.keyframeEditor.relative(this).x(CATEGORY_BAR_WIDTH).y(0).w(1F, -CATEGORY_BAR_WIDTH).h(1F);
+                this.keyframeEditor.setUndoId("replay_keyframe_editor");
+                this.keyframeEditor.view.getDopeSheet().setEmptyState(UIKeys.KEYFRAMES_EMPTY_FILTERED, UIKeys.KEYFRAMES_EMPTY_FILTERED_HINT);
+
+                this.layoutActionsToggle();
+
+                this.keyframeEditor.view.rulerRenderer((context) -> renderRuler(context, this.keyframeEditor.view, this.filmPanel.cameraEditor, this.film.camera, 0));
+                this.keyframeEditor.view.duration(() -> this.film.camera.calculateDuration());
+                this.keyframeEditor.view.context(this::fillCombinedContextMenu);
+
+                for (UIKeyframeSheet sheet : sheets)
+                {
+                    this.keyframeEditor.view.addSheet(sheet);
+                }
+
+                this.keyframeEditor.view.getDopeSheet().setExpanded(this.getExpandedTracks());
+                if (lastEditor != null)
+                {
+                    this.keyframeEditor.view.copyViewport(lastEditor);
+                    this.keyframeEditor.view.copySelection(lastEditor);
+                }
+
+                this.add(this.keyframeEditor);
+                this.timelineReplayId = this.replay.getId();
+                this.bringBarToFront();
+                this.updateTimelineModeVisibility();
+            }
+
+            this.partHeader.removeFromParent();
+            this.partHeader.relative(this).x(CATEGORY_BAR_WIDTH).y(0).w(120).h(TimelineRulerRenderer.RULER_BLOCK_HEIGHT);
+            this.add(this.partHeader);
+
+            if (this.replayGraphButton != null) this.replayGraphButton.setVisible(false);
+            this.posePanel.removeAll();
         }
 
         this.resize();
@@ -834,6 +1206,11 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         {
             this.copyTimeViewport(this.actionTimeline.clips, this.keyframeEditor.view);
             this.useActionViewportForNewKeyframes = false;
+        }
+
+        if (separateForm && this.poseKeyframeEditor != null && this.keyframeEditor != null)
+        {
+            syncView(this.keyframeEditor.view, this.poseKeyframeEditor.view);
         }
     }
 
@@ -863,9 +1240,12 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         this.revealedSearchTrack = entry;
         if (entry.owned()) this.partSelection.focus(entry.path());
         this.updateChannelsList();
-        if (this.keyframeEditor == null) return false;
+        UIKeyframeEditor targetEditor = (entry.owned() && this.isSeparateFormTimeline() && this.poseKeyframeEditor != null)
+            ? this.poseKeyframeEditor
+            : this.keyframeEditor;
+        if (targetEditor == null) return false;
 
-        return UIReplaysEditorUtils.revealSearchTrack(this.keyframeEditor, entry, createKeyframe, this.getContext());
+        return UIReplaysEditorUtils.revealSearchTrack(targetEditor, entry, createKeyframe, this.getContext());
     }
 
     private void collectCuratedSheets(List<UIKeyframeSheet> sheets)
@@ -1112,6 +1492,12 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             this.keyframeEditor.setPropertiesVisible(this.propertiesVisible && keyframes);
         }
 
+        if (this.poseKeyframeEditor != null)
+        {
+            this.poseKeyframeEditor.setTimelineVisible(this.timelineVisible && keyframes);
+            this.poseKeyframeEditor.setPropertiesVisible(this.propertiesVisible && keyframes);
+        }
+
         if (this.actionTimeline != null)
         {
             this.actionTimeline.setVisible((this.timelineVisible || this.propertiesVisible) && this.actionsMode);
@@ -1170,8 +1556,9 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             if (!entry.key().equals(compound)) continue;
             this.filmPanel.showPanel(this);
             this.revealTrack(entry, false);
-            UIReplaysEditorUtils.pickPropertyTrack(this.keyframeEditor, this.filmPanel, compound, context.mouseButton == 1);
-            SplineEditorUtils.selectPoint(this.keyframeEditor, path);
+            UIKeyframeEditor targetEditor = this.isSeparateFormTimeline() && this.poseKeyframeEditor != null ? this.poseKeyframeEditor : this.keyframeEditor;
+            UIReplaysEditorUtils.pickPropertyTrack(targetEditor, this.filmPanel, compound, context.mouseButton == 1);
+            SplineEditorUtils.selectPoint(targetEditor, path);
             return true;
         }
         return false;
@@ -1219,8 +1606,13 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             return;
         }
 
+        if (this.isSeparateFormTimeline() && this.filmPanel != null)
+        {
+            this.filmPanel.showPoseTimeline();
+        }
+
         this.selectBodyPart(FormUtils.getPath(form));
-        UIReplaysEditorUtils.pickForm(this.keyframeEditor, this.filmPanel, form, bone, insert);
+        UIReplaysEditorUtils.pickForm(this.getBoneKeyframeEditor(), this.filmPanel, form, bone, insert);
     }
 
     public boolean clickViewport(UIContext context, Area area)
@@ -1372,6 +1764,8 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         }
 
 
+        this.syncTimelineViews(context);
+
         this.iconBar.setVisible(this.timelineVisible);
         this.actionsToggle.setVisible(this.timelineVisible);
         boolean sectionsAvailable = !this.actionsMode && this.keyframeEditor != null
@@ -1395,16 +1789,26 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         this.sectionsToggle.both(collapseSections ? Icons.COLLAPSE_ALL : Icons.EXPAND_ALL);
         this.sectionsToggle.tooltip(L10n.lang(collapseSections
             ? "bbs.ui.film.replays.collapse_all" : "bbs.ui.film.replays.expand_all"), Direction.RIGHT);
-        this.partHeader.setVisible(this.timelineVisible && !this.actionsMode && this.replay != null
-            && this.keyframeEditor != null);
+
+        boolean separateForm = this.isSeparateFormTimeline();
+        boolean partHeaderVisible = this.timelineVisible && !this.actionsMode && this.replay != null
+            && (separateForm ? (this.poseKeyframeEditor != null && this.posePanel.isVisible()) : (this.keyframeEditor != null));
+        this.partHeader.setVisible(partHeaderVisible);
 
         if (this.partHeader.isVisible())
         {
-            int width = Math.min(this.keyframeEditor.view.getLabelWidth(), this.keyframeEditor.view.area.w);
+            UIKeyframeEditor targetEditor = separateForm && this.poseKeyframeEditor != null
+                ? this.poseKeyframeEditor
+                : this.keyframeEditor;
 
-            if (this.partHeader.area.w != width)
+            if (targetEditor != null && targetEditor.view != null)
             {
-                this.partHeader.w(width).resize();
+                int width = Math.min(targetEditor.view.getLabelWidth(), targetEditor.view.area.w);
+
+                if (this.partHeader.area.w != width)
+                {
+                    this.partHeader.w(width).resize();
+                }
             }
         }
 
@@ -1421,7 +1825,15 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         int width = this.iconBar.getWidthForHeight(this.area.h);
 
         this.iconBar.w(width);
-        this.partHeader.x(width);
+        if (!this.isSeparateFormTimeline() || this.partHeader.getParent() == this)
+        {
+            this.partHeader.x(width);
+        }
+
+        if (this.replayGraphButton != null)
+        {
+            this.replayGraphButton.x(width + 2);
+        }
 
         if (this.keyframeEditor != null)
         {
