@@ -55,6 +55,11 @@ public abstract class UITimelinePanel extends UIElement
         this.updateEmptyState();
     }
 
+    public UIElement getTarget()
+    {
+        return this.target;
+    }
+
     /**
      * Say what to do to fill the panel's spot while nothing is picked. Only the docked shape
      * needs it: without a target the panel is a strip off this element's own edge, and with

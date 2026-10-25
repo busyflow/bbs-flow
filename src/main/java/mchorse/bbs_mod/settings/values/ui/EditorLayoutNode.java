@@ -153,6 +153,40 @@ public abstract class EditorLayoutNode
     }
 
     /**
+     * Efficient stacked dual-timeline layout: wide 3D preview over stacked camera
+     * and replay timelines, with replay management and properties organized in the right column.
+     */
+    public static EditorLayoutNode dualTimelineFilmLayout()
+    {
+        return new SplitterNode(
+            false,
+            0.78F,
+            new SplitterNode(
+                true,
+                0.58F,
+                new PanelNode("preview"),
+                new SplitterNode(
+                    true,
+                    0.35F,
+                    new PanelNode("cameraTimeline"),
+                    new PanelNode("main")
+                )
+            ),
+            new SplitterNode(
+                true,
+                0.48F,
+                new SplitterNode(
+                    true,
+                    0.5F,
+                    new PanelNode("replaysList"),
+                    new PanelNode("replayProps")
+                ),
+                new PanelNode("editArea")
+            )
+        );
+    }
+
+    /**
      * Default particle layout: the section-group tabs in a column on the right,
      * with the preview above the MoLang editor on the left.
      */
@@ -616,7 +650,7 @@ public abstract class EditorLayoutNode
         return node;
     }
 
-    private static boolean containsPanel(EditorLayoutNode node, String panelId)
+    public static boolean containsPanel(EditorLayoutNode node, String panelId)
     {
         if (node == null)
         {

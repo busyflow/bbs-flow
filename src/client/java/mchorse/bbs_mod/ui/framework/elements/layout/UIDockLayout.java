@@ -1651,7 +1651,7 @@ public class UIDockLayout extends UIElement
         this.setupFlex(true);
     }
 
-    private void showPanel(String panelId)
+    public void showPanel(String panelId)
     {
         Set<String> hidden = this.source.getHiddenPanels();
 
@@ -1663,6 +1663,19 @@ public class UIDockLayout extends UIElement
         this.pushLayoutUndo(this.layoutRoot());
         this.source.setHiddenPanels(hidden);
         this.setupFlex(true);
+    }
+
+    public void unhidePanel(String panelId)
+    {
+        Set<String> hidden = this.source.getHiddenPanels();
+        boolean removed = hidden.remove(panelId);
+
+        if (removed || !EditorLayoutNode.containsPanel(this.layoutRoot(), panelId))
+        {
+            this.pushLayoutUndo(this.layoutRoot());
+            this.source.setHiddenPanels(hidden);
+            this.setupFlex(true);
+        }
     }
 
     /**

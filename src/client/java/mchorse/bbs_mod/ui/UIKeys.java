@@ -365,6 +365,9 @@ public class UIKeys
     public static final IKey FILM_PANELS_EDIT_AREA = L10n.lang("bbs.ui.film.panels.edit_area");
     public static final IKey FILM_PANELS_REPLAYS_LIST = L10n.lang("bbs.ui.film.panels.replays_list");
     public static final IKey FILM_PANELS_REPLAY_PROPS = L10n.lang("bbs.ui.film.panels.replay_props");
+    public static final IKey FILM_PANELS_CAMERA = L10n.lang("bbs.ui.film.panels.camera");
+    public static final IKey FILM_PANELS_CAMERA_PROPS = L10n.lang("bbs.ui.film.panels.camera_props");
+    public static final IKey FILM_SEPARATE_CAMERA_TIMELINE = L10n.lang("bbs.ui.film.separate_camera_timeline");
     public static final IKey FILM_SHADER_PENDING = L10n.lang("bbs.ui.film.shader.pending");
     public static final IKey FILM_SHADER_APPLY = L10n.lang("bbs.ui.film.shader.apply");
     public static final IKey FILM_SHADER_DISCARD = L10n.lang("bbs.ui.film.shader.discard");
@@ -825,6 +828,8 @@ public class UIKeys
     public static final IKey ONBOARDING_LAYOUT_SLOGAN = L10n.lang("bbs.ui.onboarding.layout.slogan");
     public static final IKey ONBOARDING_LAYOUT_DEFAULT = L10n.lang("bbs.ui.onboarding.layout.default");
     public static final IKey ONBOARDING_LAYOUT_DEFAULT_DESCRIPTION = L10n.lang("bbs.ui.onboarding.layout.default-description");
+    public static final IKey ONBOARDING_LAYOUT_DUAL_TIMELINE = L10n.lang("bbs.ui.onboarding.layout.dual_timeline");
+    public static final IKey ONBOARDING_LAYOUT_DUAL_TIMELINE_DESCRIPTION = L10n.lang("bbs.ui.onboarding.layout.dual_timeline-description");
     public static final IKey ONBOARDING_LAYOUT_BBS_OLD = L10n.lang("bbs.ui.onboarding.layout.bbs_old");
     public static final IKey ONBOARDING_LAYOUT_BBS_OLD_DESCRIPTION = L10n.lang("bbs.ui.onboarding.layout.bbs_old-description");
     public static final IKey ONBOARDING_LAYOUT_MINI = L10n.lang("bbs.ui.onboarding.layout.mini");

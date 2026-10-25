@@ -1,0 +1,51 @@
+{
+    "film_layout": {
+        "type": "splitter",
+        "dir": "v",
+        "first": {
+            "type": "splitter",
+            "dir": "h",
+            "first": {
+                "id": "preview",
+                "type": "panel"
+            },
+            "ratio": 0.58,
+            "second": {
+                "type": "splitter",
+                "dir": "h",
+                "first": {
+                    "id": "cameraTimeline",
+                    "type": "panel"
+                },
+                "ratio": 0.35,
+                "second": {
+                    "id": "main",
+                    "type": "panel"
+                }
+            }
+        },
+        "ratio": 0.78,
+        "second": {
+            "type": "splitter",
+            "dir": "h",
+            "first": {
+                "type": "splitter",
+                "dir": "h",
+                "first": {
+                    "id": "replaysList",
+                    "type": "panel"
+                },
+                "ratio": 0.5,
+                "second": {
+                    "id": "replayProps",
+                    "type": "panel"
+                }
+            },
+            "ratio": 0.48,
+            "second": {
+                "id": "editArea",
+                "type": "panel"
+            }
+        }
+    }
+}
