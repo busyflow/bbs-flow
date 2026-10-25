@@ -169,7 +169,12 @@ public abstract class EditorLayoutNode
                     true,
                     0.35F,
                     new PanelNode("cameraTimeline"),
-                    new PanelNode("main")
+                    new SplitterNode(
+                        true,
+                        0.5F,
+                        new PanelNode("main"),
+                        new PanelNode("poseTimeline")
+                    )
                 )
             ),
             new SplitterNode(

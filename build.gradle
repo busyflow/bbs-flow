@@ -154,6 +154,14 @@ tasks.register('splineIKSolverTest', JavaExec) {
 	mainClass = 'mchorse.bbs_mod.cubic.spline.SplineIKSolverTest'
 }
 
+tasks.register('editorLayoutNodeTest', JavaExec) {
+	group = 'verification'
+	description = 'Checks EditorLayoutNode operations and healing of root splits.'
+	dependsOn tasks.named('testClasses')
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'mchorse.bbs_mod.settings.values.ui.EditorLayoutNodeTest'
+}
+
 tasks.register('splineIKDataTest') {
 	group = 'verification'
 	description = 'Checks spline stable identities, copying, film/state tracks and undo.'

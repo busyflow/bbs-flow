@@ -89,6 +89,8 @@ import net.minecraft.util.hit.HitResult;
 import net.minecraft.world.World;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
+import mchorse.bbs_mod.ui.utils.keys.KeyCombo;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -182,6 +184,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
      * state is handed to each new sheet, which folds in it directly rather than keeping a copy.
      */
     private final Map<String, FoldState<String>> expandedTracksByReplay = new HashMap<>();
+    private final Map<String, FoldState<String>> expandedPoseTracksByReplay = new HashMap<>();
     private final Map<String, TimelineBodyPartSelection> selectedPartsByReplay = new HashMap<>();
     /**
      * Each replay's own time zoom. A rebuild for the same replay keeps the view as it is, but
@@ -376,7 +379,9 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         this.layoutActionsToggle();
 
         TrackCategories.registerShortcuts(this.keys(), () -> TrackCategories.values().stream()
-            .filter(category -> this.tabButtons.get(category).getParent() != null).toList(), this::setCategory);
+            .filter(category -> (this.isSeparateFormTimeline() && category == TrackCategory.FORM) || this.tabButtons.get(category).getParent() != null).toList(), this::setCategory);
+        this.keys().register(new KeyCombo(IKey.EMPTY, GLFW.GLFW_KEY_KP_1), () -> this.setCategory(TrackCategory.REPLAY)).category(UIKeys.FILM_REPLAY_TITLE);
+        this.keys().register(new KeyCombo(IKey.EMPTY, GLFW.GLFW_KEY_KP_2), () -> this.setCategory(TrackCategory.FORM)).category(UIKeys.FILM_REPLAY_TITLE);
 
         this.add(this.iconBar, this.sectionsToggle, this.actionsToggle, this.replayTransform);
         this.partHeader.relative(this).x(CATEGORY_BAR_WIDTH).y(0).w(120).h(TimelineRulerRenderer.RULER_BLOCK_HEIGHT);
@@ -423,15 +428,35 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
     private void setCategory(TrackCategory c)
     {
         this.setActionsMode(false);
-        this.category = c;
         if (this.isSeparateFormTimeline())
         {
-            if (c == TrackCategory.FORM && this.filmPanel != null && this.filmPanel.dock != null)
+            this.category = c;
+            if (c == TrackCategory.FORM)
             {
-                this.filmPanel.dock.unhidePanel(UIFilmPanel.PANEL_POSE_TIMELINE_ID);
+                if (this.filmPanel != null)
+                {
+                    this.filmPanel.showPoseTimeline();
+                }
+                if (this.poseKeyframeEditor != null)
+                {
+                    CategoryFold.apply(this.poseKeyframeEditor, this.getExpandedPoseTracks(), c);
+                }
+                return;
+            }
+            else if (c == TrackCategory.REPLAY)
+            {
+                if (this.filmPanel != null && this.filmPanel.dock != null)
+                {
+                    this.filmPanel.dock.unhidePanel(UIFilmPanel.PANEL_MAIN_ID);
+                }
+                if (this.keyframeEditor != null)
+                {
+                    CategoryFold.apply(this.keyframeEditor, this.getExpandedTracks(), c);
+                }
                 return;
             }
         }
+        this.category = c;
         CategoryFold.apply(this.keyframeEditor, this.getExpandedTracks(), c);
     }
 
@@ -467,9 +492,10 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
     {
         this.setActionsMode(false);
 
-        if (this.keyframeEditor != null)
+        UIKeyframeEditor editor = this.getActiveKeyframeEditor();
+        if (editor != null)
         {
-            this.keyframeEditor.view.getDopeSheet().setAllSectionsExpanded(true);
+            editor.view.getDopeSheet().setAllSectionsExpanded(true);
         }
     }
 
@@ -484,6 +510,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         this.revealedSearchTrack = null;
         this.useActionViewportForNewKeyframes = false;
         this.expandedTracksByReplay.clear();
+        this.expandedPoseTracksByReplay.clear();
         this.selectedPartsByReplay.clear();
         this.timeViewByReplay.clear();
         /* The timeline still shows the old film's replay; its view doesn't belong in the new film's map. */
@@ -680,6 +707,15 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         {
             this.poseKeyframeEditor.setVisible(visible);
         }
+
+        if (visible)
+        {
+            this.posePanel.resize();
+            if (this.posePanel.getParent() != null)
+            {
+                this.posePanel.getParent().resize();
+            }
+        }
     }
 
     public void mountPoseTimeline(UIElement target)
@@ -687,6 +723,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         this.posePanel.removeFromParent();
         this.posePanel.full(target);
         target.add(this.posePanel);
+        this.posePanel.resize();
     }
 
     public void unmountPoseTimeline(UIElement target)
@@ -790,7 +827,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
 
         UIReplaysEditorUtils.addOverlayTrackAction(menu, sheet, parent ->
         {
-            this.getExpandedTracks().set(parent.toKey(), true);
+            this.getExpandedPoseTracks().set(parent.toKey(), true);
             this.updateChannelsList();
         });
 
@@ -827,7 +864,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             {
                 if (UIReplaysEditorUtils.posesToLimbTracks(this.replay.properties, sheet))
                 {
-                    this.getExpandedTracks().set(sheet.id, true);
+                    this.getExpandedPoseTracks().set(sheet.id, true);
                     this.updateChannelsList();
                 }
             });
@@ -1002,6 +1039,15 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             if (category != TrackCategory.REPLAY && category != TrackCategory.FORM)
                 this.updateTab(category, sheets);
         }
+        if (!separateForm)
+        {
+            UIIcon formButton = this.tabButtons.get(TrackCategory.FORM);
+            if (formButton != null && formButton.getParent() == null)
+            {
+                this.iconBar.add(formButton);
+            }
+        }
+
         /* Reattach in registry order, including tabs which became visible again. */
         for (TrackCategory category : TrackCategories.values())
         {
@@ -1059,14 +1105,30 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
 
         if (separateForm)
         {
+            if (this.filmPanel != null && this.filmPanel.poseTimeline != null && this.posePanel.getParent() != this.filmPanel.poseTimeline)
+            {
+                this.mountPoseTimeline(this.filmPanel.poseTimeline);
+            }
+
             UIReplaysEditorUtils.pruneTree(replaySheets);
             UIReplaysEditorUtils.pruneTree(formSheets);
 
             Set<String> freshReplay = this.trackTree.groupSheets(replaySheets, Collections.emptyList(), this.getExpandedTracks(), true);
             CategoryFold.settle(replaySheets, this.getExpandedTracks(), TrackCategory.REPLAY, freshReplay, this.trackTree.seen(this.getExpandedTracks()));
+            this.getExpandedTracks().set(TrackTree.RECORD, true);
 
-            Set<String> freshForm = this.trackTree.groupSheets(formSheets, UIForms.entries(this.replay.form.get()), this.getExpandedTracks(), true);
-            CategoryFold.settle(formSheets, this.getExpandedTracks(), TrackCategory.FORM, freshForm, this.trackTree.seen(this.getExpandedTracks()));
+            Set<String> freshForm = this.trackTree.groupSheets(formSheets, UIForms.entries(this.replay.form.get()), this.getExpandedPoseTracks(), true);
+            CategoryFold.settle(formSheets, this.getExpandedPoseTracks(), TrackCategory.FORM, freshForm, this.trackTree.seen(this.getExpandedPoseTracks()));
+            for (UIKeyframeSheet sheet : formSheets)
+            {
+                for (UIKeyframeSheet.Section section = sheet.section; section != null; section = section.parent())
+                {
+                    if (section.owner())
+                    {
+                        this.getExpandedPoseTracks().set(section.id(), true);
+                    }
+                }
+            }
 
             this.keyframeEditor = new UIKeyframeEditor((consumer) -> new UIFilmKeyframes(this.filmPanel.cameraEditor, () ->
             {
@@ -1123,7 +1185,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
                 this.poseKeyframeEditor.view.addSheet(sheet);
             }
 
-            this.poseKeyframeEditor.view.getDopeSheet().setExpanded(this.getExpandedTracks());
+            this.poseKeyframeEditor.view.getDopeSheet().setExpanded(this.getExpandedPoseTracks());
             if (lastPoseEditor != null)
             {
                 this.poseKeyframeEditor.view.copyViewport(lastPoseEditor);
@@ -1145,6 +1207,17 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             this.timelineReplayId = this.replay.getId();
             this.bringBarToFront();
             this.updateTimelineModeVisibility();
+
+            if (this.filmPanel != null && this.filmPanel.dock != null)
+            {
+                boolean poseActive = this.filmPanel.dock.isPanelActive(UIFilmPanel.PANEL_POSE_TIMELINE_ID);
+                this.setPoseTimelineVisible(poseActive);
+            }
+            this.posePanel.resize();
+            if (this.posePanel.getParent() != null)
+            {
+                this.posePanel.getParent().resize();
+            }
         }
         else
         {
@@ -1348,6 +1421,11 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         return this.expandedTracksByReplay.computeIfAbsent(this.replay == null ? "" : this.replay.getId(), (k) -> new FoldState<>());
     }
 
+    public FoldState<String> getExpandedPoseTracks()
+    {
+        return this.expandedPoseTracksByReplay.computeIfAbsent(this.replay == null ? "" : this.replay.getId(), (k) -> new FoldState<>());
+    }
+
     public void setTimelineVisible(boolean visible)
     {
         this.timelineVisible = visible;
@@ -1519,9 +1597,15 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             this.actionsToggle.removeFromParent();
         }
 
-        this.partHeader.removeFromParent();
         this.sectionsToggle.removeFromParent();
-        this.add(this.iconBar, this.sectionsToggle, this.actionsToggle, this.partHeader);
+        this.add(this.iconBar, this.sectionsToggle, this.actionsToggle);
+
+        if (!this.isSeparateFormTimeline())
+        {
+            this.partHeader.removeFromParent();
+            this.partHeader.relative(this).x(CATEGORY_BAR_WIDTH).y(0).w(120).h(TimelineRulerRenderer.RULER_BLOCK_HEIGHT);
+            this.add(this.partHeader);
+        }
     }
 
     /** Pin the actions toggle below the category buttons. */
