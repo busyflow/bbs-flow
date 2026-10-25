@@ -210,6 +210,12 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                         UIFilmPanel.this.selectedMainEditorPanel = UIFilmPanel.this.cameraEditor;
                         UIFilmPanel.this.updateMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
                     }
+
+                    if (UIFilmPanel.this.cameraEditor.getClip() != null && UIFilmPanel.this.controller != null
+                        && UIFilmPanel.this.controller.getPovMode() == UIFilmController.CAMERA_MODE_FREE)
+                    {
+                        UIFilmPanel.this.controller.setPov(UIFilmController.CAMERA_MODE_CAMERA);
+                    }
                 }
 
                 return element;
@@ -224,6 +230,12 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                     {
                         UIFilmPanel.this.selectedMainEditorPanel = UIFilmPanel.this.cameraEditor;
                         UIFilmPanel.this.updateMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
+                    }
+
+                    if (UIFilmPanel.this.cameraEditor.getClip() != null && UIFilmPanel.this.controller != null
+                        && UIFilmPanel.this.controller.getPovMode() == UIFilmController.CAMERA_MODE_FREE)
+                    {
+                        UIFilmPanel.this.controller.setPov(UIFilmController.CAMERA_MODE_CAMERA);
                     }
                 }
 
@@ -1463,6 +1475,11 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         {
             this.setFlight(false);
 
+            if (clip != null && this.controller != null && this.controller.getPovMode() == UIFilmController.CAMERA_MODE_FREE)
+            {
+                this.controller.setPov(UIFilmController.CAMERA_MODE_CAMERA);
+            }
+
             if (this.isSeparateCameraTimeline())
             {
                 this.selectedMainEditorPanel = this.cameraEditor;
@@ -2377,6 +2394,11 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             }
             else
             {
+                if (this.cameraEditor.getClip() != null && this.cameraEditor.isVisible() && (this.selectedMainEditorPanel == this.cameraEditor || !this.isSeparateCameraTimeline()) && this.controller.getPovMode() == UIFilmController.CAMERA_MODE_FREE)
+                {
+                    this.controller.setPov(UIFilmController.CAMERA_MODE_CAMERA);
+                }
+
                 this.flightOverOrbit = this.controller.orbit.enabled;
                 this.lastPosition.set(Position.ZERO);
                 this.dashboard.orbit.apply(this.position);
@@ -2384,6 +2406,14 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
             this.runner.setManual(flight ? this.position : null);
             this.dashboard.orbitUI.setControl(flight);
+
+            if (flight && this.cameraEditor.getClip() != null && this.cameraEditor.isVisible() && (this.controller.getPovMode() != UIFilmController.CAMERA_MODE_FREE || this.selectedMainEditorPanel == this.cameraEditor))
+            {
+                Position current = new Position(this.getCamera());
+
+                this.cameraEditor.editClip(current);
+                this.lastPosition.set(current);
+            }
         }
     }
 
@@ -2598,8 +2628,13 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             Position current = new Position(this.getCamera());
             boolean check = this.flightEditTime.check();
 
-            if (this.cameraEditor.getClip() != null && this.cameraEditor.isVisible() && this.controller.getPovMode() != UIFilmController.CAMERA_MODE_FREE)
+            if (this.cameraEditor.getClip() != null && this.cameraEditor.isVisible() && (this.controller.getPovMode() != UIFilmController.CAMERA_MODE_FREE || this.selectedMainEditorPanel == this.cameraEditor))
             {
+                if (this.selectedMainEditorPanel == this.cameraEditor && this.controller.getPovMode() == UIFilmController.CAMERA_MODE_FREE)
+                {
+                    this.controller.setPov(UIFilmController.CAMERA_MODE_CAMERA);
+                }
+
                 if (!this.lastPosition.equals(current) && check)
                 {
                     this.cameraEditor.editClip(current);

@@ -944,8 +944,13 @@ public class UIFilmController extends UIElement implements GizmoViewport
             return;
         }
 
-        if (this.pov == CAMERA_MODE_CAMERA && this.panel.cameraEditor.isVisible() && this.panel.cameraEditor.getClip() != null)
+        if ((this.pov == CAMERA_MODE_CAMERA || this.panel.getSelectedMainEditorPanel() == this.panel.cameraEditor) && this.panel.cameraEditor.isVisible() && this.panel.cameraEditor.getClip() != null)
         {
+            if (this.pov == CAMERA_MODE_FREE)
+            {
+                this.setPov(CAMERA_MODE_CAMERA);
+            }
+
             Camera current = this.panel.getCamera();
             Camera eyes = this.panel.dashboard.getCurrentEntityCamera();
 

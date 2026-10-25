@@ -565,6 +565,14 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate
             context.closeContextMenu();
         }
 
+        if (element != null && this == this.filmPanel.cameraEditor && this.filmPanel.getController() != null)
+        {
+            if (this.filmPanel.getController().getPovMode() == mchorse.bbs_mod.ui.film.controller.UIFilmController.CAMERA_MODE_FREE)
+            {
+                this.filmPanel.getController().setPov(mchorse.bbs_mod.ui.film.controller.UIFilmController.CAMERA_MODE_CAMERA);
+            }
+        }
+
         if (this.keysArea != null)
         {
             boolean keys = element instanceof UIKeyframeEditor;
