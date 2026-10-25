@@ -374,6 +374,7 @@ public class BBSModClient implements ClientModInitializer
      */
     public static void leaveWorld()
     {
+        BBSRendering.setCustomSize(false, 0, 0);
         dashboard = null;
         DashboardWarmup.reset();
         worldExportSession.stop();
@@ -819,6 +820,8 @@ public class BBSModClient implements ClientModInitializer
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> client.execute(() ->
         {
+            BBSRendering.setCustomSize(false, 0, 0);
+
             if (client.getNetworkHandler() == handler)
             {
                 BBSResources.enterWorld();

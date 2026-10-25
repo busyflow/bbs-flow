@@ -1089,6 +1089,15 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         this.applyPreviewSizeToBBS();
     }
 
+    public boolean isActivelyEditing()
+    {
+        return this.getContext() != null
+            && this.dashboard != null
+            && this.dashboard.getPanels() != null
+            && this.dashboard.getPanels().panel == this
+            && this.canBeSeen();
+    }
+
     /**
      * Applies the preview or export size to BBSRendering. When the camera editor is
      * visible, uses export resolution so the preview matches export proportions.
@@ -1098,6 +1107,11 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     private void applyPreviewSizeToBBS()
     {
         if (this.recorder.isExporting() || BBSRendering.isHoldingExportFrame())
+        {
+            return;
+        }
+
+        if (!this.isActivelyEditing())
         {
             return;
         }
@@ -1712,6 +1726,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         /* The server drives the film - actors, actions, damage control - only while the editor is the
          * panel on screen, so this is where playback is picked up and disappear() is where it is let go. */
         this.notifyServer(ActionState.RESTART);
+        this.applyPreviewSizeToBBS();
     }
 
     /**
