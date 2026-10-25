@@ -329,7 +329,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         this.actions()
             .editor(this.openCameraEditor, () -> this.isSeparateCameraTimeline() ? this.cameraEditor.isVisible() && this.selectedMainEditorPanel == this.cameraEditor : this.cameraEditor.isVisible())
-            .editor(this.openReplayEditor, () -> this.isSeparateCameraTimeline() ? this.replayEditor.isVisible() && this.selectedMainEditorPanel == this.replayEditor : this.replayEditor.isVisible())
+            .editor(this.openReplayEditor, () -> this.isSeparateCameraTimeline() ? this.replayEditor.isVisible() && this.getActiveNonCameraEditor() == this.replayEditor : this.replayEditor.isVisible())
             .layout(this.layoutLock, () -> this.dock.isLocked())
             .menu(this.openFilmMenu);
 
@@ -1085,6 +1085,8 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     {
         boolean separate = this.isSeparateCameraTimeline();
 
+        this.discoverMainEditors();
+
         this.cameraEditor.removeFromParent();
         this.replayEditor.removeFromParent();
 
@@ -1095,6 +1097,16 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
             this.replayEditor.full(this.main);
             this.main.add(this.replayEditor);
+
+            for (UIElement panel : this.panels)
+            {
+                if (panel != this.cameraEditor && panel != this.replayEditor && panel.getParent() != this.main)
+                {
+                    panel.removeFromParent();
+                    panel.full(this.main);
+                    this.main.add(panel);
+                }
+            }
 
             if (this.dock != null && userToggled)
             {
@@ -1113,6 +1125,16 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             this.cameraEditor.full(this.main);
             this.replayEditor.full(this.main);
             this.main.add(this.cameraEditor, this.replayEditor);
+
+            for (UIElement panel : this.panels)
+            {
+                if (panel != this.cameraEditor && panel != this.replayEditor && panel.getParent() != this.main)
+                {
+                    panel.removeFromParent();
+                    panel.full(this.main);
+                    this.main.add(panel);
+                }
+            }
 
             if (this.dock != null && userToggled)
             {
@@ -1531,19 +1553,9 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                 return;
             }
 
-            int currentIndex = nonCameraPanels.indexOf(this.selectedMainEditorPanel);
-            int nextIndex;
-
-            if (currentIndex < 0)
-            {
-                int lastIdx = nonCameraPanels.indexOf(this.lastMainEditorPanel);
-
-                nextIndex = lastIdx >= 0 ? (lastIdx + 1) % nonCameraPanels.size() : 0;
-            }
-            else
-            {
-                nextIndex = (currentIndex + 1) % nonCameraPanels.size();
-            }
+            UIElement activeMain = this.getActiveNonCameraEditor();
+            int currentIndex = nonCameraPanels.indexOf(activeMain);
+            int nextIndex = currentIndex >= 0 ? (currentIndex + 1) % nonCameraPanels.size() : 0;
 
             this.showPanel(nonCameraPanels.get(nextIndex));
         }
