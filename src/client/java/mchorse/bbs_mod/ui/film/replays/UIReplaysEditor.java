@@ -706,6 +706,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         if (this.poseKeyframeEditor != null)
         {
             this.poseKeyframeEditor.setVisible(visible);
+            this.poseKeyframeEditor.setTimelineVisible(visible);
         }
 
         if (visible)
@@ -1170,7 +1171,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
                     this.keyframeEditor.view.pickKeyframe(null);
                 }
                 consumer.run();
-            }).absolute()).target(this.filmPanel.editArea);
+            }).absolute()).target(this.filmPanel.editArea, false);
             this.poseKeyframeEditor.setEmptyState(null);
             this.poseKeyframeEditor.relative(this.posePanel).x(0).y(0).w(1F).h(1F);
             this.poseKeyframeEditor.setUndoId("pose_keyframe_editor");
@@ -1572,7 +1573,8 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
 
         if (this.poseKeyframeEditor != null)
         {
-            this.poseKeyframeEditor.setTimelineVisible(this.timelineVisible && keyframes);
+            boolean poseTimelineVisible = this.isSeparateFormTimeline() ? this.posePanel.isVisible() : (this.timelineVisible && keyframes);
+            this.poseKeyframeEditor.setTimelineVisible(poseTimelineVisible);
             this.poseKeyframeEditor.setPropertiesVisible(this.propertiesVisible && keyframes);
         }
 

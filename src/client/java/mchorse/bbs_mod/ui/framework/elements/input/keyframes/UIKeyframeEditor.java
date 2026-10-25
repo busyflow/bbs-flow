@@ -68,9 +68,17 @@ public class UIKeyframeEditor extends UITimelinePanel
 
     public UIKeyframeEditor target(UIElement target)
     {
+        return this.target(target, true);
+    }
+
+    public UIKeyframeEditor target(UIElement target, boolean withEmptyState)
+    {
         this.mode.setVisible(false);
         this.setTarget(target);
-        this.setEmptyState(this::getEmptyLabel);
+        if (withEmptyState)
+        {
+            this.setEmptyState(this::getEmptyLabel);
+        }
 
         this.view.resetFlex().full(this).w(1F);
 

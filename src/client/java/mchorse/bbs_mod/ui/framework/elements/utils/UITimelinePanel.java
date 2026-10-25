@@ -2,6 +2,7 @@ package mchorse.bbs_mod.ui.framework.elements.utils;
 
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.framework.UIContext;
+import mchorse.bbs_mod.ui.framework.elements.IUIElement;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.utils.renderers.EmptyStateRenderer;
 
@@ -74,7 +75,7 @@ public abstract class UITimelinePanel extends UIElement
 
     private void updateEmptyState()
     {
-        if (this.emptyStateHost != null && this.emptyStateHost != this.target)
+        if (this.emptyStateHost != null && (this.emptyStateHost != this.target || this.emptyLabel == null || this.target == null))
         {
             this.emptyStateHost.remove(this.emptyState);
             this.emptyStateHost = null;
@@ -100,9 +101,17 @@ public abstract class UITimelinePanel extends UIElement
      */
     private void renderEmptyState(UIContext context)
     {
-        if (!this.propertiesVisible || this.getPropertiesPanel() != null || this.emptyStateHost == null)
+        if (!this.propertiesVisible || this.getPropertiesPanel() != null || this.emptyStateHost == null || this.emptyLabel == null)
         {
             return;
+        }
+
+        for (IUIElement child : this.emptyStateHost.getChildren())
+        {
+            if (child != this.emptyState && child instanceof UIElement ui && ui.isVisible())
+            {
+                return;
+            }
         }
 
         IKey label = this.emptyLabel.get();

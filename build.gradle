@@ -162,6 +162,14 @@ tasks.register('editorLayoutNodeTest', JavaExec) {
 	mainClass = 'mchorse.bbs_mod.settings.values.ui.EditorLayoutNodeTest'
 }
 
+tasks.register('uiTimelinePanelTest', JavaExec) {
+	group = 'verification'
+	description = 'Checks UITimelinePanel empty state lifecycle and null safety.'
+	dependsOn tasks.named('testClasses'), tasks.named('clientClasses')
+	classpath = sourceSets.test.runtimeClasspath + sourceSets.client.output + sourceSets.client.runtimeClasspath
+	mainClass = 'mchorse.bbs_mod.ui.framework.elements.utils.UITimelinePanelTest'
+}
+
 tasks.register('splineIKDataTest') {
 	group = 'verification'
 	description = 'Checks spline stable identities, copying, film/state tracks and undo.'
@@ -169,7 +177,7 @@ tasks.register('splineIKDataTest') {
 }
 
 tasks.named('check') {
-	dependsOn tasks.named('splineIKSolverTest'), tasks.named('splineIKDataTest')
+	dependsOn tasks.named('splineIKSolverTest'), tasks.named('splineIKDataTest'), tasks.named('uiTimelinePanelTest')
 }
 
 java {
@@ -365,23 +373,6 @@ tasks.named('runAddonApiCheck', JavaExec) {
     dependsOn 'addonApiCheckJar'
 }
 
-if (System.getProperty('os.name').startsWith('Windows')) {
-    gradle.projectsEvaluated {
-        tasks.named('runAddonApiCheck', JavaExec) {
-            // Gradle's long-classpath JAR splits Fabric/Mixin classes between app and Knot.
-            // A Java argument file preserves the original classpath and its native encoding.
-            def originalClasspath = classpath.asPath
-            def argsFile = layout.buildDirectory.file('addonApiCheck-classpath.args').get().asFile
-            classpath = project.files()
-            jvmArgs '@' + argsFile.absolutePath
-            doFirst {
-                argsFile.parentFile.mkdirs()
-                argsFile.setText('-classpath\n"' + originalClasspath.replace('\\', '/') + '"\n',
-                    System.getProperty('native.encoding', System.getProperty('file.encoding')))
-            }
-        }
-    }
-}
 tasks.register('addonApiCheck') {
     group = 'verification'
     description = 'Checks addon data/editor/pose contracts under Fabric, exiting before a game window opens.'
