@@ -97,6 +97,8 @@
     "bbs.config.misc.entity_selectors_whitelist-comment": "实体 NBT 变化比较时保留的键名。",
     "bbs.config.misc.shader_curves": "着色器曲线",
     "bbs.config.misc.shader_curves-comment": "是否启用着色器曲线",
+    "bbs.config.misc.orbit_auto_rotate": "轨道自动旋转",
+    "bbs.config.misc.orbit_auto_rotate-comment": "附加到回放时，轨道相机是否跟随演员朝向自动旋转。",
     "bbs.config.misc.title": "其他",
     "bbs.config.misc.tooltip": "仅有一个选项的各种功能",
     "bbs.config.model_blocks.click": "允许点击",

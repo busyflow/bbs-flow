@@ -44,6 +44,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
      * Whether it is attached is a global setting, so it survives restarts.
      */
     private Replay anchorReplay;
+    private boolean wasAutoRotateDisabled;
 
     public OrbitFilmCameraController(UIFilmController controller)
     {
@@ -213,8 +214,43 @@ public class OrbitFilmCameraController extends OrbitViewportController
         Vector3f translation = matrix.getTranslation(new Vector3f());
         Matrix4f axes = MatrixStackUtils.stripScale(matrix);
 
-        this.anchorPosition.set(translation.x, translation.y, translation.z);
-        this.anchorYaw = (float) Math.atan2(-axes.m02(), axes.m00());
+        boolean autoRotate = BBSSettings.editorOrbitAutoRotate.get();
+
+        if (!autoRotate)
+        {
+            if (this.anchorYaw != 0F)
+            {
+                this.rebaseAnchor(() ->
+                {
+                    this.anchorPosition.set(translation.x, translation.y, translation.z);
+                    this.anchorYaw = 0F;
+                });
+            }
+            else
+            {
+                this.anchorPosition.set(translation.x, translation.y, translation.z);
+            }
+        }
+        else
+        {
+            float targetYaw = (float) Math.atan2(-axes.m02(), axes.m00());
+
+            if (this.anchorYaw == 0F && targetYaw != 0F && this.wasAutoRotateDisabled)
+            {
+                this.rebaseAnchor(() ->
+                {
+                    this.anchorPosition.set(translation.x, translation.y, translation.z);
+                    this.anchorYaw = targetYaw;
+                });
+            }
+            else
+            {
+                this.anchorPosition.set(translation.x, translation.y, translation.z);
+                this.anchorYaw = targetYaw;
+            }
+        }
+
+        this.wasAutoRotateDisabled = !autoRotate;
     }
 
     private IEntity resolveEntity(Replay replay)
@@ -228,6 +264,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
         super.reset();
 
         this.anchorReplay = null;
+        this.wasAutoRotateDisabled = false;
     }
 
     /**

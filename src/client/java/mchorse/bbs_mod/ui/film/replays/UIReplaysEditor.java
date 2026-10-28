@@ -1200,7 +1200,6 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
 
             if (this.replayGraphButton != null) this.replayGraphButton.setVisible(true);
 
-            this.timelineReplayId = this.replay.getId();
             /* Category bar + actions toggle on top so they overlay the track names column. */
             this.bringBarToFront();
             this.updateTimelineModeVisibility();
@@ -1252,7 +1251,6 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
                 }
 
                 this.add(this.keyframeEditor);
-                this.timelineReplayId = this.replay.getId();
                 this.bringBarToFront();
                 this.updateTimelineModeVisibility();
             }

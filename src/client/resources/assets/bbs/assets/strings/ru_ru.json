@@ -671,6 +671,8 @@
 	"bbs.config.scrollbars.width-comment": "Позволяет Вам настроить толщину/ширину ползунков",
 	"bbs.config.misc.shader_curves": "Кривые шейдеров",
 	"bbs.config.misc.shader_curves-comment": "Включены ли кривые шейдеров",
+	"bbs.config.misc.orbit_auto_rotate": "Авто-вращение орбиты",
+	"bbs.config.misc.orbit_auto_rotate-comment": "Поворачивать ли камеру орбиты вслед за направлением взгляда актера при привязке.",
 	"bbs.config.performance.translucency_queue": "Очередь прозрачности форм",
 	"bbs.config.performance.translucency_queue-comment": "Рисовать прозрачные формы последними для правильного смешивания.",
 	"bbs.config.performance.particles_depth_sorting": "Сортировка частиц по глубине",

@@ -681,6 +681,8 @@
 	"bbs.config.scrollbars.width-comment": "Allows you to setup the thickness (width of scrollbars)",
 	"bbs.config.misc.shader_curves": "Shader curves",
 	"bbs.config.misc.shader_curves-comment": "Whether shader curves are enabled",
+	"bbs.config.misc.orbit_auto_rotate": "Orbit auto rotation",
+	"bbs.config.misc.orbit_auto_rotate-comment": "Whether the orbit camera automatically rotates to match the actor's yaw when attached.",
 	"bbs.config.performance.translucency_queue": "Form translucency queue",
 	"bbs.config.performance.translucency_queue-comment": "Draw transparent forms last for correct blending.",
 	"bbs.config.performance.particles_depth_sorting": "Particle depth sorting",
