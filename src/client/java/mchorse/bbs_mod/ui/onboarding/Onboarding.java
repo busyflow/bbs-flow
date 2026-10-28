@@ -30,4 +30,11 @@ public class Onboarding
         /* It paints the whole screen itself; dimming and blurring under it would be wasted work */
         UIOverlay.addOverlay(context, panel, 1F, 1F).noBackground();
     }
+
+    /**
+     * Legacy stub kept for backward compatibility with addons (e.g. refreshedui)
+     * that inject into Onboarding.start to disable onboarding tours.
+     */
+    private static void start(UIContext context, TourChapter chapter)
+    {}
 }
