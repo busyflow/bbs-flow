@@ -27,11 +27,13 @@ import mchorse.bbs_mod.utils.clips.Clip;
 import mchorse.bbs_mod.utils.clips.ClipFactory;
 import mchorse.bbs_mod.utils.clips.Clips;
 
+import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCanvas;
+
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate
+public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, ITimelineProvider
 {
     public UIClips clips;
     public UIFilmPanel filmPanel;
@@ -539,7 +541,78 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate
     @Override
     public boolean canUseKeybinds()
     {
-        return this.filmPanel.canUseKeybinds();
+        if (!this.isVisible() || !this.filmPanel.canUseKeybinds())
+        {
+            return false;
+        }
+
+        UIContext context = this.getContext();
+
+        if (context != null)
+        {
+            if (this.clips != null && this.clips.area.isInside(context))
+            {
+                return true;
+            }
+
+            if (this.isMouseOverOtherClips(context))
+            {
+                return false;
+            }
+        }
+
+        if (this.filmPanel.isSeparateCameraTimeline())
+        {
+            if (this == this.filmPanel.cameraEditor)
+            {
+                return this.filmPanel.getSelectedMainEditorPanel() == this;
+            }
+            else
+            {
+                return this.filmPanel.getSelectedMainEditorPanel() != this.filmPanel.cameraEditor;
+            }
+        }
+
+        return true;
+    }
+
+    private boolean isMouseOverOtherClips(UIContext context)
+    {
+        if (this.filmPanel == null || context == null)
+        {
+            return false;
+        }
+
+        if (this.filmPanel.cameraEditor != null && this.filmPanel.cameraEditor != this
+            && this.filmPanel.cameraEditor.isVisible()
+            && this.filmPanel.cameraEditor.clips != null
+            && this.filmPanel.cameraEditor.clips.area.isInside(context))
+        {
+            return true;
+        }
+
+        if (this.filmPanel.actionEditor != null && this.filmPanel.actionEditor != this
+            && this.filmPanel.actionEditor.isVisible()
+            && this.filmPanel.actionEditor.clips != null
+            && this.filmPanel.actionEditor.clips.area.isInside(context))
+        {
+            return true;
+        }
+
+        for (UIElement panel : this.filmPanel.getPanels())
+        {
+            if (panel != this && panel.isVisible())
+            {
+                UITimelineCanvas canvas = this.filmPanel.getActiveTimeline(panel);
+
+                if (canvas instanceof UIClips otherClips && otherClips.area.isInside(context))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     @Override
@@ -670,5 +743,11 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate
         data.putDouble("x_min", this.clips.getXAxis().getMinValue());
         data.putDouble("x_max", this.clips.getXAxis().getMaxValue());
         data.putDouble("scroll", this.clips.vertical.getScroll());
+    }
+
+    @Override
+    public UITimelineCanvas getActiveTimeline()
+    {
+        return this.clips;
     }
 }

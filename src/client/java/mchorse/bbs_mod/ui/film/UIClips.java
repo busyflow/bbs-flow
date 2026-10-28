@@ -57,6 +57,8 @@ import mchorse.bbs_mod.utils.clips.Clip;
 import mchorse.bbs_mod.utils.clips.ClipFactory;
 import mchorse.bbs_mod.utils.clips.Clips;
 import mchorse.bbs_mod.utils.clips.Envelope;
+import mchorse.bbs_mod.utils.clips.UnknownClip;
+import mchorse.bbs_mod.utils.factory.IUnknownType;
 import mchorse.bbs_mod.utils.profiler.BBSProfiler;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
@@ -153,6 +155,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
             .supplier(this::copyClips)
             .consumer(this::pasteClips)
             .canCopy(() -> this.delegate.getClip() != null)
+            .canPaste(this::canPasteClipboard)
             .labels(UIKeys.CAMERA_TIMELINE_CONTEXT_COPY, UIKeys.CAMERA_TIMELINE_CONTEXT_PASTE);
 
         this.delegate = delegate;
@@ -211,9 +214,11 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
         this.keys().register(Keys.PASTE, () ->
         {
             UIContext context = this.getContext();
+            int mouseX = context != null && this.area.isInside(context) ? context.mouseX : this.toGraphX(this.delegate.getCursor());
+            int mouseY = context != null ? context.mouseY : 0;
 
-            if (this.copyPasteController.paste(context.mouseX, context.mouseY)) UIUtils.playClick();
-        }).category(KEYS_CATEGORY).active(canUseKeybinds);
+            if (this.copyPasteController.paste(mouseX, mouseY)) UIUtils.playClick();
+        }).category(KEYS_CATEGORY).active(() -> canUseKeybinds.get() && this.copyPasteController.canPaste());
         /* .inside() is load-bearing: the action opens the presets popup AT the mouse, so it only
          * makes sense over this timeline. Without it the bind fired anywhere and, since this
          * subtree is walked before the parameters dock, it swallowed Ctrl+Shift+V from the
@@ -506,6 +511,39 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
         return data;
     }
 
+    public boolean canPasteClipboard()
+    {
+        MapType data = Window.getClipboardMap(this.copyPasteController.copyPrefix);
+
+        if (data == null)
+        {
+            return false;
+        }
+
+        ListType clipsList = data.getList("clips");
+
+        if (clipsList == null || clipsList.isEmpty())
+        {
+            return false;
+        }
+
+        for (BaseType type : clipsList)
+        {
+            if (type.isMap())
+            {
+                String typeStr = type.asMap().getString(this.factory.getTypeKey());
+                Link link = Link.create(typeStr);
+
+                if (link.path.isEmpty() || !this.factory.has(link))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
     private void pasteClips(MapType data, int mouseX, int mouseY)
     {
         this.pasteClips(data, this.fromGraphTick(mouseX));
@@ -527,7 +565,22 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
             for (BaseType type : clipsList)
             {
                 MapType typeMap = type.asMap();
+                String typeStr = typeMap.getString(this.factory.getTypeKey());
+                Link link = Link.create(typeStr);
+
+                if (link.path.isEmpty() || !this.factory.has(link))
+                {
+                    this.getContext().notifyError(UIKeys.CAMERA_TIMELINE_INCOMPATIBLE_PASTE);
+                    return;
+                }
+
                 Clip clip = this.factory.fromData(typeMap);
+
+                if (clip == null || clip instanceof UnknownClip || clip instanceof IUnknownType)
+                {
+                    this.getContext().notifyError(UIKeys.CAMERA_TIMELINE_INCOMPATIBLE_PASTE);
+                    return;
+                }
 
                 min = Math.min(min, clip.tick.get());
 

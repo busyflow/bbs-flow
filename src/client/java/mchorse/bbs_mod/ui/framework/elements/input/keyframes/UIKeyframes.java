@@ -429,25 +429,25 @@ public class UIKeyframes extends UITimelineCanvas
             UIContext context = this.getContext();
 
             this.selectAfter(context.mouseX, context.mouseY, -1);
-        }).category(category).active(canModify);
+        }).inside().category(category).active(canModify);
         this.keys().register(Keys.KEYFRAMES_SELECT_RIGHT, () ->
         {
             UIContext context = this.getContext();
 
             this.selectAfter(context.mouseX, context.mouseY, 1);
-        }).category(category).active(canModify);
-        this.keys().register(Keys.KEYFRAMES_SELECT_SAME, this::selectSame).category(category).active(canModify);
+        }).inside().category(category).active(canModify);
+        this.keys().register(Keys.KEYFRAMES_SELECT_SAME, this::selectSame).inside().category(category).active(canModify);
         this.keys().register(Keys.KEYFRAMES_SCALE_TIME, this::scaleTime).inside().category(category);
         this.keys().register(Keys.TRANSFORMATIONS_X, () -> this.transformAxis = this.transformAxis == 1 ? 0 : 1)
             .category(category).active(() -> this.isEditing() && this.dragging >= 0 && this.draggingData != null && this.draggingData.b == KeyframeType.REGULAR);
         this.keys().register(Keys.TRANSFORMATIONS_Y, () -> this.transformAxis = this.transformAxis == 2 ? 0 : 2)
             .category(category).active(() -> this.isEditing() && this.dragging >= 0 && this.draggingData != null && this.draggingData.b == KeyframeType.REGULAR);
         this.keys().register(Keys.KEYFRAMES_STACK_KEYFRAMES, () -> this.stackKeyframes(false)).inside().category(category);
-        this.keys().register(Keys.KEYFRAMES_SELECT_PREV, () -> this.selectNextKeyframe(-1)).category(category);
-        this.keys().register(Keys.KEYFRAMES_SELECT_NEXT, () -> this.selectNextKeyframe(1)).category(category);
-        this.keys().register(Keys.KEYFRAMES_SPREAD, this::spreadKeyframes).category(category);
-        this.keys().register(Keys.KEYFRAMES_FLIP, this::flipKeyframes).category(category).active(canModify);
-        this.keys().register(Keys.KEYFRAMES_ADJUST_VALUES, this::adjustValues).category(category);
+        this.keys().register(Keys.KEYFRAMES_SELECT_PREV, () -> this.selectNextKeyframe(-1)).inside().category(category);
+        this.keys().register(Keys.KEYFRAMES_SELECT_NEXT, () -> this.selectNextKeyframe(1)).inside().category(category);
+        this.keys().register(Keys.KEYFRAMES_SPREAD, this::spreadKeyframes).inside().category(category);
+        this.keys().register(Keys.KEYFRAMES_FLIP, this::flipKeyframes).inside().category(category).active(canModify);
+        this.keys().register(Keys.KEYFRAMES_ADJUST_VALUES, this::adjustValues).inside().category(category);
     }
 
     public int getLabelWidth()

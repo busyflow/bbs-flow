@@ -90,6 +90,12 @@ public class MapFactory <T, D> implements IFactory<T, D>
     }
 
     @Override
+    public boolean has(Link type)
+    {
+        return this.factory.containsKey(type);
+    }
+
+    @Override
     public T create(Link type)
     {
         Class<? extends T> clazz = this.factory.get(type);

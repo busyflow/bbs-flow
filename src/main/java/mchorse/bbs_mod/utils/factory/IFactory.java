@@ -15,6 +15,11 @@ public interface IFactory <T, D>
 
     public T create(Link type);
 
+    public default boolean has(Link type)
+    {
+        return this.getKeys().contains(type);
+    }
+
     /**
      * A stand-in for a type this factory doesn't know, or null to let the failure through.
      *

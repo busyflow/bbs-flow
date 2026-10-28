@@ -197,6 +197,7 @@ public class UIReplaysEditorUtils
             /* Creating an editable row needs a channel. Catalog/search enumeration does not. */
             if (track.channel() == null)
             {
+                if (properties == null) continue;
                 KeyframeChannel channel = properties.getOrCreate(FormUtils.getRoot(track.owner()), track.id());
                 if (channel == null) continue;
                 track = new TrackDescriptor(track.id(), channel, track.owner(), track.title(), track.icon(), track.color(), track.property(), track.seed(), track.parent());

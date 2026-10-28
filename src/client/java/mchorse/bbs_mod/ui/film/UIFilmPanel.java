@@ -49,6 +49,7 @@ import mchorse.bbs_mod.ui.film.utils.undo.UIUndoHistoryOverlay;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.onboarding.TourAnchors;
 import mchorse.bbs_mod.ui.framework.elements.utils.ScrollMemory;
+import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCanvas;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIUndoKeys;
 import mchorse.bbs_mod.ui.framework.elements.IUIElement;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
@@ -1629,11 +1630,21 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         this.cameraEditor.clips.embedView(null);
 
         EditorLayoutNode previousRoot = this.getCurrentFilmLayoutRoot();
+        UIElement previousPanel = null;
         int index = this.getPanelIndex();
 
-        if (index >= 0)
+        if (index >= 0 && index < this.panels.size())
         {
-            this.captureTimelineViewport(this.panels.get(index));
+            previousPanel = this.panels.get(index);
+        }
+        else if (this.isSeparateCameraTimeline())
+        {
+            previousPanel = this.getActiveNonCameraEditor();
+        }
+
+        if (previousPanel != null)
+        {
+            this.captureTimelineViewport(previousPanel);
         }
 
         this.selectedMainEditorPanel = element;
@@ -1673,39 +1684,100 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         }
     }
 
-    private void captureTimelineViewport(UIElement panel)
+    public List<UIElement> getPanels()
     {
+        return new ArrayList<>(this.panels);
+    }
+
+    public double getTimelineXMin()
+    {
+        return this.timelineXMin;
+    }
+
+    public double getTimelineXMax()
+    {
+        return this.timelineXMax;
+    }
+
+    public void setTimelineViewport(double min, double max)
+    {
+        this.timelineXMin = min;
+        this.timelineXMax = max;
+    }
+
+    public UITimelineCanvas getActiveTimeline(UIElement panel)
+    {
+        if (panel instanceof ITimelineProvider provider)
+        {
+            return provider.getActiveTimeline();
+        }
+
         if (panel == this.cameraEditor)
         {
-            this.timelineXMin = this.cameraEditor.clips.getXAxis().getMinValue();
-            this.timelineXMax = this.cameraEditor.clips.getXAxis().getMaxValue();
+            return this.cameraEditor != null ? this.cameraEditor.clips : null;
         }
-        else if (panel == this.replayEditor)
+
+        if (panel == this.replayEditor)
         {
-            this.timelineXMin = this.replayEditor.getActiveTimeline().getXAxis().getMinValue();
-            this.timelineXMax = this.replayEditor.getActiveTimeline().getXAxis().getMaxValue();
+            return this.replayEditor != null ? this.replayEditor.getActiveTimeline() : null;
+        }
+
+        if (panel != null)
+        {
+            try
+            {
+                java.lang.reflect.Method method = panel.getClass().getMethod("getActiveTimeline");
+                Object result = method.invoke(panel);
+                if (result instanceof UITimelineCanvas canvas)
+                {
+                    return canvas;
+                }
+            }
+            catch (Throwable ignored)
+            {}
+        }
+
+        return null;
+    }
+
+    public void captureTimelineViewport(UIElement panel)
+    {
+        UITimelineCanvas timeline = this.getActiveTimeline(panel);
+
+        if (timeline != null && timeline.getXAxis() != null)
+        {
+            timeline.getXAxis().updateZoom();
+            timeline.getXAxis().stopZoom();
+            this.timelineXMin = timeline.getXAxis().getMinValue();
+            this.timelineXMax = timeline.getXAxis().getMaxValue();
         }
     }
 
-    private void applyTimelineViewport(UIElement panel)
+    public void applyTimelineViewport(UIElement panel)
     {
         if (Double.isNaN(this.timelineXMin) || Double.isNaN(this.timelineXMax) || this.timelineXMin >= this.timelineXMax)
         {
             return;
         }
 
-        if (panel == this.cameraEditor)
+        if (panel instanceof ITimelineProvider provider)
         {
-            this.cameraEditor.clips.getXAxis().view(this.timelineXMin, this.timelineXMax);
+            provider.applyTimelineView(this.timelineXMin, this.timelineXMax);
+            return;
         }
-        else if (panel == this.replayEditor)
-        {
-            this.replayEditor.getActiveTimeline().getXAxis().view(this.timelineXMin, this.timelineXMax);
 
-            if (this.isSeparateFormTimeline() && this.replayEditor.getPoseKeyframeEditor() != null)
-            {
-                this.replayEditor.getPoseKeyframeEditor().view.getXAxis().view(this.timelineXMin, this.timelineXMax);
-            }
+        UITimelineCanvas timeline = this.getActiveTimeline(panel);
+
+        if (timeline != null && timeline.getXAxis() != null)
+        {
+            timeline.getXAxis().stopZoom();
+            timeline.getXAxis().view(this.timelineXMin, this.timelineXMax);
+        }
+
+        if (panel == this.replayEditor && this.isSeparateFormTimeline() && this.replayEditor.getPoseKeyframeEditor() != null)
+        {
+            this.replayEditor.getPoseKeyframeEditor().view.getXAxis().stopZoom();
+            this.replayEditor.getPoseKeyframeEditor().view.getXAxis().view(this.timelineXMin, this.timelineXMax);
         }
     }
 
@@ -2906,11 +2978,29 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         if (this.replayEditor != null)
         {
-            axes.add(this.replayEditor.getActiveTimeline().getXAxis());
+            UITimelineCanvas replayTimeline = this.replayEditor.getActiveTimeline();
+
+            if (replayTimeline != null && replayTimeline.getXAxis() != null)
+            {
+                axes.add(replayTimeline.getXAxis());
+            }
 
             if (this.isSeparateFormTimeline() && this.replayEditor.getPoseKeyframeEditor() != null)
             {
                 axes.add(this.replayEditor.getPoseKeyframeEditor().view.getXAxis());
+            }
+        }
+
+        for (UIElement panel : this.panels)
+        {
+            if (panel != this.cameraEditor && panel != this.replayEditor)
+            {
+                UITimelineCanvas timeline = this.getActiveTimeline(panel);
+
+                if (timeline != null && timeline.getXAxis() != null && !axes.contains(timeline.getXAxis()))
+                {
+                    axes.add(timeline.getXAxis());
+                }
             }
         }
 

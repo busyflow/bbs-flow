@@ -99,10 +99,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import mchorse.bbs_mod.ui.film.ITimelineProvider;
 import mchorse.bbs_mod.ui.utils.GizmoInteraction;
 import mchorse.bbs_mod.ui.utils.SplineEditorUtils;
 
-public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, ILivePoseHost
+public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, ILivePoseHost, ITimelineProvider
 {
     private final BoneSelection boneSelection = new BoneSelection();
 
@@ -1475,9 +1476,28 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         return this.actionsMode;
     }
 
+    @Override
     public UITimelineCanvas getActiveTimeline()
     {
         return this.actionsMode || this.keyframeEditor == null ? this.actionTimeline.clips : this.keyframeEditor.view;
+    }
+
+    @Override
+    public void applyTimelineView(double min, double max)
+    {
+        UITimelineCanvas timeline = this.getActiveTimeline();
+
+        if (timeline != null && timeline.getXAxis() != null)
+        {
+            timeline.getXAxis().stopZoom();
+            timeline.getXAxis().view(min, max);
+        }
+
+        if (this.isSeparateFormTimeline() && this.poseKeyframeEditor != null && this.poseKeyframeEditor.view != null)
+        {
+            this.poseKeyframeEditor.view.getXAxis().stopZoom();
+            this.poseKeyframeEditor.view.getXAxis().view(min, max);
+        }
     }
 
     private void toggleActionsMode()
@@ -1919,7 +1939,10 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             }
         }
 
-        UIReplaysEditorUtils.configureFilmHotkeyDrag(this.filmPanel, context);
+        if (this.filmPanel.getActiveNonCameraEditor() == this)
+        {
+            UIReplaysEditorUtils.configureFilmHotkeyDrag(this.filmPanel, context);
+        }
 
         super.render(context);
     }
