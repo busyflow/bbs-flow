@@ -240,7 +240,12 @@ public class UIReplaysEditorUtils
             return null;
         }
 
-        editor.editor.update();
+        /* Called every frame: re-reading under an open edit would pull the field back to the stored
+         * key, e.g. a color picker would lose its hue on grays and its saturation to 8-bit rounding. */
+        if (!editor.editor.isUserEditing())
+        {
+            editor.editor.update();
+        }
 
         if (editor.editor instanceof SplineKeyframeEditor spline)
         {
@@ -1130,7 +1135,7 @@ public class UIReplaysEditorUtils
     private static void fillAnimationPose(UIKeyframeSheet sheet, float i, ModelInstance model, IEntity entity, Animation animation, float current)
     {
         model.model.resetPose();
-        model.model.apply(entity, animation, i, 1F, 0F, false);
+        model.model.apply(entity, animation, i, 1F, 0F, false, false);
 
         int insert = sheet.channel.insert(current + i, model.model.createPose());
 

@@ -27,6 +27,7 @@ import mchorse.bbs_mod.film.replays.tracks.TrackSearchEntry;
 import mchorse.bbs_mod.ui.film.replays.overlays.UITrackSearchOverlayPanel;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditor;
 import mchorse.bbs_mod.api.client.editor.TrackCategory;
+import mchorse.bbs_mod.film.replays.tracks.TrackId;
 import mchorse.bbs_mod.api.client.editor.TrackCategories;
 import mchorse.bbs_mod.ui.film.replays.CategoryFold;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditorUtils;
@@ -46,7 +47,6 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeDopeSheet;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIDraggable;
-import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIRenderable;
 import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCategoryBar;
 import mchorse.bbs_mod.ui.utils.Gizmo;
@@ -170,6 +170,7 @@ public class UIAnimationStateEditor extends UIElement
     private final Map<TrackCategory, UIIcon> categoryButtons = new java.util.LinkedHashMap<>();
     private final List<TrackCategory> visibleCategories = new ArrayList<>();
     private TrackCategory category = TrackCategory.FORM;
+    private boolean allMode = true;
     private final UISection bodyPartsSection = new UISection(L10n.lang("bbs.ui.film.replays.body_parts"));
     private Form root;
     /** New with every form edited, like the folds: another form's headings start the way new ones do. */
@@ -200,6 +201,7 @@ public class UIAnimationStateEditor extends UIElement
         this.categoryBar.relative(this.timelineArea);
         UIIcon all = new UIIcon(Icons.LIST, button -> this.setAllTracks());
         all.tooltip(UIKeys.FILM_REPLAY_ALL_TRACKS, Direction.RIGHT);
+        all.highlight(() -> this.allMode, Direction.LEFT);
         this.categoryBar.add(all);
 
         for (TrackCategory category : TrackCategories.values())
@@ -207,7 +209,7 @@ public class UIAnimationStateEditor extends UIElement
             if (category == TrackCategory.REPLAY) continue;
             UIIcon button = new UIIcon(category.icon, b -> this.setCategory(category));
             button.tooltip(category.tooltip, Direction.RIGHT);
-            button.highlight(() -> this.category == category, Direction.LEFT);
+            button.highlight(() -> !this.allMode && this.category == category, Direction.LEFT);
             this.categoryButtons.put(category, button);
         }
 
@@ -217,12 +219,9 @@ public class UIAnimationStateEditor extends UIElement
 
         this.partHeader.relative(this.timelineArea).x(CATEGORY_BAR_WIDTH).w(120).h(TimelineRulerRenderer.RULER_BLOCK_HEIGHT);
         this.partHeader.add(new UIRenderable(context -> this.partHeader.area.render(context.batcher, BBSSettings.baseSurface())));
-        UILabel partName = new UILabel(this::getSelectedPartName).color(0xffaaaaaa, false).labelAnchor(0F, 0.5F);
-        partName.relative(this.partHeader).x(5).w(1F, -UIConstants.ICON_SIZE - 10).h(1F);
-        partName.tooltip(() -> L10n.lang("bbs.ui.film.replays.selected_body_part").format(this.getSelectedPartName()).get());
         UIIcon graph = UIKeyframes.modeButton(() -> this.keyframeEditor == null ? null : this.keyframeEditor.view);
         graph.relative(this.partHeader).x(1F, -UIConstants.ICON_SIZE).y(0.5F).anchorY(0.5F);
-        this.partHeader.add(partName, graph);
+        this.partHeader.add(graph);
         this.timelineArea.add(this.categoryBar, this.partHeader);
 
         this.bodyPartsSection.relative(this.sidebar).x(3).y(1F, -3).w(1F, -6).anchorY(1F);
@@ -275,16 +274,13 @@ public class UIAnimationStateEditor extends UIElement
         return this.state;
     }
 
-    /** A category opens its owners on the timeline and folds the others: see {@link CategoryFold}. */
+    /** Show only a category's tracks, still under their owners. */
     private void setCategory(TrackCategory category)
     {
+        this.revealedSearchTrack = null;
+        this.allMode = false;
         this.category = category;
-        CategoryFold.apply(this.keyframeEditor, this.expandedTabs, category);
-    }
-
-    private String getSelectedPartName()
-    {
-        return this.partSelection.title(this.bodyParts);
+        this.setState(this.state);
     }
 
     /** The parts list picked the parts the timeline shows; the one clicked opens. */
@@ -300,13 +296,12 @@ public class UIAnimationStateEditor extends UIElement
         }
     }
 
-    /** Unfold every owner and heading at once. An action, not a mode: the tab lit stays. */
+    /** Show every category's tracks at once, bypassing the category filter. */
     private void setAllTracks()
     {
-        if (this.keyframeEditor != null)
-        {
-            this.keyframeEditor.view.getDopeSheet().setAllSectionsExpanded(true);
-        }
+        this.revealedSearchTrack = null;
+        this.allMode = true;
+        this.setState(this.state);
     }
 
     public void setState(AnimationState state)
@@ -389,6 +384,8 @@ public class UIAnimationStateEditor extends UIElement
 
         sheets.removeIf((v) -> v.id.equals("anchor"));
 
+        sheets.removeIf(sheet -> !this.allMode && UIReplaysEditor.categoryOf(sheet) != this.category);
+
         /* The state isn't empty by itself - so if the filter empties it, the timeline has to stay (see below). */
         boolean hadTracks = !sheets.isEmpty();
 
@@ -398,14 +395,14 @@ public class UIAnimationStateEditor extends UIElement
         UIReplaysEditorUtils.pruneTree(sheets);
         Set<String> fresh = this.trackTree.groupSheets(sheets, this.bodyParts.getList(), this.expandedTabs, false);
 
-        CategoryFold.settle(sheets, this.expandedTabs, this.category, fresh, this.trackTree.seen(this.expandedTabs));
+        CategoryFold.settle(sheets, this.expandedTabs, fresh);
 
         /*
          * Filtering every track off used to drop the timeline itself, and the track filter lives in its
          * context menu - so «disable all» locked the user out of the only way back. Keep the (empty)
          * timeline whenever the state had tracks before the filter ran; the dope sheet says why it's blank.
          */
-        if (!sheets.isEmpty() || hadTracks)
+        if (!sheets.isEmpty() || hadTracks || !this.allMode)
         {
             this.keyframeEditor = new UIKeyframeEditor((consumer) -> new UIAnimationStateKeyframes(this.editor, consumer)).target(this.editArea);
             this.keyframeEditor.relative(this.timelineArea).x(CATEGORY_BAR_WIDTH).w(1F, -CATEGORY_BAR_WIDTH).h(1F);
@@ -524,6 +521,8 @@ public class UIAnimationStateEditor extends UIElement
     {
         this.partSelection.focus(entry.path());
         this.revealedSearchTrack = entry;
+        /* A tab that doesn't hold the track switches to the one that does; all tracks hold it already. */
+        if (!this.allMode) this.category = UIReplaysEditor.categoryOf(TrackId.parse(entry.key()), true);
         this.setState(this.state);
         return this.keyframeEditor != null
             && UIReplaysEditorUtils.revealSearchTrack(this.keyframeEditor, entry, createKeyframe, this.getContext());
@@ -647,6 +646,14 @@ public class UIAnimationStateEditor extends UIElement
 
     private void pickFormBone(Form form, String bone, boolean insert)
     {
+        /* A bone's tracks are Form's: another tab is left for it first, so the part's owner opens
+         * on the timeline that shows it. */
+        if (!this.allMode && this.category != TrackCategory.FORM && form != null
+            && (!(form instanceof IPosedForm) || (bone != null && !bone.isEmpty())))
+        {
+            this.setCategory(TrackCategory.FORM);
+        }
+
         this.selectForm(form);
         UIReplaysEditorUtils.pickForm(this.keyframeEditor, this.editor, form, bone, insert);
     }
@@ -835,7 +842,7 @@ public class UIAnimationStateEditor extends UIElement
 
         Form root = FormUtils.getRoot(this.editor.form);
         MatrixCache map = FormUtilsClient.getRenderer(root).collectMatrices(this.editor.renderer.getTargetEntity(), transition);
-        Matrix4f matrix = ownFrame ? map.get(bone.a).matrix() : map.get(bone.a).origin();
+        Matrix4f matrix = map.get(bone.a).placement(ownFrame);
 
         return matrix == null ? Matrices.EMPTY_4F : matrix;
     }

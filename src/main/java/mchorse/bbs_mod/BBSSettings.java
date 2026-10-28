@@ -21,6 +21,7 @@ import mchorse.bbs_mod.settings.values.ui.ValueMotionPath;
 import mchorse.bbs_mod.settings.values.ui.ValueOnionSkin;
 import mchorse.bbs_mod.settings.values.ui.ValueOrder;
 import mchorse.bbs_mod.settings.values.ui.ValueStringKeys;
+import mchorse.bbs_mod.settings.values.ui.ValueThemes;
 import mchorse.bbs_mod.settings.values.ui.ValueTrackStyles;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.MathUtils;
@@ -32,8 +33,8 @@ import mchorse.bbs_mod.utils.keyframes.KeyframeStyle;
 
 public class BBSSettings {
 
-	public static final String DEFAULT_FFMPEG_ARGUMENTS = "-f rawvideo -pix_fmt bgr24 -s %WIDTH%x%HEIGHT% -r %FPS% -i - -vf %FILTERS% -c:v libx264 -preset ultrafast -tune zerolatency -qp 18 -pix_fmt yuv420p %NAME%.mp4";
-	public static final String DEFAULT_AUDIO_FFMPEG_ARGUMENTS = "-f rawvideo -pix_fmt bgr24 -s %WIDTH%x%HEIGHT% -r %FPS% -i - -i %AUDIO_TRACK% -vf %FILTERS% -c:v libx264 -preset ultrafast -tune zerolatency -qp 18 -pix_fmt yuv420p -c:a aac -b:a 128k -shortest %NAME%.mp4";
+	public static final String DEFAULT_FFMPEG_ARGUMENTS = "-f rawvideo -pix_fmt bgr24 -s %WIDTH%x%HEIGHT% -r %FPS% -i - -vf %FILTERS%,scale=out_color_matrix=bt709 -c:v libx264 -preset ultrafast -tune zerolatency -qp 18 -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 %NAME%.mp4";
+	public static final String DEFAULT_AUDIO_FFMPEG_ARGUMENTS = "-f rawvideo -pix_fmt bgr24 -s %WIDTH%x%HEIGHT% -r %FPS% -i - -i %AUDIO_TRACK% -vf %FILTERS%,scale=out_color_matrix=bt709 -c:v libx264 -preset ultrafast -tune zerolatency -qp 18 -pix_fmt yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -c:a aac -b:a 128k -shortest %NAME%.mp4";
 	public static final String DEFAULT_MUX_FFMPEG_ARGUMENTS = "-y -i %VIDEO% -i %AUDIO_TRACK% -map 0:v:0 -map 1:a:0 -c:v copy -c:a aac -b:a 192k -shortest %NAME%.mp4";
 
 	public static ValueColors favoriteColors;
@@ -101,9 +102,8 @@ public class BBSSettings {
 	public static ValueInt keystrokeOffset;
 	public static ValueInt keystrokeMode;
 
-	/* First run: the welcome screen shows once, and each tour chapter is ticked off by its id */
+	/* First run: the welcome screen shows once */
 	public static ValueBoolean onboardingWelcomeSeen;
-	public static ValueStringKeys onboardingToursDone;
 
 	public static ValueLink backgroundImage;
 	public static ValueInt backgroundColor;
@@ -136,6 +136,7 @@ public class BBSSettings {
 	public static ValueBoolean videoMuteAudioWhileRender;
 	public static ValueInt videoMotionBlur;
 	public static ValueInt videoHeldFrames;
+	public static ValueInt videoShutter;
 	public static ValueFloat videoDelay;
 	public static ValueBoolean videoOpenFolderAfterExport;
 	public static ValueBoolean videoPlaySoundAfterExport;
@@ -167,6 +168,7 @@ public class BBSSettings {
 	public static ValueBoolean editorOrbitAxisOrtho;
 	public static ValueMotionPath editorMotionPath;
 	public static ValueBoolean editorOrbitTeleportOnSwitch;
+	public static ValueBoolean editorOrbitAttached;
 	public static ValueFloat editorCameraSmoothness;
 	public static ValueInt editorCameraMode;
 	public static ValueBoolean editorPlayerFollowsCamera;
@@ -190,6 +192,8 @@ public class BBSSettings {
 	public static ValueBoolean editorStopPlaybackOnScrub;
 	public static ValueBoolean editorSnapToTicks;
 	public static ValueBoolean timelineAllBodyParts;
+	/** Whether a section heading sums up its tracks' keys as marks that edit their whole column. */
+	public static ValueBoolean timelineSectionSummary;
 	public static ValueBoolean editorRestartOnSeek;
 	public static ValueBoolean editorHorizontalClipEditor;
 	public static ValueBoolean editorMinutesBackup;
@@ -241,6 +245,9 @@ public class BBSSettings {
 	public static ValueBoolean damageControl;
 
 	public static ValueInt secondaryColor;
+	public static ValueInt textColor;
+	public static ValueFloat interfaceContrast;
+	public static ValueThemes customThemes;
 	public static ValueFloat overlayBackgroundOpacity;
 	public static ValueBoolean interfaceShadows;
 	public static ValueBoolean interfaceHighlights;
@@ -250,6 +257,7 @@ public class BBSSettings {
 
 	public static ValueBoolean shaderCurvesEnabled;
 	public static ValueBoolean translucencyQueue;
+	public static ValueBoolean particlesDepthSorting;
 
 	public static ValueBoolean audioWaveformVisibleInPreview;
 	public static ValueBoolean audioWaveformVisibleInKeyframes;
@@ -260,6 +268,8 @@ public class BBSSettings {
 	public static ValueBoolean audioWaveformFilename;
 	public static ValueBoolean audioWaveformTime;
 	public static ValueBoolean audioWaveformPreviewCombined;
+	public static ValueInt audioEditorPrimaryColor;
+	public static ValueInt audioEditorSecondaryColor;
 
 	public static ValueString cdnUrl;
 	public static ValueString cdnToken;
@@ -289,6 +299,8 @@ public class BBSSettings {
 	 * #1d1d1d, tinted faintly blue — a tint every rung carries through. The step
 	 * is deliberately small: depth should be felt rather than announced, and a
 	 * dark interface that stays dark is easier to sit in front of for hours.
+	 * The contrast setting scales every step at once, so the ladder can go
+	 * flatter or more layered without its levels changing places.
 	 */
 	private static final int DEFAULT_SECONDARY_COLOR = 0x171b22;
 	private static final float SURFACE_STEP = 0.022F;
@@ -316,6 +328,7 @@ public class BBSSettings {
 
 	/** The colour {@link #SURFACES} was derived from; -1 is no colour, so the first read builds. */
 	private static int surfaceSource = -1;
+	private static float surfaceContrast = 1F;
 	private static boolean lightSurfaces;
 
 	public static int primaryColor()
@@ -334,15 +347,16 @@ public class BBSSettings {
 	}
 
 	/**
-	 * Rebuild the ladder, but only when the secondary colour actually moved —
-	 * surfaces are asked for many times a frame, and the conversion is a
-	 * handful of cube roots.
+	 * Rebuild the ladder, but only when the secondary colour or the contrast
+	 * actually moved — surfaces are asked for many times a frame, and the
+	 * conversion is a handful of cube roots.
 	 */
 	private static void buildSurfaces()
 	{
 		int color = secondaryColor == null ? DEFAULT_SECONDARY_COLOR : secondaryColor.get() & Colors.RGB;
+		float contrast = interfaceContrast == null ? 1F : interfaceContrast.get();
 
-		if (color == surfaceSource)
+		if (color == surfaceSource && contrast == surfaceContrast)
 		{
 			return;
 		}
@@ -351,11 +365,12 @@ public class BBSSettings {
 
 		for (int i = 0; i < SURFACES.length; i++)
 		{
-			SURFACES[i] = SURFACE_OKLAB.toRGB(SURFACE_OKLAB.l + SURFACE_OFFSETS[i]);
+			SURFACES[i] = SURFACE_OKLAB.toRGB(SURFACE_OKLAB.l + SURFACE_OFFSETS[i] * contrast);
 		}
 
 		lightSurfaces = SURFACE_OKLAB.l > LIGHT_SURFACE_LIGHTNESS;
 		surfaceSource = color;
+		surfaceContrast = contrast;
 	}
 
 	private static int surface(int level)
@@ -386,6 +401,18 @@ public class BBSSettings {
 		buildSurfaces();
 
 		return lightSurfaces;
+	}
+
+	/**
+	 * What white text and icons are drawn in: the text colour as picked. Left
+	 * at white on light surfaces it turns black, the way white always did, so
+	 * picking a light background alone keeps the interface readable.
+	 */
+	public static int foregroundColor()
+	{
+		int color = textColor == null ? Colors.RGB : textColor.get() & Colors.RGB;
+
+		return color == Colors.RGB && lightSurfaces() ? 0 : color;
 	}
 
 	public static int chromeSurface()
@@ -738,6 +765,12 @@ public class BBSSettings {
 		builder.category("personalization", Icons.COLOR);
 		primaryColor = builder.getInt("primary_color", DEFAULT_PRIMARY_COLOR).color();
 		secondaryColor = builder.getInt("secondary_color", DEFAULT_SECONDARY_COLOR).color();
+		textColor = builder.getInt("text_color", Colors.RGB).color();
+		interfaceContrast = builder.getFloat("interface_contrast", 1F, 0.25F, 3F).slider();
+		/* Saved and picked from the presets menu in the category's header, see UISettingsOverlayPanel */
+		customThemes = new ValueThemes("custom_themes");
+		customThemes.invisible();
+		builder.register(customThemes);
 		stencilHighlightColor = builder.getInt("stencil_highlight_color", 0x2EFFFFFF).colorAlpha();
 		overlayBackgroundOpacity = builder.getFloat("overlay_background_opacity", DEFAULT_OVERLAY_BACKGROUND_OPACITY, 0F, 1F).slider();
 		interfaceBlur = builder.getBoolean("interface_blur", true);
@@ -760,11 +793,9 @@ public class BBSSettings {
 		enableKeystrokeRendering = builder.getBoolean("keystrokes", false);
 		keystrokeOffset = builder.getInt("keystrokes_offset", 10, 0, 20).slider();
 		keystrokeMode = builder.getInt("keystrokes_position", 1);
-		/* Both stay visible: the settings page draws them as the buttons that bring the
-		 * welcome screen and the tours back, see UISettingsLayout */
+		/* Stays visible: the settings page draws it as the button that brings the
+		 * welcome screen back, see UISettingsLayout */
 		onboardingWelcomeSeen = builder.getBoolean("welcome_seen", false);
-		onboardingToursDone = new ValueStringKeys("tours_done");
-		builder.register(onboardingToursDone);
 
 		/* Viewport */
 		builder.category("transformation", Icons.SCALE);
@@ -818,6 +849,8 @@ public class BBSSettings {
 		editorOrbitGizmoScale = builder.getFloat("orbit_gizmo_scale", 0.75F, 0.5F, 2F).slider();
 		editorOrbitAxisOrtho = builder.getBoolean("orbit_axis_ortho", true);
 		editorOrbitTeleportOnSwitch = builder.getBoolean("orbit_teleport_on_switch", true);
+		editorOrbitAttached = builder.getBoolean("orbit_attached", true);
+		editorOrbitAttached.invisible();
 		editorCameraMode = builder.getInt("camera_mode", 0, 0, 5);
 		editorCameraMode.invisible();
 
@@ -862,6 +895,7 @@ public class BBSSettings {
 		listModelPreview = builder.getBoolean("list_model_preview", true);
 		freezeModels = builder.getBoolean("freeze_models", false);
 		translucencyQueue = builder.getBoolean("translucency_queue", false);
+		particlesDepthSorting = builder.getBoolean("particles_depth_sorting", false);
 		multiskinMultiThreaded = builder.getBoolean("multiskin_multithreaded", true);
 		frustumCulling = builder.getBoolean("frustum_culling", true);
 		profilerOverlay = builder.getBoolean("profiler_overlay", false);
@@ -899,6 +933,7 @@ public class BBSSettings {
 		editorStopPlaybackOnScrub = builder.getBoolean("stop_playback_on_scrub", false);
 		editorSnapToTicks = builder.getBoolean("snap_to_ticks", true);
 		timelineAllBodyParts = builder.getBoolean("all_body_parts", false);
+		timelineSectionSummary = builder.getBoolean("section_summary", true);
 		editorRestartOnSeek = builder.getBoolean("restart_on_seek", false);
 		editorHorizontalClipEditor = builder.getBoolean("horizontal_clip_editor", false);
 
@@ -939,6 +974,7 @@ public class BBSSettings {
 		videoMuteAudioWhileRender = builder.getBoolean("mute_audio_while_render", false);
 		videoMotionBlur = builder.getInt("motion_blur", 0, 0, 6);
 		videoHeldFrames = builder.getInt("held_frames", 1, 1, 1000);
+		videoShutter = builder.getInt("shutter", 0, 0, 360).slider();
 		videoDelay = builder.getFloat("delay", 0.5F, 0F, 30F);
 		videoOpenFolderAfterExport = builder.getBoolean("open_folder_after_export", false);
 		videoPlaySoundAfterExport = builder.getBoolean("play_sound_after_export", true);
@@ -958,6 +994,11 @@ public class BBSSettings {
 		audioWaveformFilename = builder.getBoolean("waveform_filename", false);
 		audioWaveformTime = builder.getBoolean("waveform_time", false);
 		audioWaveformPreviewCombined = builder.getBoolean("waveform_preview_combined", false);
+		/* Brushes of the audio editor, picked there */
+		audioEditorPrimaryColor = builder.getInt("editor_primary_color", 0xff5555).color();
+		audioEditorSecondaryColor = builder.getInt("editor_secondary_color", 0x5599ff).color();
+		audioEditorPrimaryColor.invisible();
+		audioEditorSecondaryColor.invisible();
 
 		/* The rest */
 		builder.category("model_blocks", Icons.BLOCK);

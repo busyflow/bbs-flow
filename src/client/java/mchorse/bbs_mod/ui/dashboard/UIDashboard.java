@@ -18,7 +18,6 @@ import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.dashboard.panels.IFlightSupported;
 import mchorse.bbs_mod.ui.dashboard.panels.UIDashboardPanel;
 import mchorse.bbs_mod.ui.dashboard.panels.UIDashboardPanels;
-import mchorse.bbs_mod.ui.dashboard.panels.UIEditorDashboardPanel;
 import mchorse.bbs_mod.ui.dashboard.textures.UITextureManagerPanel;
 import mchorse.bbs_mod.ui.dashboard.utils.UIOrbitCamera;
 import mchorse.bbs_mod.ui.dashboard.utils.UIOrbitCameraKeys;
@@ -33,7 +32,6 @@ import mchorse.bbs_mod.ui.model_blocks.UIModelBlockPanel;
 import mchorse.bbs_mod.ui.model_editor.UIModelEditorPanel;
 import mchorse.bbs_mod.ui.morphing.UIMorphingPanel;
 import mchorse.bbs_mod.ui.onboarding.Onboarding;
-import mchorse.bbs_mod.ui.onboarding.TourAnchors;
 import mchorse.bbs_mod.ui.particles.UIParticleSchemePanel;
 import mchorse.bbs_mod.ui.selectors.UISelectorsOverlayPanel;
 import mchorse.bbs_mod.ui.utility.UIUtilityOverlayPanel;
@@ -102,7 +100,6 @@ public class UIDashboard extends UIBaseMenu
             }
 
             this.copyCurrentEntityCamera();
-            Onboarding.panelShown(e.panel);
         });
         this.panels.full(this.viewport);
         this.registerPanels();
@@ -160,18 +157,11 @@ public class UIDashboard extends UIBaseMenu
                 return;
             }
 
-            /* Just tall enough for the panel's own content, and never taller than the screen -
-             * an overlay only has its position bounded, so an oversized one gets cut off. */
-            int height = Math.min(280, (int) (this.height * 0.9F));
-
-            UIOverlay.addOverlay(this.context, new UIUtilityOverlayPanel(UIKeys.UTILITY_TITLE, null), Math.min(460, (int) (this.width * 0.95F)), height);
+            /* The panel measures itself, to the screen's room */
+            UIOverlay.addOverlay(this.context, new UIUtilityOverlayPanel(UIKeys.UTILITY_TITLE, null));
         });
 
         this.showAnnoyingPopups();
-
-        /* What the tour of this screen points at; the landing card belongs to whichever panel is up */
-        TourAnchors.register("dashboard.taskbar", () -> this.panels.taskBar);
-        TourAnchors.register("dashboard.landing", () -> this.panels.panel instanceof UIEditorDashboardPanel panel && panel.landing != null ? panel.landing.getCard() : null);
     }
 
     private void showAnnoyingPopups()
@@ -192,15 +182,6 @@ public class UIDashboard extends UIBaseMenu
 
     public void copyCurrentEntityCamera()
     {
-        this.orbit.setup(this.getCurrentEntityCamera());
-        this.camera.setup(BBSModClient.getCameraController().camera, 0F);
-    }
-
-    /**
-     * Camera at the eyes of the entity Minecraft is looking through (the player), with the game's FOV
-     */
-    public Camera getCurrentEntityCamera()
-    {
         Entity cameraEntity = MinecraftClient.getInstance().getCameraEntity();
         Vec3d eyePos = cameraEntity.getEyePos();
         Camera camera = new Camera();
@@ -209,7 +190,8 @@ public class UIDashboard extends UIBaseMenu
         camera.rotation.set(MathUtils.toRad(cameraEntity.getPitch()), MathUtils.toRad(cameraEntity.getHeadYaw() - 180), 0);
         camera.fov = MathUtils.toRad(MinecraftClient.getInstance().options.getFov().getValue().floatValue());
 
-        return camera;
+        this.orbit.setup(camera);
+        this.camera.setup(BBSModClient.getCameraController().camera, 0F);
     }
 
     private void cyclePanels()
