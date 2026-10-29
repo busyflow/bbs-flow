@@ -217,6 +217,7 @@ public class Keys
     public static final KeyCombo RECORDING_GROUP_ONLY_POSITION = new KeyCombo("only_position", UIKeys.FILM_GROUPS_ONLY_POSITION, GLFW.GLFW_KEY_7).categoryKey("recording_groups");
     public static final KeyCombo RECORDING_GROUP_ONLY_ROTATION = new KeyCombo("only_rotation", UIKeys.FILM_GROUPS_ONLY_ROTATION, GLFW.GLFW_KEY_8).categoryKey("recording_groups");
     public static final KeyCombo RECORDING_GROUP_POS_ROT = new KeyCombo("pos_rot", UIKeys.FILM_GROUPS_ONLY_POS_ROT, GLFW.GLFW_KEY_9).categoryKey("recording_groups");
+    public static final KeyCombo RECORDING_GROUP_ONLY_HEAD = new KeyCombo("only_head", UIKeys.FILM_GROUPS_ONLY_HEAD, GLFW.GLFW_KEY_0).categoryKey("recording_groups");
     public static final KeyCombo RECORDING_GROUP_OUTSIDE = new KeyCombo("outside", UIKeys.FILM_GROUPS_OUTSIDE, GLFW.GLFW_KEY_R).categoryKey("recording_groups");
 
     /* Model block editor */

@@ -28,6 +28,7 @@ public class ReplayKeyframes extends ValueGroup
 {
     public static final String GROUP_POSITION = "position";
     public static final String GROUP_ROTATION = "rotation";
+    public static final String GROUP_HEAD = "head";
     public static final String GROUP_LEFT_STICK = "lstick";
     public static final String GROUP_RIGHT_STICK = "rstick";
     public static final String GROUP_TRIGGERS = "triggers";
@@ -369,9 +370,15 @@ public class ReplayKeyframes extends ValueGroup
 
     public void record(int tick, IEntity entity, List<String> groups)
     {
+        this.record(tick, entity, groups, 0F);
+    }
+
+    public void record(int tick, IEntity entity, List<String> groups, float yawOffset)
+    {
         boolean empty = groups == null || groups.isEmpty();
         boolean position = empty || groups.contains(GROUP_POSITION);
         boolean rotation = empty || groups.contains(GROUP_ROTATION);
+        boolean head = !empty && groups.contains(GROUP_HEAD);
         boolean leftStick = empty || groups.contains(GROUP_LEFT_STICK);
         boolean rightStick = empty || groups.contains(GROUP_RIGHT_STICK);
         boolean triggers = empty || groups.contains(GROUP_TRIGGERS);
@@ -401,12 +408,15 @@ public class ReplayKeyframes extends ValueGroup
         this.leaning.insert(tick, (double) entity.getLeaningPitch(1F));
         this.roll.insert(tick, (double) entity.getRoll());
 
-        if (rotation)
+        if (rotation || head)
         {
-            this.yaw.insert(tick, (double) entity.getYaw());
+            this.yaw.insert(tick, (double) (entity.getYaw() + yawOffset));
             this.pitch.insert(tick, (double) entity.getPitch());
-            this.headYaw.insert(tick, (double) entity.getHeadYaw());
-            this.bodyYaw.insert(tick, (double) entity.getBodyYaw());
+            this.headYaw.insert(tick, (double) (entity.getHeadYaw() + yawOffset));
+            if (!head || rotation)
+            {
+                this.bodyYaw.insert(tick, (double) (entity.getBodyYaw() + yawOffset));
+            }
         }
 
         float[] sticks = entity.getExtraVariables();
@@ -478,9 +488,14 @@ public class ReplayKeyframes extends ValueGroup
             Replay source = this.getParent() instanceof Replay replay ? replay : actor.replay;
             actor.replay.anchor.setRuntimeValue(source.evaluateAnchor(tick));
         }
+        else if (this.getParent() instanceof Replay replay)
+        {
+            replay.anchor.setRuntimeValue(replay.evaluateAnchor(tick));
+        }
         boolean empty = groups == null || groups.isEmpty();
         boolean position = empty || !groups.contains(GROUP_POSITION);
-        boolean rotation = empty || !groups.contains(GROUP_ROTATION);
+        boolean head = !empty && groups.contains(GROUP_HEAD);
+        boolean rotation = empty || (!groups.contains(GROUP_ROTATION) && !head);
         boolean leftStick = empty || !groups.contains(GROUP_LEFT_STICK);
         boolean rightStick = empty || !groups.contains(GROUP_RIGHT_STICK);
         boolean triggers = empty || !groups.contains(GROUP_TRIGGERS);
@@ -524,6 +539,14 @@ public class ReplayKeyframes extends ValueGroup
             entity.setPrevYaw((float) yyaw.y);
             entity.setPrevPitch((float) ppitch.y);
             entity.setPrevHeadYaw((float) hheadYaw.y);
+            entity.setPrevBodyYaw((float) bbodyYaw.y);
+        }
+        else if (head)
+        {
+            KeyframeSegment<Double> bodyYaw = this.bodyYaw.findSegment(tick);
+            Vector2d bbodyYaw = this.getPrev(bodyYaw, this.bodyYaw.interpolate(tick - 1), tick);
+
+            entity.setBodyYaw((float) bbodyYaw.x);
             entity.setPrevBodyYaw((float) bbodyYaw.y);
         }
 

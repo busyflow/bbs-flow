@@ -26,6 +26,7 @@ public class UIRecordOverlayPanel extends UIMessageOverlayPanel
     public UIIcon position;
     public UIIcon rotation;
     public UIIcon posRot;
+    public UIIcon head;
 
     public UIElement bar;
 
@@ -46,6 +47,7 @@ public class UIRecordOverlayPanel extends UIMessageOverlayPanel
         this.position = new UIIcon(Icons.ALL_DIRECTIONS, (b) -> this.submit(Arrays.asList(ReplayKeyframes.GROUP_POSITION)));
         this.rotation = new UIIcon(Icons.REFRESH, (b) -> this.submit(Arrays.asList(ReplayKeyframes.GROUP_ROTATION)));
         this.posRot = new UIIcon(Icons.FULLSCREEN, (b) -> this.submit(Arrays.asList(ReplayKeyframes.GROUP_POSITION, ReplayKeyframes.GROUP_ROTATION)));
+        this.head = new UIIcon(Icons.USER, (b) -> this.submit(Arrays.asList(ReplayKeyframes.GROUP_HEAD)));
 
         this.all.tooltip(UIKeys.FILM_GROUPS_ALL);
         this.left.tooltip(UIKeys.FILM_GROUPS_LEFT_STICK);
@@ -56,6 +58,7 @@ public class UIRecordOverlayPanel extends UIMessageOverlayPanel
         this.position.tooltip(UIKeys.FILM_GROUPS_ONLY_POSITION);
         this.rotation.tooltip(UIKeys.FILM_GROUPS_ONLY_ROTATION);
         this.posRot.tooltip(UIKeys.FILM_GROUPS_ONLY_POS_ROT);
+        this.head.tooltip(UIKeys.FILM_GROUPS_ONLY_HEAD);
 
         List<UIElement> buttons = new ArrayList<>();
 
@@ -68,6 +71,7 @@ public class UIRecordOverlayPanel extends UIMessageOverlayPanel
         buttons.add(this.position);
         buttons.add(this.rotation);
         buttons.add(this.posRot);
+        buttons.add(this.head);
 
         this.bar = UI.row(buttons.toArray(new UIElement[0]));
 
@@ -85,6 +89,7 @@ public class UIRecordOverlayPanel extends UIMessageOverlayPanel
         this.keys().register(Keys.RECORDING_GROUP_ONLY_POSITION, this.position::clickItself);
         this.keys().register(Keys.RECORDING_GROUP_ONLY_ROTATION, this.rotation::clickItself);
         this.keys().register(Keys.RECORDING_GROUP_POS_ROT, this.posRot::clickItself);
+        this.keys().register(Keys.RECORDING_GROUP_ONLY_HEAD, this.head::clickItself);
     }
 
     public void submit(List<String> groups)

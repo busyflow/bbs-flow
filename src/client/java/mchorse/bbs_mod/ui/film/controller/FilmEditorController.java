@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.ui.film.controller;
 
+import mchorse.bbs_mod.film.FilmMatrices;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.film.BaseFilmController;
 import mchorse.bbs_mod.film.FilmEntityRenderer;
@@ -16,12 +17,15 @@ import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.ui.ValueOnionSkin;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditorUtils;
 import mchorse.bbs_mod.utils.CollectionUtils;
+import mchorse.bbs_mod.utils.PlayerUtils;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.utils.profiler.BBSProfiler;
 import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import mchorse.bbs_mod.utils.keyframes.KeyframeSegment;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
+import net.minecraft.client.network.ClientPlayerEntity;
+import org.joml.Vector3d;
 
 import java.util.List;
 import java.util.Map;
@@ -105,9 +109,30 @@ public class FilmEditorController extends BaseFilmController
             replay.applyClientActions(ticks, entity, this.film);
         }
 
+        if (entity == this.controller.getControlled())
+        {
+            Vector3d anchoredPos = FilmMatrices.getAnchoredPosition(this.entities, entity, replay, 0F);
+
+            if (anchoredPos != null)
+            {
+                entity.setPosition(anchoredPos.x, anchoredPos.y, anchoredPos.z);
+                entity.setPrevX(anchoredPos.x);
+                entity.setPrevY(anchoredPos.y);
+                entity.setPrevZ(anchoredPos.z);
+
+                if (entity instanceof MCEntity mcEntity && mcEntity.getMcEntity() instanceof ClientPlayerEntity clientPlayer)
+                {
+                    PlayerUtils.teleport(anchoredPos.x, anchoredPos.y, anchoredPos.z, clientPlayer.getYaw(), clientPlayer.getBodyYaw(), clientPlayer.getPitch());
+                }
+            }
+        }
+
         if (entity == this.controller.getControlled() && this.controller.isRecording() && this.controller.panel.getRunner().isRunning())
         {
-            replay.keyframes.record(this.controller.panel.getCursor(), entity, groups);
+            Float anchorYaw = FilmMatrices.getAnchorYaw(this.entities, entity, replay, 0F);
+            float yawOffset = anchorYaw != null ? -anchorYaw : 0F;
+
+            replay.keyframes.record(this.controller.panel.getCursor(), entity, groups, yawOffset);
         }
 
         ticks = this.getTick() + (this.controller.panel.getRunner().isRunning() ? 1 : 0);

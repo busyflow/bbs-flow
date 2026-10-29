@@ -16,6 +16,7 @@ import mchorse.bbs_mod.cubic.ik.ModelIKRuntime;
 import mchorse.bbs_mod.data.DataStorageUtils;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.film.Film;
+import mchorse.bbs_mod.film.FilmMatrices;
 import mchorse.bbs_mod.film.IKBake;
 import mchorse.bbs_mod.film.replays.tracks.TrackCatalog;
 import mchorse.bbs_mod.film.replays.tracks.TimelineBodyPartSelection;
@@ -1804,6 +1805,18 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         if (this.filmPanel.getData() == null)
         {
             return;
+        }
+
+        Replay replay = this.getReplay();
+        if (replay != null)
+        {
+            IEntity entity = this.filmPanel.getController().getCurrentEntity();
+            org.joml.Vector3d pos = FilmMatrices.getAnchoredPosition(this.filmPanel.getController().getEntities(), entity, replay, 0F);
+            if (pos != null)
+            {
+                PlayerUtils.teleport(pos.x, pos.y, pos.z);
+                return;
+            }
         }
 
         PlayerUtils.teleportToReplay(this.getReplay(), this.filmPanel.getCursor());

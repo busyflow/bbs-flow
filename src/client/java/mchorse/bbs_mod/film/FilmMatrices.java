@@ -46,15 +46,85 @@ import org.joml.Vector3f;
  */
 public class FilmMatrices
 {
+    public static java.util.function.Function<IEntity, Anchor> anchorLookup = null;
+
     public static Anchor getAnchor(IEntity entity)
     {
-        return entity instanceof ReplayEntity actor && !actor.replay.relative.get() ? actor.replay.anchor.get() : null;
+        if (entity instanceof ReplayEntity actor && !actor.replay.relative.get())
+        {
+            return actor.replay.anchor.get();
+        }
+
+        if (anchorLookup != null)
+        {
+            Anchor anchor = anchorLookup.apply(entity);
+
+            if (anchor != null)
+            {
+                return anchor;
+            }
+        }
+
+        return null;
     }
 
     public static Anchor getAnchor(IEntity entity, Replay replay)
     {
         return entity instanceof ReplayEntity ? getAnchor(entity)
             : replay == null || replay.relative.get() ? null : replay.anchor.get();
+    }
+
+    public static Vector3d getAnchoredPosition(Map<String, IEntity> entities, IEntity entity, Replay replay, float transition)
+    {
+        if (entity == null)
+        {
+            return null;
+        }
+
+        Anchor anchor = getAnchor(entity, replay);
+
+        if (anchor == null || !anchor.hasTarget() || !anchor.inheritPosition)
+        {
+            return null;
+        }
+
+        Matrix4f matrix = getAnchorMatrix(entities, entity, replay, 0D, 0D, 0D, transition, anchor);
+
+        if (matrix != null)
+        {
+            Vector3f translation = matrix.getTranslation(new Vector3f());
+
+            return new Vector3d(translation.x, translation.y, translation.z);
+        }
+
+        return null;
+    }
+
+    public static Float getAnchorYaw(Map<String, IEntity> entities, IEntity entity, Replay replay, float transition)
+    {
+        if (entity == null)
+        {
+            return null;
+        }
+
+        Anchor anchor = getAnchor(entity, replay);
+
+        if (anchor == null || !anchor.hasTarget() || !anchor.inheritRotation)
+        {
+            return null;
+        }
+
+        Matrix4f matrix = getAnchorMatrix(entities, entity, replay, 0D, 0D, 0D, transition, anchor);
+
+        if (matrix != null)
+        {
+            Vector3f dir = new Vector3f(0, 0, 1);
+            matrix.transformDirection(dir);
+
+            return (float) Math.toDegrees(Math.atan2(-dir.x, dir.z));
+        }
+
+        return null;
     }
 
     /** Full linear frame of a spline's point coordinates, including actor and anchor. */

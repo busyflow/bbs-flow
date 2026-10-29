@@ -1144,6 +1144,7 @@
 	"bbs.ui.film.groups.left_stick": "Left stick",
 	"bbs.ui.film.groups.only_position": "Only position",
 	"bbs.ui.film.groups.only_rotation": "Only rotation",
+	"bbs.ui.film.groups.only_head": "Head Only",
 	"bbs.ui.film.groups.outside": "Outside",
 	"bbs.ui.film.groups.pos_rot": "Position + rotation",
 	"bbs.ui.film.groups.right_stick": "Right stick",

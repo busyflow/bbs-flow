@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.ui.film.controller;
 
+import mchorse.bbs_mod.film.FilmMatrices;
+
 
 import mchorse.bbs_mod.ui.utils.shapes.ShapeControllerOverlay;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIShapeKeysKeyframeFactory;
@@ -632,11 +634,31 @@ public class UIFilmController extends UIElement implements GizmoViewport
                 this.previousEntity = this.controlled;
 
                 player.copy(this.controlled);
-                PlayerUtils.teleport(this.controlled.getX(), this.controlled.getY(), this.controlled.getZ(), this.controlled.getHeadYaw(), this.controlled.getBodyYaw(), this.controlled.getPitch());
+
+                Vector3d anchoredPos = FilmMatrices.getAnchoredPosition(entities, this.controlled, this.getReplay(), 0F);
+                double tpX = anchoredPos != null ? anchoredPos.x : this.controlled.getX();
+                double tpY = anchoredPos != null ? anchoredPos.y : this.controlled.getY();
+                double tpZ = anchoredPos != null ? anchoredPos.z : this.controlled.getZ();
+
+                PlayerUtils.teleport(tpX, tpY, tpZ, this.controlled.getHeadYaw(), this.controlled.getBodyYaw(), this.controlled.getPitch());
+                player.setPosition(tpX, tpY, tpZ);
+                player.setPrevX(tpX);
+                player.setPrevY(tpY);
+                player.setPrevZ(tpZ);
+
                 entities.put(CollectionUtils.getKey(entities, this.controlled), player);
 
                 this.controlled = player;
             }
+        }
+
+        if (this.controlled != null)
+        {
+            FilmMatrices.anchorLookup = (e) -> (e == this.controlled && this.getReplay() != null && !this.getReplay().relative.get()) ? this.getReplay().anchor.get() : null;
+        }
+        else
+        {
+            FilmMatrices.anchorLookup = null;
         }
 
         this.setMouseMode(this.mouse.getMode());

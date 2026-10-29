@@ -68,7 +68,11 @@ public class FilmKeyframeInsertion
 
         BaseValue.edit(replay.keyframes, (keyframes) ->
         {
-            keyframes.record(this.controller.getTick(), this.controller.getCurrentEntity(), groups);
+            IEntity currentEntity = this.controller.getCurrentEntity();
+            Float anchorYaw = mchorse.bbs_mod.film.FilmMatrices.getAnchorYaw(this.controller.getEntities(), currentEntity, replay, 0F);
+            float yawOffset = anchorYaw != null ? -anchorYaw : 0F;
+
+            keyframes.record(this.controller.getTick(), currentEntity, groups, yawOffset);
         });
     }
 
