@@ -76,7 +76,7 @@ public class KeyCombo
 
     public int getMainKey()
     {
-        return this.keys.isEmpty() ? -1 : this.keys.get(0);
+        return this.keys.isEmpty() ? 0 : this.keys.get(0);
     }
 
     /**

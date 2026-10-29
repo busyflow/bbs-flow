@@ -17,7 +17,6 @@ import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.ui.ValueOnionSkin;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditorUtils;
 import mchorse.bbs_mod.utils.CollectionUtils;
-import mchorse.bbs_mod.utils.PlayerUtils;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.utils.profiler.BBSProfiler;
@@ -122,7 +121,14 @@ public class FilmEditorController extends BaseFilmController
 
                 if (entity instanceof MCEntity mcEntity && mcEntity.getMcEntity() instanceof ClientPlayerEntity clientPlayer)
                 {
-                    PlayerUtils.teleport(anchoredPos.x, anchoredPos.y, anchoredPos.z, clientPlayer.getYaw(), clientPlayer.getBodyYaw(), clientPlayer.getPitch());
+                    clientPlayer.setPos(anchoredPos.x, anchoredPos.y, anchoredPos.z);
+                    clientPlayer.prevX = anchoredPos.x;
+                    clientPlayer.prevY = anchoredPos.y;
+                    clientPlayer.prevZ = anchoredPos.z;
+                    clientPlayer.lastRenderX = anchoredPos.x;
+                    clientPlayer.lastRenderY = anchoredPos.y;
+                    clientPlayer.lastRenderZ = anchoredPos.z;
+                    clientPlayer.setVelocity(0, 0, 0);
                 }
             }
         }
