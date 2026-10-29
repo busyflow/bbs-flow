@@ -244,6 +244,7 @@ public class BBSSettings {
 
 	public static ValueBoolean damageControl;
 	public static ValueBoolean editorOrbitAutoRotate;
+	public static ValueBoolean editorOrbitBodyPartAnchor;
 
 	public static ValueInt secondaryColor;
 	public static ValueInt textColor;
@@ -1017,5 +1018,6 @@ public class BBSSettings {
 		shaderCurvesEnabled = builder.getBoolean("shader_curves", true);
 		entitySelectorsPropertyWhitelist = builder.getString("entity_selectors_whitelist", "CustomName,Name");
 		editorOrbitAutoRotate = builder.getBoolean("orbit_auto_rotate", true);
+		editorOrbitBodyPartAnchor = builder.getBoolean("orbit_body_part_anchor", false);
 	}
 }

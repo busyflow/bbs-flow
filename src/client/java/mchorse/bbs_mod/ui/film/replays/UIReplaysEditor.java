@@ -548,6 +548,11 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         return this.replay;
     }
 
+    public String getActiveBodyPart()
+    {
+        return this.partSelection == null ? "" : this.partSelection.activePart;
+    }
+
     /** The parts list picked the parts the timeline shows; the one clicked opens. */
     private void selectBodyParts(List<UIForms.FormEntry> parts)
     {

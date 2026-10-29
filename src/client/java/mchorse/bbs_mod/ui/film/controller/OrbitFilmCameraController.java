@@ -1,6 +1,7 @@
 package mchorse.bbs_mod.ui.film.controller;
 
 import java.util.Map;
+import java.util.Objects;
 
 import org.joml.Matrix4f;
 import org.joml.Vector3d;
@@ -9,6 +10,7 @@ import org.joml.Vector3f;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.camera.Camera;
 import mchorse.bbs_mod.film.FilmMatrices;
+import mchorse.bbs_mod.film.FilmTarget;
 import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.Form;
@@ -19,6 +21,7 @@ import mchorse.bbs_mod.forms.renderers.utils.MatrixCache;
 import mchorse.bbs_mod.forms.renderers.utils.MatrixCacheEntry;
 import mchorse.bbs_mod.forms.FormUtilsClient;
 import mchorse.bbs_mod.ui.framework.UIContext;
+import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.ui.utils.Area;
 import mchorse.bbs_mod.ui.utils.camera.OrbitViewportController;
 import mchorse.bbs_mod.utils.MatrixStackUtils;
@@ -45,6 +48,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
      */
     private Replay anchorReplay;
     private boolean wasAutoRotateDisabled;
+    private String lastTargetKey = "root";
 
     public OrbitFilmCameraController(UIFilmController controller)
     {
@@ -140,6 +144,119 @@ public class OrbitFilmCameraController extends OrbitViewportController
         this.updateAnchor(this.getCurrentTransition());
     }
 
+    public boolean isAnchorBodyPart()
+    {
+        return BBSSettings.editorOrbitBodyPartAnchor.get();
+    }
+
+    public void toggleAnchorBodyPart()
+    {
+        BBSSettings.editorOrbitBodyPartAnchor.set(!BBSSettings.editorOrbitBodyPartAnchor.get());
+
+        this.updateAnchor(this.getCurrentTransition());
+    }
+
+    private String getAnchorTargetKey(Replay replay, IEntity entity)
+    {
+        if (replay == null || entity == null || !BBSSettings.editorOrbitBodyPartAnchor.get())
+        {
+            return "root";
+        }
+
+        Anchor anchor = FilmMatrices.getAnchor(entity, replay);
+
+        if (anchor != null && anchor.hasTarget())
+        {
+            return "anchor:" + anchor.replay + ":" + anchor.attachment;
+        }
+
+        Pair<String, TransformSpace> bone = this.controller.getBone();
+
+        if (bone != null && !bone.a.isEmpty())
+        {
+            return "bone:" + bone.a;
+        }
+
+        FilmTarget editTarget = this.controller.getEditTarget();
+
+        if (editTarget.is(FilmTarget.Kind.BONE) && editTarget.bone() != null && !editTarget.bone().isEmpty())
+        {
+            return "bone:" + editTarget.bone();
+        }
+
+        if (this.controller.panel.replayEditor != null)
+        {
+            String activePart = this.controller.panel.replayEditor.getActiveBodyPart();
+
+            if (activePart != null && !activePart.isEmpty())
+            {
+                return "part:" + activePart;
+            }
+        }
+
+        return "root";
+    }
+
+    public Matrix4f getTargetAnchorMatrix(Replay replay, IEntity entity, float transition)
+    {
+        if (replay == null || entity == null)
+        {
+            return null;
+        }
+
+        Anchor anchor = FilmMatrices.getAnchor(entity, replay);
+
+        if (anchor != null && anchor.hasTarget())
+        {
+            Matrix4f anchorMatrix = FilmMatrices.getAnchorMatrix(this.controller.getEntities(), entity, replay, 0D, 0D, 0D, transition, anchor);
+
+            if (anchorMatrix != null)
+            {
+                return anchorMatrix;
+            }
+        }
+
+        Pair<String, TransformSpace> bone = this.controller.getBone();
+        String boneName = bone != null ? bone.a : null;
+
+        if (boneName == null || boneName.isEmpty())
+        {
+            FilmTarget editTarget = this.controller.getEditTarget();
+
+            if (editTarget.is(FilmTarget.Kind.BONE))
+            {
+                boneName = editTarget.bone();
+            }
+        }
+
+        if (boneName != null && !boneName.isEmpty())
+        {
+            Matrix4f boneMatrix = FilmMatrices.getBoneCompositeMatrix(this.controller.getEntities(), entity, replay, 0D, 0D, 0D, transition, boneName, true);
+
+            if (boneMatrix != null)
+            {
+                return boneMatrix;
+            }
+        }
+
+        if (this.controller.panel.replayEditor != null)
+        {
+            String activePart = this.controller.panel.replayEditor.getActiveBodyPart();
+
+            if (activePart != null && !activePart.isEmpty())
+            {
+                Matrix4f partMatrix = FilmMatrices.getBoneCompositeMatrix(this.controller.getEntities(), entity, replay, 0D, 0D, 0D, transition, activePart, true);
+
+                if (partMatrix != null)
+                {
+                    return partMatrix;
+                }
+            }
+        }
+
+        return null;
+    }
+
     @Override
     protected void updateAnchor(float transition)
     {
@@ -163,8 +280,12 @@ public class OrbitFilmCameraController extends OrbitViewportController
             }
         }
 
-        if (target != this.anchorReplay)
+        String targetKey = this.getAnchorTargetKey(target, entity);
+        boolean keyChanged = !Objects.equals(targetKey, this.lastTargetKey);
+
+        if (target != this.anchorReplay || keyChanged)
         {
+            this.lastTargetKey = targetKey;
             this.rebase(target, entity, transition);
         }
         else if (entity != null)
@@ -203,12 +324,23 @@ public class OrbitFilmCameraController extends OrbitViewportController
      */
     private void writeAnchor(IEntity entity, float transition)
     {
-        Matrix4f matrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, transition);
-        FormRenderer renderer = FormUtilsClient.getRenderer(entity.getForm());
+        Replay replay = this.anchorReplay != null ? this.anchorReplay : this.controller.panel.replayEditor.getReplay();
+        Matrix4f targetMatrix = BBSSettings.editorOrbitBodyPartAnchor.get() ? this.getTargetAnchorMatrix(replay, entity, transition) : null;
+        Matrix4f matrix;
 
-        if (renderer != null)
+        if (targetMatrix != null)
         {
-            matrix.mul(renderer.createMatrix(renderer.createTransform()));
+            matrix = new Matrix4f(targetMatrix);
+        }
+        else
+        {
+            matrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, transition);
+            FormRenderer renderer = FormUtilsClient.getRenderer(entity.getForm());
+
+            if (renderer != null)
+            {
+                matrix.mul(renderer.createMatrix(renderer.createTransform()));
+            }
         }
 
         Vector3f translation = matrix.getTranslation(new Vector3f());
@@ -265,6 +397,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
 
         this.anchorReplay = null;
         this.wasAutoRotateDisabled = false;
+        this.lastTargetKey = "root";
     }
 
     /**
@@ -285,6 +418,20 @@ public class OrbitFilmCameraController extends OrbitViewportController
         if (entity == null)
         {
             return null;
+        }
+
+        Replay replay = this.controller.panel.replayEditor.getReplay();
+
+        if (BBSSettings.editorOrbitBodyPartAnchor.get() && replay != null)
+        {
+            Matrix4f targetMatrix = this.getTargetAnchorMatrix(replay, entity, transition);
+
+            if (targetMatrix != null)
+            {
+                Vector3f pos = targetMatrix.getTranslation(new Vector3f());
+
+                return new Vector3d(pos.x, pos.y, pos.z);
+            }
         }
 
         Form form = entity.getForm();

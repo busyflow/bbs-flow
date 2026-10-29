@@ -191,6 +191,7 @@ public class UIFilmPreview extends UIElement
             {
                 menu.action(Icons.MOVE_TO, UIKeys.FILM_REPLAY_ORBIT_TELEPORT_TO_RECORDING, controller::teleportOrbitPivotToReplay);
                 menu.action(Icons.LINK, UIKeys.FILM_CONTROLLER_KEYS_ATTACH_ORBIT, controller.orbit.isAttached(), controller::toggleOrbitAttachment);
+                menu.action(Icons.POSE, UIKeys.FILM_CONTROLLER_KEYS_ORBIT_BODY_PART, controller.orbit.isAnchorBodyPart(), controller::toggleOrbitAnchorBodyPart);
                 menu.action(Icons.FRUSTUM, UIKeys.FILM_CONTROLLER_KEYS_TOGGLE_ORTHO, controller.orbit.isOrtho(), controller.orbit::toggleOrtho);
             }
         });
