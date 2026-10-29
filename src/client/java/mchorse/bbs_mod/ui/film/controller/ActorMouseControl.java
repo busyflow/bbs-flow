@@ -142,6 +142,8 @@ public class ActorMouseControl
         int invert = options.getInvertYMouse().getValue() ? -1 : 1;
 
         mc.player.changeLookDirection(cursorDeltaX * scale, cursorDeltaY * scale * invert);
+        mc.player.setHeadYaw(mc.player.getYaw());
+        mc.player.prevHeadYaw = mc.player.getYaw();
     }
 
     /** Hides the cursor while driving, so the mouse can travel without hitting the screen edge. */

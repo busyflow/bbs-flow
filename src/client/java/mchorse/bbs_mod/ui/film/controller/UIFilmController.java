@@ -616,7 +616,13 @@ public class UIFilmController extends UIElement implements GizmoViewport
             {
                 this.controlled.setForm(this.playerForm);
 
-                entities.put(CollectionUtils.getKey(entities, this.controlled), this.previousEntity);
+                String key = CollectionUtils.getKey(entities, this.controlled);
+
+                entities.put(key, this.previousEntity);
+                if (this.panel.getRunner() != null && this.panel.getRunner().getContext() != null)
+                {
+                    this.panel.getRunner().getContext().entities.put(key, this.previousEntity);
+                }
                 this.previousEntity = null;
             }
 
@@ -646,7 +652,13 @@ public class UIFilmController extends UIElement implements GizmoViewport
                 player.setPrevY(tpY);
                 player.setPrevZ(tpZ);
 
-                entities.put(CollectionUtils.getKey(entities, this.controlled), player);
+                String key = CollectionUtils.getKey(entities, this.controlled);
+
+                entities.put(key, player);
+                if (this.panel.getRunner() != null && this.panel.getRunner().getContext() != null)
+                {
+                    this.panel.getRunner().getContext().entities.put(key, player);
+                }
 
                 this.controlled = player;
             }
@@ -1115,6 +1127,8 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
     public void startRenderFrame(float tickDelta)
     {
+        this.mouse.trackCursor(this.canControl(), ClientNetwork.isIsBBSModOnServer());
+
         if (this.editorController != null)
         {
             this.editorController.startRenderFrame(tickDelta);
@@ -1153,8 +1167,6 @@ public class UIFilmController extends UIElement implements GizmoViewport
             MotionPath.render(context, motionPath, this, replay, target, replay == null ? 0F : replay.getTick(this.getTick()));
             BBSProfiler.end(BBSProfiler.Timer.MOTION_PATH);
         }
-
-        this.mouse.trackCursor(this.canControl(), ClientNetwork.isIsBBSModOnServer());
 
         RenderSystem.disableDepthTest();
         for (var tool : this.addonTools) tool.renderTool(context);
