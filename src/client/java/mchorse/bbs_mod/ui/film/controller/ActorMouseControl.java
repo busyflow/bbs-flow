@@ -36,6 +36,12 @@ public class ActorMouseControl
 
     private final Vector2f stick = new Vector2f();
     private final Vector2i lastMouse = new Vector2i();
+    private int drivingFrames = 0;
+
+    public void reset()
+    {
+        this.drivingFrames = 0;
+    }
 
     /** The active step of the walk: 0 looks around, 1..5 drive a stick pair. */
     public int getMode()
@@ -105,6 +111,13 @@ public class ActorMouseControl
 
         if (driving)
         {
+            if (this.drivingFrames < 2)
+            {
+                this.drivingFrames++;
+                this.lastMouse.set(x, y);
+                return;
+            }
+
             if (this.isLookMode() && onModdedServer)
             {
                 look(x - this.lastMouse.x, y - this.lastMouse.y);
@@ -118,6 +131,10 @@ public class ActorMouseControl
                 this.stick.x = MathUtils.clamp(this.stick.x, -1F, 1F);
                 this.stick.y = MathUtils.clamp(this.stick.y, -1F, 1F);
             }
+        }
+        else
+        {
+            this.drivingFrames = 0;
         }
 
         this.lastMouse.set(x, y);

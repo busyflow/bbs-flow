@@ -81,6 +81,7 @@ import mchorse.bbs_mod.utils.PlayerUtils;
 import mchorse.bbs_mod.utils.RayTracing;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.option.GameOptions;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.client.util.math.MatrixStack;
@@ -627,6 +628,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
             }
 
             this.controlled = null;
+            this.mouse.reset();
         }
         else if (this.panel.replayEditor.replaysList.replays.isSelected())
         {
@@ -641,16 +643,43 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
                 player.copy(this.controlled);
 
-                Vector3d anchoredPos = FilmMatrices.getAnchoredPosition(entities, this.controlled, this.getReplay(), 0F);
+                float transition = this.panel.getRunner() != null ? this.panel.getRunner().getTransition(this.getCurrentTransition()) : this.getCurrentTransition();
+                Vector3d anchoredPos = FilmMatrices.getAnchoredPosition(entities, this.controlled, this.getReplay(), transition);
                 double tpX = anchoredPos != null ? anchoredPos.x : this.controlled.getX();
                 double tpY = anchoredPos != null ? anchoredPos.y : this.controlled.getY();
                 double tpZ = anchoredPos != null ? anchoredPos.z : this.controlled.getZ();
 
-                PlayerUtils.teleport(tpX, tpY, tpZ, this.controlled.getHeadYaw(), this.controlled.getBodyYaw(), this.controlled.getPitch());
+                Float anchorYaw = FilmMatrices.getAnchorYaw(entities, this.controlled, this.getReplay(), transition);
+                float worldHeadYaw = this.controlled.getHeadYaw() + (anchorYaw != null ? anchorYaw : 0F);
+                float worldBodyYaw = this.controlled.getBodyYaw() + (anchorYaw != null ? anchorYaw : 0F);
+                float pitch = this.controlled.getPitch();
+
+                PlayerUtils.teleport(tpX, tpY, tpZ, worldHeadYaw, worldBodyYaw, pitch);
                 player.setPosition(tpX, tpY, tpZ);
                 player.setPrevX(tpX);
                 player.setPrevY(tpY);
                 player.setPrevZ(tpZ);
+                player.setYaw(worldHeadYaw);
+                player.setHeadYaw(worldHeadYaw);
+                player.setBodyYaw(worldBodyYaw);
+                player.setPitch(pitch);
+                player.setPrevYaw(worldHeadYaw);
+                player.setPrevHeadYaw(worldHeadYaw);
+                player.setPrevBodyYaw(worldBodyYaw);
+                player.setPrevPitch(pitch);
+
+                ClientPlayerEntity mcPlayer = MinecraftClient.getInstance().player;
+                if (mcPlayer != null)
+                {
+                    mcPlayer.setYaw(worldHeadYaw);
+                    mcPlayer.setHeadYaw(worldHeadYaw);
+                    mcPlayer.prevYaw = worldHeadYaw;
+                    mcPlayer.prevHeadYaw = worldHeadYaw;
+                    mcPlayer.setPitch(pitch);
+                    mcPlayer.prevPitch = pitch;
+                }
+
+                this.mouse.reset();
 
                 String key = CollectionUtils.getKey(entities, this.controlled);
 
