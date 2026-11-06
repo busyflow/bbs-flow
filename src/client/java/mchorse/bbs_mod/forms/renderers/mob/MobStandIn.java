@@ -5,6 +5,7 @@ import com.mojang.brigadier.StringReader;
 import mchorse.bbs_mod.forms.entities.EntityState;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.mixin.EntityInvoker;
+import mchorse.bbs_mod.mixin.ILimbAnimatorExtension;
 import mchorse.bbs_mod.mixin.LimbAnimatorAccessor;
 import mchorse.bbs_mod.utils.PlayerUtils;
 import net.minecraft.client.MinecraftClient;
@@ -139,6 +140,10 @@ public class MobStandIn
                 a.setPrevSpeed(b.getPrevSpeed());
                 a.setSpeed(b.getSpeed());
                 a.setPos(b.getPos());
+                if (livingEntity.limbAnimator instanceof ILimbAnimatorExtension extA && source.getLimbAnimator() instanceof ILimbAnimatorExtension extB)
+                {
+                    extA.bbs$setStep(extB.bbs$getStep());
+                }
             }
 
             /* Arm swing */

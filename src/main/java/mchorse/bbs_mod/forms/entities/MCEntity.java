@@ -1,6 +1,7 @@
 package mchorse.bbs_mod.forms.entities;
 
 import mchorse.bbs_mod.cubic.jem.CemVariables;
+import mchorse.bbs_mod.entity.IEntityFormProvider;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.mixin.EntityInvoker;
 import mchorse.bbs_mod.mixin.LivingEntityRollAccessor;
@@ -57,7 +58,17 @@ public class MCEntity implements IEntity
     {
         Morph morph = Morph.getMorph(this.mcEntity);
 
-        return morph == null ? null : morph.getForm();
+        if (morph != null)
+        {
+            return morph.getForm();
+        }
+
+        if (this.mcEntity instanceof IEntityFormProvider provider)
+        {
+            return provider.getForm();
+        }
+
+        return null;
     }
 
     @Override
@@ -68,6 +79,12 @@ public class MCEntity implements IEntity
         if (morph != null)
         {
             morph.setForm(form);
+            return;
+        }
+
+        if (this.mcEntity instanceof IEntityFormProvider provider)
+        {
+            provider.setForm(form);
         }
     }
 

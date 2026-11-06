@@ -3,6 +3,7 @@ package mchorse.bbs_mod.forms.entities;
 import mchorse.bbs_mod.cubic.jem.CemVariables;
 import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.forms.forms.Form;
+import mchorse.bbs_mod.mixin.ILimbAnimatorExtension;
 import mchorse.bbs_mod.mixin.LimbAnimatorAccessor;
 import mchorse.bbs_mod.utils.AABB;
 import mchorse.bbs_mod.utils.interps.Lerps;
@@ -557,12 +558,21 @@ public class StubEntity implements IEntity
         {
             float prevSpeed = accessor.getSpeed();
             float newSpeed = prevSpeed + (speed - prevSpeed) * 0.4F;
+            float step = newSpeed / scale;
             accessor.setPrevSpeed(prevSpeed);
             accessor.setSpeed(newSpeed);
-            accessor.setPos(accessor.getPos() + newSpeed / scale);
+            accessor.setPos(accessor.getPos() + step);
+            if (this.limbAnimator instanceof ILimbAnimatorExtension ext)
+            {
+                ext.bbs$setStep(step);
+            }
         }
         else
         {
+            if (this.limbAnimator instanceof ILimbAnimatorExtension ext)
+            {
+                ext.bbs$setStep(-1F);
+            }
             this.limbAnimator.updateLimbs(speed, 0.4F);
         }
 

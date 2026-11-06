@@ -119,9 +119,14 @@ public class LivingEntityMixin
                 {
                     float prevSpeed = accessor.getSpeed();
                     float newSpeed = prevSpeed + (targetSpeed - prevSpeed) * 0.4F;
+                    float step = newSpeed / scale;
                     accessor.setPrevSpeed(prevSpeed);
                     accessor.setSpeed(newSpeed);
-                    accessor.setPos(accessor.getPos() + newSpeed / scale);
+                    accessor.setPos(accessor.getPos() + step);
+                    if (living.limbAnimator instanceof ILimbAnimatorExtension ext)
+                    {
+                        ext.bbs$setStep(step);
+                    }
                     ci.cancel();
                 }
             }
