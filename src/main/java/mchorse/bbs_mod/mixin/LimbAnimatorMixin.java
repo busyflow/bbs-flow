@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.mixin;
 
+import mchorse.bbs_mod.entity.ILimbAnimatorExtension;
 import net.minecraft.entity.LimbAnimator;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;

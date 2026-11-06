@@ -1,4 +1,4 @@
-package mchorse.bbs_mod.mixin;
+package mchorse.bbs_mod.entity;
 
 public interface ILimbAnimatorExtension
 {

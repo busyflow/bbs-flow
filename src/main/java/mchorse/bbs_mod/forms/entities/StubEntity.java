@@ -3,7 +3,7 @@ package mchorse.bbs_mod.forms.entities;
 import mchorse.bbs_mod.cubic.jem.CemVariables;
 import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.forms.forms.Form;
-import mchorse.bbs_mod.mixin.ILimbAnimatorExtension;
+import mchorse.bbs_mod.entity.ILimbAnimatorExtension;
 import mchorse.bbs_mod.mixin.LimbAnimatorAccessor;
 import mchorse.bbs_mod.utils.AABB;
 import mchorse.bbs_mod.utils.interps.Lerps;

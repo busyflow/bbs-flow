@@ -4,6 +4,7 @@ import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.actions.types.AttackActionClip;
 import mchorse.bbs_mod.actions.types.item.ReleaseUseItemActionClip;
 import mchorse.bbs_mod.entity.IEntityFormProvider;
+import mchorse.bbs_mod.entity.ILimbAnimatorExtension;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.morphing.IMorphProvider;
 import net.minecraft.enchantment.EnchantmentHelper;
