@@ -383,21 +383,57 @@ public abstract class Form extends ValueGroup
         float speed = this.speed.get();
         float stepHeight = this.stepHeight.get();
 
-        if (hp != 20F)
+        var maxHealth = entity.getAttributeInstance(EntityAttributes.GENERIC_MAX_HEALTH);
+        if (maxHealth != null)
         {
-            entity.getAttributeInstance(EntityAttributes.GENERIC_MAX_HEALTH).setBaseValue(hp);
-            entity.setHealth(hp);
+            maxHealth.setBaseValue(hp);
+            if (entity.getHealth() > hp)
+            {
+                entity.setHealth(hp);
+            }
         }
-        if (speed != 0.1F) entity.getAttributeInstance(EntityAttributes.GENERIC_MOVEMENT_SPEED).setBaseValue(speed);
-        if (stepHeight != 0.5F) entity.setStepHeight(stepHeight);
+
+        var movementSpeed = entity.getAttributeInstance(EntityAttributes.GENERIC_MOVEMENT_SPEED);
+        if (movementSpeed != null)
+        {
+            movementSpeed.setBaseValue(speed);
+        }
+
+        entity.setStepHeight(stepHeight);
     }
 
     public void onDemorph(LivingEntity entity)
     {
-        entity.getAttributeInstance(EntityAttributes.GENERIC_MAX_HEALTH).setBaseValue(20F);
-        entity.setHealth(20F);
-        entity.getAttributeInstance(EntityAttributes.GENERIC_MOVEMENT_SPEED).setBaseValue(0.1F);
-        entity.setStepHeight(0.5F);
+        var maxHealth = entity.getAttributeInstance(EntityAttributes.GENERIC_MAX_HEALTH);
+        if (maxHealth != null)
+        {
+            maxHealth.setBaseValue(20F);
+            entity.setHealth(20F);
+        }
+
+        var movementSpeed = entity.getAttributeInstance(EntityAttributes.GENERIC_MOVEMENT_SPEED);
+        if (movementSpeed != null)
+        {
+            movementSpeed.setBaseValue(0.1F);
+        }
+
+        entity.setStepHeight(0.6F);
+    }
+
+    public float getScaleY()
+    {
+        float scale = Math.abs(this.transform.get().scale.y);
+
+        if (this.hitbox.get() && this.hitboxHeight.get() > 0)
+        {
+            float hitboxScale = this.hitboxHeight.get() / 1.8F;
+            if (scale <= 0.0001F || Math.abs(scale - 1F) < 0.0001F)
+            {
+                scale = hitboxScale;
+            }
+        }
+
+        return scale > 0.0001F ? scale : 1F;
     }
 
     /* ID and display name */

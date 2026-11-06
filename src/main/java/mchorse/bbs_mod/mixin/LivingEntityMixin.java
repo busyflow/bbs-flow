@@ -3,6 +3,9 @@ package mchorse.bbs_mod.mixin;
 import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.actions.types.AttackActionClip;
 import mchorse.bbs_mod.actions.types.item.ReleaseUseItemActionClip;
+import mchorse.bbs_mod.entity.IEntityFormProvider;
+import mchorse.bbs_mod.forms.forms.Form;
+import mchorse.bbs_mod.morphing.IMorphProvider;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
@@ -89,6 +92,39 @@ public class LivingEntityMixin
 
                 return clip;
             });
+        }
+    }
+
+    @Inject(method = "updateLimbs(F)V", at = @At("HEAD"), cancellable = true)
+    public void onUpdateLimbs(float posDelta, CallbackInfo ci)
+    {
+        Form form = null;
+        if ((Object) this instanceof IMorphProvider morphProvider && morphProvider.getMorph() != null)
+        {
+            form = morphProvider.getMorph().getForm();
+        }
+        else if ((Object) this instanceof IEntityFormProvider formProvider)
+        {
+            form = formProvider.getForm();
+        }
+
+        if (form != null)
+        {
+            float scale = form.getScaleY();
+            if (Math.abs(scale - 1F) > 0.001F && scale > 0.001F)
+            {
+                float targetSpeed = Math.min(posDelta * 4.0F, 1.0F);
+                LivingEntity living = (LivingEntity) (Object) this;
+                if (living.limbAnimator instanceof LimbAnimatorAccessor accessor)
+                {
+                    float prevSpeed = accessor.getSpeed();
+                    float newSpeed = prevSpeed + (targetSpeed - prevSpeed) * 0.4F;
+                    accessor.setPrevSpeed(prevSpeed);
+                    accessor.setSpeed(newSpeed);
+                    accessor.setPos(accessor.getPos() + newSpeed / scale);
+                    ci.cancel();
+                }
+            }
         }
     }
 

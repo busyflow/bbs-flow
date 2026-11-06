@@ -3,6 +3,7 @@ package mchorse.bbs_mod.forms.entities;
 import mchorse.bbs_mod.cubic.jem.CemVariables;
 import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.forms.forms.Form;
+import mchorse.bbs_mod.mixin.LimbAnimatorAccessor;
 import mchorse.bbs_mod.utils.AABB;
 import mchorse.bbs_mod.utils.interps.Lerps;
 import net.minecraft.entity.EntityPose;
@@ -549,9 +550,21 @@ public class StubEntity implements IEntity
     public void update()
     {
         float delta = (float) MathHelper.magnitude(this.x - this.prevX, 0D, this.z - this.prevZ);
+        float scale = this.form != null ? this.form.getScaleY() : 1F;
         float speed = Math.min(delta * 4F, 1F);
 
-        this.limbAnimator.updateLimbs(speed, 0.4F);
+        if (Math.abs(scale - 1F) > 0.001F && scale > 0.001F && this.limbAnimator instanceof LimbAnimatorAccessor accessor)
+        {
+            float prevSpeed = accessor.getSpeed();
+            float newSpeed = prevSpeed + (speed - prevSpeed) * 0.4F;
+            accessor.setPrevSpeed(prevSpeed);
+            accessor.setSpeed(newSpeed);
+            accessor.setPos(accessor.getPos() + newSpeed / scale);
+        }
+        else
+        {
+            this.limbAnimator.updateLimbs(speed, 0.4F);
+        }
 
         this.armSwing -= 1;
         this.age += 1;

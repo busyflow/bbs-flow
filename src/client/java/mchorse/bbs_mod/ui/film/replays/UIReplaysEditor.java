@@ -614,6 +614,12 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
 
         try
         {
+            boolean wasControlling = this.filmPanel.getController() != null && this.filmPanel.getController().isControlling();
+            if (wasControlling && this.replay != replay)
+            {
+                this.filmPanel.getController().toggleControl();
+            }
+
             this.pendingPick = null;
 
             if (this.replay != replay) this.revealedSearchTrack = null;
@@ -637,6 +643,11 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             if (select && replay != null)
             {
                 this.replaysList.replays.scrollToReplay(replay);
+            }
+
+            if (wasControlling && this.replay != null && !this.filmPanel.getController().isControlling())
+            {
+                this.filmPanel.getController().toggleControl();
             }
         }
         finally
