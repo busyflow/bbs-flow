@@ -74,8 +74,13 @@ public class SplineFormRenderer extends FormRenderer<SplineForm>
                 if (part.getForm() == null) continue;
                 stack.push();
                 MatrixStackUtils.applyTransform(stack, part.transform.get());
-                FormUtilsClient.getRenderer(part.getForm()).collectMatrices(part.getRenderEntity(entity), stack, matrices,
-                    StringUtils.combinePaths(prefix, part.getId()), transition);
+                FormRenderer formRenderer = FormUtilsClient.getRenderer(part.getForm());
+
+                if (formRenderer != null)
+                {
+                    formRenderer.collectMatrices(part.getRenderEntity(entity), stack, matrices,
+                        StringUtils.combinePaths(prefix, part.getId()), transition);
+                }
                 stack.pop();
             }
         }

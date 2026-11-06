@@ -61,7 +61,8 @@
         "CameraInvoker",
         "ParticleManagerInvoker",
         "ParticleManagerMixin",
-        "ParticleMixin"
+        "ParticleMixin",
+        "InventoryScreenMixin"
     ],
     "injectors": {
         "defaultRequire": 1

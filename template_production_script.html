@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Master Production Script Template</title>
+<style>
+  @page {
+    size: letter;
+    margin: 16mm 14mm 16mm 14mm;
+    @bottom-right {
+      content: counter(page);
+    }
+  }
+
+  :root {
+    --joofy-bg: #eafaf1;
+    --joofy-border: #27ae60;
+    --joofy-badge: #1e8449;
+    --joofy-text: #0e3a20;
+
+    --comet-bg: #e8f8f9;
+    --comet-border: #00a8b5;
+    --comet-badge: #00838f;
+    --comet-text: #004d53;
+
+    --police-bg: #edf2f9;
+    --police-border: #244b7a;
+    --police-badge: #1b365d;
+    --police-text: #0d1e38;
+
+    --jimmy-bg: #fff8e7;
+    --jimmy-border: #e67e22;
+    --jimmy-badge: #d35400;
+    --jimmy-text: #6e2c00;
+
+    --brett-bg: #f4ecf7;
+    --brett-border: #8e44ad;
+    --brett-badge: #6c3483;
+    --brett-text: #391849;
+
+    --crim-bg: #fbeee6;
+    --crim-border: #c0392b;
+    --crim-badge: #922b21;
+    --crim-text: #4d1510;
+
+    --sniff-bg: #fef9e7;
+    --sniff-border: #f39c12;
+    --sniff-badge: #b7950b;
+    --sniff-text: #5b4605;
+
+    --other-bg: #f8f9fa;
+    --other-border: #7f8c8d;
+    --other-badge: #5d6d7e;
+    --other-text: #2c3e50;
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1f2937;
+    line-height: 1.45;
+    font-size: 10pt;
+    margin: 0;
+    padding: 0;
+    background-color: #ffffff;
+  }
+
+  /* Document Header */
+  .doc-header {
+    border-bottom: 3px solid #111827;
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .doc-title-box h1 {
+    margin: 0 0 4px 0;
+    font-size: 22pt;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: #0f172a;
+    text-transform: uppercase;
+  }
+  .doc-subtitle {
+    margin: 0;
+    font-size: 11pt;
+    font-weight: 600;
+    color: #4b5563;
+  }
+  .doc-meta-badge {
+    text-align: right;
+    font-size: 8.5pt;
+    font-weight: 700;
+    color: #ffffff;
+    background: #111827;
+    padding: 6px 12px;
+    border-radius: 4px;
+    line-height: 1.3;
+    letter-spacing: 0.5px;
+  }
+
+  /* Setup Grid */
+  .setup-container {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+    break-inside: avoid;
+  }
+  .setup-header {
+    font-size: 10pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: #1e293b;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .setup-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px 16px;
+    font-size: 9pt;
+  }
+  .setup-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .setup-label {
+    font-weight: 700;
+    color: #334155;
+    flex-shrink: 0;
+  }
+  .setup-val {
+    color: #0f172a;
+    background: #e2e8f0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 8.5pt;
+  }
+
+  /* Scene Block */
+  .scene-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    overflow: hidden;
+    break-inside: auto;
+    page-break-inside: auto;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+
+  .scene-header {
+    background: #0f172a;
+    color: #ffffff;
+    padding: 7px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .scene-title-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .scene-num {
+    background: #3b82f6;
+    color: #ffffff;
+    font-size: 8pt;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+  }
+  .scene-location {
+    font-size: 9.5pt;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+  .scene-coords {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 8.5pt;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.12);
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 600;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+  }
+
+  .scene-content {
+    padding: 10px 12px;
+  }
+
+  /* Action / Stage Directions */
+  .action-block {
+    background: #f8fafc;
+    border-left: 3.5px solid #64748b;
+    padding: 7px 10px;
+    margin-bottom: 8px;
+    border-radius: 0 4px 4px 0;
+    font-size: 9pt;
+    color: #334155;
+    font-style: italic;
+    line-height: 1.4;
+    break-inside: avoid;
+  }
+  .action-block strong.lead {
+    font-style: normal;
+    font-weight: 700;
+    color: #0f172a;
+    text-transform: uppercase;
+    font-size: 8pt;
+    margin-right: 4px;
+  }
+
+  .directive-tag {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 7.5pt;
+    font-weight: 800;
+    font-style: normal;
+    text-transform: uppercase;
+    margin-right: 5px;
+    letter-spacing: 0.3px;
+  }
+  .tag-animator { background: #fef08a; color: #854d0e; border: 1px solid #facc15; }
+  .tag-editor { background: #fbcfe8; color: #9d174d; border: 1px solid #f472b6; }
+  .tag-audio { background: #fed7aa; color: #9a3412; border: 1px solid #fb923c; }
+
+  /* Dialogue Container & Items */
+  .dialogue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .dialogue-row {
+    border-radius: 4px;
+    padding: 5px 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 9.5pt;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    line-height: 1.35;
+  }
+
+  .speaker-badge {
+    flex-shrink: 0;
+    min-width: 82px;
+    font-weight: 800;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-align: center;
+  }
+
+  .speaker-text {
+    flex-grow: 1;
+    color: #1e293b;
+  }
+
+  .voice-stage-note {
+    color: #64748b;
+    font-size: 8.5pt;
+    font-style: italic;
+    font-weight: 500;
+    margin-right: 3px;
+  }
+
+  /* Themes by Character */
+  .dialogue-row.char-joofy { background: var(--joofy-bg); border-left: 4px solid var(--joofy-border); }
+  .dialogue-row.char-joofy .speaker-badge { background: var(--joofy-badge); color: #ffffff; }
+  .dialogue-row.char-joofy .speaker-text { color: var(--joofy-text); }
+
+  .dialogue-row.char-comet { background: var(--comet-bg); border-left: 4px solid var(--comet-border); }
+  .dialogue-row.char-comet .speaker-badge { background: var(--comet-badge); color: #ffffff; }
+  .dialogue-row.char-comet .speaker-text { color: var(--comet-text); }
+
+  .dialogue-row.char-police { background: var(--police-bg); border-left: 4px solid var(--police-border); }
+  .dialogue-row.char-police .speaker-badge { background: var(--police-badge); color: #ffffff; }
+  .dialogue-row.char-police .speaker-text { color: var(--police-text); }
+
+  .dialogue-row.char-jimmy { background: var(--jimmy-bg); border-left: 4px solid var(--jimmy-border); }
+  .dialogue-row.char-jimmy .speaker-badge { background: var(--jimmy-badge); color: #ffffff; }
+  .dialogue-row.char-jimmy .speaker-text { color: var(--jimmy-text); }
+
+  .dialogue-row.char-brett { background: var(--brett-bg); border-left: 4px solid var(--brett-border); }
+  .dialogue-row.char-brett .speaker-badge { background: var(--brett-badge); color: #ffffff; }
+  .dialogue-row.char-brett .speaker-text { color: var(--brett-text); }
+
+  .dialogue-row.char-criminal { background: var(--crim-bg); border-left: 4px solid var(--crim-border); }
+  .dialogue-row.char-criminal .speaker-badge { background: var(--crim-badge); color: #ffffff; }
+  .dialogue-row.char-criminal .speaker-text { color: var(--crim-text); }
+
+  .dialogue-row.char-other { background: var(--other-bg); border-left: 4px solid var(--other-border); }
+  .dialogue-row.char-other .speaker-badge { background: var(--other-badge); color: #ffffff; }
+  .dialogue-row.char-other .speaker-text { color: var(--other-text); }
+
+  .page-footer {
+    border-top: 1px solid #e2e8f0;
+    margin-top: 14px;
+    padding-top: 6px;
+    font-size: 8pt;
+    color: #94a3b8;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+  <!-- TOP HEADER -->
+  <div class="doc-header">
+    <div class="doc-title-box">
+      <h1>Grand Theft Minecraft &bull; Part 1</h1>
+      <p class="doc-subtitle">Master Production Script &bull; Settings, Coordinates &amp; Visual Direction</p>
+    </div>
+    <div class="doc-meta-badge">
+      RECORDING READY<br>
+      PART 1 (24 PAGES)
+    </div>
+  </div>
+
+  <!-- SETUP & CHECKLIST -->
+  <div class="setup-container">
+    <div class="setup-header">
+      <span>Pre-Recording Checklist &amp; Core Settings</span>
+      <span style="font-weight: 600; text-transform: none; color: #64748b;">Review before recording</span>
+    </div>
+    <div class="setup-grid">
+      <div class="setup-item">
+        <span class="setup-label">Start Time Command:</span>
+        <span class="setup-val">/time set 6000</span>
+      </div>
+      <div class="setup-item">
+        <span class="setup-label">Starting EXP / Level:</span>
+        <span class="setup-val">Level 0 &bull; 0 EXP</span>
+      </div>
+      <div class="setup-item">
+        <span class="setup-label">Joofy Starting State:</span>
+        <span class="setup-val">Normal Skin &bull; Full HP &bull; Full Hunger</span>
+      </div>
+      <div class="setup-item">
+        <span class="setup-label">Shader Profile:</span>
+        <span class="setup-val">BSL High Profile (GTA Filter)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCENE CARD 1 -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 1</span>
+        <span class="scene-location">BEACH SUNBATHING &bull; OPENING CUTSCENE</span>
+      </div>
+      <span class="scene-coords">XYZ: 1042 64 -320</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">VISUAL ACTION:</strong>
+        <span class="directive-tag tag-animator">ANIMATOR</span>
+        Camera sweeps low over the sand, tracking toward Joofy lying on a beach towel. NPCs stroll along the shoreline.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <span class="speaker-badge">JOOFY</span>
+          <span class="speaker-text"><span class="voice-stage-note">(stretching, relaxed)</span> Another quiet day in paradise... absolutely nothing could ruin this.</span>
+        </div>
+        <div class="dialogue-row char-police">
+          <span class="speaker-badge">POLICE</span>
+          <span class="speaker-text"><span class="voice-stage-note">(megaphone echo)</span> Suspect spotted on the boardwalk! All units move in!</span>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <span class="speaker-badge">JIMMY</span>
+          <span class="speaker-text"><span class="voice-stage-note">(panicked sprint)</span> Joofy, grab your gear, they tracked us down!</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="page-footer">
+    <span>Grand Theft Minecraft &bull; Master Production Script</span>
+    <span>Page 1</span>
+  </div>
+
+</body>
+</html>

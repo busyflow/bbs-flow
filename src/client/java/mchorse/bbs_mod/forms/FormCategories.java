@@ -111,18 +111,32 @@ public class FormCategories implements IWatchDogListener
 
     public List<FormCategory> getAllCategories(boolean includeModels, boolean includeParticles)
     {
+        /* Fixed palette order: user forms (actors) on top, Misc ALWAYS second, then players
+         * (models), then mobs, then particles, then addon sections, recent forms last. */
         List<FormCategory> formCategories = new ArrayList<>();
+        ExtraFormSection extra = null;
+        ModelFormSection models = null;
+        ParticleFormSection particles = null;
+        List<FormSection> others = new ArrayList<>();
 
         for (FormSection section : this.sections)
         {
-            if ((!includeModels && section instanceof ModelFormSection)
-                || (!includeParticles && section instanceof ParticleFormSection))
-            {
-                continue;
-            }
-
-            formCategories.addAll(section.getCategories());
+            if (section instanceof ExtraFormSection s) extra = s;
+            else if (section instanceof ModelFormSection s) models = s;
+            else if (section instanceof ParticleFormSection s) particles = s;
+            else if (section != this.userForms && section != this.recentForms) others.add(section);
         }
+
+        formCategories.addAll(this.userForms.getCategories());
+
+        if (extra != null) formCategories.add(extra.getExtraCategory());
+        if (includeModels && models != null) formCategories.addAll(models.getCategories());
+        if (extra != null) formCategories.addAll(extra.getMobCategories());
+        if (includeParticles && particles != null) formCategories.addAll(particles.getCategories());
+
+        for (FormSection section : others) formCategories.addAll(section.getCategories());
+
+        formCategories.addAll(this.recentForms.getCategories());
 
         return formCategories;
     }

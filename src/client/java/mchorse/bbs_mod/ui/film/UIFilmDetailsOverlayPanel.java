@@ -7,10 +7,12 @@ import mchorse.bbs_mod.l10n.L10n;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.input.text.UITextarea;
+import mchorse.bbs_mod.ui.framework.elements.input.text.UITextbox;
 import mchorse.bbs_mod.ui.framework.elements.input.text.utils.TextLine;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.utils.UILabel;
 import mchorse.bbs_mod.ui.utils.UI;
+import mchorse.bbs_mod.utils.PlayerUtils;
 import mchorse.bbs_mod.utils.colors.Colors;
 
 public class UIFilmDetailsOverlayPanel extends UIOverlayPanel
@@ -18,6 +20,7 @@ public class UIFilmDetailsOverlayPanel extends UIOverlayPanel
     private Film film;
 
     public UITextarea<TextLine> description;
+    public UITextbox worldTime;
     public UILabel timeLabel;
 
     private long lastTimeUpdate;
@@ -51,7 +54,17 @@ public class UIFilmDetailsOverlayPanel extends UIOverlayPanel
         this.description.valueBinding(() -> this.description.setText(this.film.description.get()));
         this.description.background().wrap(true).padding(8);
         /* The one field that grows with the panel — the stats below it are single lines */
-        this.description.h(88).expand();
+        this.description.h(74).expand();
+
+        /* Minecraft World Time */
+        this.worldTime = new UITextbox(100, (t) -> {
+            this.film.worldTime.set(t);
+            PlayerUtils.applyWorldTime(t);
+        });
+        this.worldTime.valueBinding(() -> this.worldTime.setText(this.film.worldTime.get()));
+        this.worldTime.placeholder(L10n.lang("bbs.ui.film.details.world_time_tooltip"));
+        this.worldTime.tooltip(L10n.lang("bbs.ui.film.details.world_time_tooltip"));
+        UIElement timeRow = UI.labelRow(L10n.lang("bbs.ui.film.details.world_time"), 120, this.worldTime);
 
         /* Layout: grouped spacing — meta, then description block, then stats */
         UIElement column = UI.column(
@@ -59,9 +72,10 @@ public class UIFilmDetailsOverlayPanel extends UIOverlayPanel
             0,
             nameLabel,
             createdLabel.marginTop(2),
-            descriptionHeading.marginTop(8),
+            timeRow.marginTop(4),
+            descriptionHeading.marginTop(6),
             this.description.marginTop(3),
-            statsLabel.marginTop(10),
+            statsLabel.marginTop(8),
             durationLabel.marginTop(3),
             this.timeLabel.marginTop(3)
         );

@@ -19,6 +19,12 @@ import mchorse.bbs_mod.actions.types.item.UseItemActionClip;
 import mchorse.bbs_mod.blocks.ModelBlock;
 import mchorse.bbs_mod.blocks.entities.ModelBlockEntity;
 import mchorse.bbs_mod.blocks.entities.ModelProperties;
+import mchorse.bbs_mod.fluid.PeeFluid;
+import net.minecraft.block.Blocks;
+import net.minecraft.block.FluidBlock;
+import net.minecraft.fluid.FlowableFluid;
+import net.minecraft.item.BucketItem;
+import net.minecraft.item.Items;
 import mchorse.bbs_mod.camera.clips.ClipCategories;
 import mchorse.bbs_mod.camera.clips.ClipFactoryData;
 import mchorse.bbs_mod.camera.clips.converters.DollyToKeyframeConverter;
@@ -72,6 +78,7 @@ import mchorse.bbs_mod.forms.forms.ExtrudedForm;
 import mchorse.bbs_mod.forms.forms.FramebufferForm;
 import mchorse.bbs_mod.forms.forms.ItemForm;
 import mchorse.bbs_mod.forms.forms.LabelForm;
+import mchorse.bbs_mod.forms.forms.NameTagForm;
 import mchorse.bbs_mod.forms.forms.MobForm;
 import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.forms.ParticleForm;
@@ -218,6 +225,11 @@ public class BBSMod implements ModInitializer
     public static final BlockItem CHROMA_BLACK_BLOCK_ITEM = new BlockItem(CHROMA_BLACK_BLOCK, new Item.Settings());
     public static final BlockItem CHROMA_WHITE_BLOCK_ITEM = new BlockItem(CHROMA_WHITE_BLOCK, new Item.Settings());
 
+    public static final FlowableFluid STILL_PEE = new PeeFluid.Still();
+    public static final FlowableFluid FLOWING_PEE = new PeeFluid.Flowing();
+    public static final Block PEE_BLOCK = new FluidBlock(STILL_PEE, FabricBlockSettings.copy(Blocks.WATER));
+    public static final Item PEE_BUCKET = new BucketItem(STILL_PEE, new Item.Settings().recipeRemainder(Items.BUCKET).maxCount(1));
+
     public static final GameRules.Key<GameRules.BooleanRule> BBS_EDITING_RULE = GameRuleRegistry.register("bbsEditing", GameRules.Category.MISC, GameRuleFactory.createBooleanRule(true));
 
     public static final BlockEntityType<ModelBlockEntity> MODEL_BLOCK_ENTITY = Registry.register(
@@ -242,6 +254,7 @@ public class BBSMod implements ModInitializer
             entries.add(CHROMA_WHITE_BLOCK_ITEM);
             entries.add(new ItemStack(GUN_ITEM));
             entries.add(new ItemStack(STRUCTURE_WAND_ITEM));
+            entries.add(new ItemStack(PEE_BUCKET));
         })
         .build();
 
@@ -454,6 +467,8 @@ public class BBSMod implements ModInitializer
             .register(Link.bbs("billboard"), BillboardForm.class, null)
             .register(Link.bbs("video"), VideoForm.class, null)
             .register(Link.bbs("label"), LabelForm.class, null)
+            .register(Link.bbs("nametag"), NameTagForm.class, null)
+            .register(Link.bbs("name_tag"), NameTagForm.class, null)
             .register(Link.bbs("model"), ModelForm.class, null)
             .register(Link.bbs("particle"), ParticleForm.class, null)
             .register(Link.bbs("extruded"), ExtrudedForm.class, null)
@@ -559,10 +574,15 @@ public class BBSMod implements ModInitializer
         Registry.register(Registries.BLOCK, new Identifier(MOD_ID, "chroma_yellow"), CHROMA_YELLOW_BLOCK);
         Registry.register(Registries.BLOCK, new Identifier(MOD_ID, "chroma_black"), CHROMA_BLACK_BLOCK);
         Registry.register(Registries.BLOCK, new Identifier(MOD_ID, "chroma_white"), CHROMA_WHITE_BLOCK);
+        Registry.register(Registries.BLOCK, new Identifier(MOD_ID, "pee"), PEE_BLOCK);
+
+        Registry.register(Registries.FLUID, new Identifier(MOD_ID, "pee"), STILL_PEE);
+        Registry.register(Registries.FLUID, new Identifier(MOD_ID, "flowing_pee"), FLOWING_PEE);
 
         Registry.register(Registries.ITEM, new Identifier(MOD_ID, "model"), MODEL_BLOCK_ITEM);
         Registry.register(Registries.ITEM, new Identifier(MOD_ID, "gun"), GUN_ITEM);
         Registry.register(Registries.ITEM, new Identifier(MOD_ID, "structure_wand"), STRUCTURE_WAND_ITEM);
+        Registry.register(Registries.ITEM, new Identifier(MOD_ID, "pee_bucket"), PEE_BUCKET);
         Registry.register(Registries.ITEM, new Identifier(MOD_ID, "chroma_red"), CHROMA_RED_BLOCK_ITEM);
         Registry.register(Registries.ITEM, new Identifier(MOD_ID, "chroma_green"), CHROMA_GREEN_BLOCK_ITEM);
         Registry.register(Registries.ITEM, new Identifier(MOD_ID, "chroma_blue"), CHROMA_BLUE_BLOCK_ITEM);

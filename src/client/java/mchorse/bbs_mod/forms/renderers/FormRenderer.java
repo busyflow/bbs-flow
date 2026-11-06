@@ -436,7 +436,12 @@ public abstract class FormRenderer <T extends Form>
                 stack.push();
                 MatrixStackUtils.applyTransform(stack, part.transform.get());
 
-                FormUtilsClient.getRenderer(form).collectMatrices(entity, stack, matrices, StringUtils.combinePaths(prefix, part.getId()), transition);
+                FormRenderer formRenderer = FormUtilsClient.getRenderer(form);
+
+                if (formRenderer != null)
+                {
+                    formRenderer.collectMatrices(entity, stack, matrices, StringUtils.combinePaths(prefix, part.getId()), transition);
+                }
 
                 stack.pop();
             }

@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.ui.forms.editors.panels.widgets;
 
+import mchorse.bbs_mod.BBSMod;
 import com.mojang.brigadier.StringReader;
 import mchorse.bbs_mod.forms.CustomVertexConsumerProvider;
 import mchorse.bbs_mod.forms.FormUtilsClient;
@@ -191,6 +192,22 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
 
                 Block block = Registries.BLOCK.get(rid);
                 Item item = block.asItem();
+
+                if (item == Items.AIR)
+                {
+                    if (block == Blocks.WATER)
+                    {
+                        return new ItemStack(Items.WATER_BUCKET);
+                    }
+                    if (block == Blocks.LAVA)
+                    {
+                        return new ItemStack(Items.LAVA_BUCKET);
+                    }
+                    if (block == BBSMod.PEE_BLOCK)
+                    {
+                        return new ItemStack(BBSMod.PEE_BUCKET);
+                    }
+                }
 
                 return item == Items.AIR ? ItemStack.EMPTY : new ItemStack(item);
             }

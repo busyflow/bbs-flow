@@ -95,6 +95,11 @@ public class Films
 
     public static void playFilm(Film film, boolean withCamera)
     {
+        if (film != null)
+        {
+            mchorse.bbs_mod.utils.PlayerUtils.applyWorldTime(film.worldTime.get());
+        }
+
         FirstPersonFilmController filmController = new FirstPersonFilmController(film);
 
         if (withCamera && !film.hasFirstPerson())

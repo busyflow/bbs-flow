@@ -8,39 +8,25 @@ import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.utils.Gizmo;
 import mchorse.bbs_mod.utils.Axis;
 import mchorse.bbs_mod.utils.MathUtils;
+import mchorse.bbs_mod.utils.interps.Lerps;
+import mchorse.bbs_mod.utils.keyframes.Keyframe;
+import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import mchorse.bbs_mod.utils.pose.Transform;
+import org.joml.Matrix4f;
+import org.joml.Vector3d;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
 
 /**
- * The gizmo target for a replay's own placement in the world &mdash; where the actor
- * stands and which way it faces &mdash; as opposed to a bone inside its form.
+ * The gizmo target for one or more selected replays' placement in the world &mdash; where the
+ * actors stand and which way they face &mdash; as opposed to a bone inside their form.
  *
- * <p>A replay has no {@link Transform}: its placement lives in the keyframe channels
- * {@code x/y/z} and {@code yaw/pitch/headYaw/bodyYaw}. This editor is the adapter
- * between the two. It holds a scratch transform for the gizmo to read and turns every
- * write back into keyframes at the playhead, which is what "the pose on the current
- * frame" means for a record.
- *
- * <p>The mapping, and why:
- * <ul>
- * <li>{@code translate} is the world position, one unit per block, so the drag needs no
- *     Jacobian of its own.</li>
- * <li>{@code rotate.y} is {@code -yaw} in radians, because the renderer places the whole
- *     actor with {@code rotateY(-bodyYaw)} &mdash; the sign has to match or the actor
- *     would turn against the ring.</li>
- * <li>{@code rotate.x} is {@code pitch}.</li>
- * <li>{@code rotate.z} stays zero and {@code scale} stays one: a record has neither roll
- *     nor size. {@link #MASK} keeps the handles that would drive them off the screen and
- *     out of the pick stencil entirely, rather than letting a gesture start and quietly
- *     go nowhere.</li>
- * </ul>
- *
- * <p>Turning the Y ring moves all three yaw channels by the same amount, keeping the
- * angles they were offset by when the gesture started. Only {@code bodyYaw} turns the
- * actor's matrix, but moving it alone leaves the head aimed where it was and wrings the
- * neck round; the whole-actor turn is also what {@code LOOK_AT} in
- * {@link ReplayBatchProcessor} does to a whole record.
+ * <p>When multiple replays are selected, the gizmo sits at the combined average center of all
+ * selected replays, and dragging or turning the gizmo moves/rotates all selected replays smoothly
+ * together and shifts their trajectories cleanly.</p>
  */
 public class UIReplayPropTransform extends UIPropTransform
 {
@@ -54,12 +40,76 @@ public class UIReplayPropTransform extends UIPropTransform
         EnumSet.of(Axis.X, Axis.Y)
     );
 
+    public static class ReplayEntry
+    {
+        public final Replay replay;
+        public final IEntity entity;
+        public final double startX;
+        public final double startY;
+        public final double startZ;
+        public final double startYaw;
+        public final double startPitch;
+        public final double headYawOffset;
+        public final double bodyYawOffset;
+
+        public final double[] origX;
+        public final double[] origY;
+        public final double[] origZ;
+        public final double[] origYaw;
+        public final double[] origHeadYaw;
+        public final double[] origBodyYaw;
+        public final double[] origPitch;
+
+        public ReplayEntry(Replay replay, IEntity entity)
+        {
+            this.replay = replay;
+            this.entity = entity;
+            this.startX = entity.getX();
+            this.startY = entity.getY();
+            this.startZ = entity.getZ();
+            this.startYaw = entity.getYaw();
+            this.startPitch = entity.getPitch();
+            this.headYawOffset = entity.getHeadYaw() - this.startYaw;
+            this.bodyYawOffset = entity.getBodyYaw() - this.startYaw;
+
+            this.origX = snapshotChannel(replay.keyframes.x);
+            this.origY = snapshotChannel(replay.keyframes.y);
+            this.origZ = snapshotChannel(replay.keyframes.z);
+            this.origYaw = snapshotChannel(replay.keyframes.yaw);
+            this.origHeadYaw = snapshotChannel(replay.keyframes.headYaw);
+            this.origBodyYaw = snapshotChannel(replay.keyframes.bodyYaw);
+            this.origPitch = snapshotChannel(replay.keyframes.pitch);
+        }
+
+        private static double[] snapshotChannel(KeyframeChannel<Double> channel)
+        {
+            List<Keyframe<Double>> kfs = channel.getKeyframes();
+            double[] values = new double[kfs.size()];
+
+            for (int i = 0; i < kfs.size(); i++)
+            {
+                Double v = kfs.get(i).getValue();
+
+                values[i] = v == null ? 0D : v;
+            }
+
+            return values;
+        }
+    }
+
     private final Transform scratch = new Transform();
+    private final List<ReplayEntry> entries = new ArrayList<>();
 
     private Replay replay;
     private IEntity entity;
     private float tick;
     private boolean running;
+
+    private double startCenterX;
+    private double startCenterY;
+    private double startCenterZ;
+    private double startPrimaryYaw;
+    private double startPrimaryPitch;
 
     public void setRunning(boolean running)
     {
@@ -72,11 +122,6 @@ public class UIReplayPropTransform extends UIPropTransform
         return this.running;
     }
 
-    /** Angles the head and body were offset from {@code yaw} when the record was loaded,
-     *  kept across a turn so the actor rotates as one piece. */
-    private double headYawOffset;
-    private double bodyYawOffset;
-
     public UIReplayPropTransform()
     {
         /* One undo entry per gesture rather than per written channel: every write is
@@ -85,7 +130,7 @@ public class UIReplayPropTransform extends UIPropTransform
          * UIFilmUndoHandler to sync the change to the server. */
         this.callbacks(
             () -> this.notifyKeyframes(0),
-            () -> { if (this.replay != null) this.replay.keyframes.postNotify(); },
+            this::postNotifyKeyframes,
             () -> this.notifyKeyframes(IValueListener.FLAG_UNMERGEABLE)
         );
 
@@ -94,9 +139,31 @@ public class UIReplayPropTransform extends UIPropTransform
 
     private void notifyKeyframes(int flag)
     {
-        if (this.replay != null)
+        if (!this.entries.isEmpty())
+        {
+            for (ReplayEntry entry : this.entries)
+            {
+                entry.replay.keyframes.preNotify(flag);
+            }
+        }
+        else if (this.replay != null)
         {
             this.replay.keyframes.preNotify(flag);
+        }
+    }
+
+    private void postNotifyKeyframes()
+    {
+        if (!this.entries.isEmpty())
+        {
+            for (ReplayEntry entry : this.entries)
+            {
+                entry.replay.keyframes.postNotify();
+            }
+        }
+        else if (this.replay != null)
+        {
+            this.replay.keyframes.postNotify();
         }
     }
 
@@ -105,71 +172,177 @@ public class UIReplayPropTransform extends UIPropTransform
         return this.replay;
     }
 
-    /**
-     * Load the record's placement at the playhead into the scratch transform, ready for a
-     * gesture. Read from the live entity rather than the channels: that is where the actor
-     * is actually drawn (and so where the gizmo sits), it already accounts for looping and
-     * for a channel that has no keyframes at all, and it is the only reading that cannot
-     * drift from the picture.
-     */
-    public void syncFromReplay(Replay replay, IEntity entity, float tick)
+    public List<ReplayEntry> getEntries()
     {
-        /* A running gesture owns these values: it rebuilds them every frame from the pose it
-         * grabbed at. Re-reading the entity here would fight it — the film re-resolves the
-         * gizmo target on every frame, so this is the common path, not an edge case. */
+        return this.entries;
+    }
+
+    /**
+     * Load the selected replays' placement at the playhead into the scratch transform,
+     * positioning the gizmo at the combined center of all selected replays.
+     */
+    public void syncFromReplays(Replay primary, IEntity primaryEntity, List<Replay> selectedReplays, Map<String, IEntity> entityMap, float tick)
+    {
         if (this.isEditing())
         {
             this.tick = tick;
             return;
         }
 
-        this.replay = replay;
-        this.entity = entity;
+        this.replay = primary;
+        this.entity = primaryEntity;
         this.tick = tick;
+        this.entries.clear();
 
-        if (replay == null || entity == null)
+        if (primary == null || primaryEntity == null)
         {
             this.setTransform(null);
-
             return;
         }
 
-        double yaw = entity.getYaw();
+        if (selectedReplays != null && entityMap != null)
+        {
+            for (Replay r : selectedReplays)
+            {
+                if (r == null)
+                {
+                    continue;
+                }
 
-        this.headYawOffset = entity.getHeadYaw() - yaw;
-        this.bodyYawOffset = entity.getBodyYaw() - yaw;
+                IEntity e = entityMap.get(r.getId());
+
+                if (e != null)
+                {
+                    this.entries.add(new ReplayEntry(r, e));
+                }
+            }
+        }
+
+        boolean hasPrimary = false;
+
+        for (ReplayEntry entry : this.entries)
+        {
+            if (entry.replay == primary)
+            {
+                hasPrimary = true;
+                break;
+            }
+        }
+
+        if (!hasPrimary)
+        {
+            this.entries.add(0, new ReplayEntry(primary, primaryEntity));
+        }
+
+        double sumX = 0D;
+        double sumY = 0D;
+        double sumZ = 0D;
+
+        for (ReplayEntry entry : this.entries)
+        {
+            sumX += entry.startX;
+            sumY += entry.startY;
+            sumZ += entry.startZ;
+        }
+
+        int count = this.entries.size();
+
+        this.startCenterX = sumX / count;
+        this.startCenterY = sumY / count;
+        this.startCenterZ = sumZ / count;
+        this.startPrimaryYaw = primaryEntity.getYaw();
+        this.startPrimaryPitch = primaryEntity.getPitch();
 
         this.scratch.rotationMode = Transform.RotationMode.EULER;
-        this.scratch.translate.set((float) entity.getX(), (float) entity.getY(), (float) entity.getZ());
-        this.scratch.rotate.set(MathUtils.toRad(entity.getPitch()), MathUtils.toRad((float) -yaw), 0F);
+        this.scratch.translate.set((float) this.startCenterX, (float) this.startCenterY, (float) this.startCenterZ);
+        this.scratch.rotate.set(MathUtils.toRad((float) this.startPrimaryPitch), MathUtils.toRad((float) -this.startPrimaryYaw), 0F);
         this.scratch.scale.set(1F, 1F, 1F);
 
         this.setTransform(this.scratch);
     }
 
-    /*
-     * Why every write also pushes its value straight onto the live entity:
-     *
-     * a bone's edit is re-applied to the form on EVERY rendered frame (the render pass calls
-     * replay.properties.applyProperties), so its gizmo tracks the cursor exactly. A record's
-     * placement isn't: the entity only reads its channels back in updateEntities, which runs
-     * on the client tick — 20 times a second. Writing the keyframe alone therefore leaves the
-     * actor, and the gizmo drawn on it, stepping along at 20 Hz behind a cursor moving at the
-     * frame rate, which reads as the whole drag being choppy.
-     *
-     * So the derived state is refreshed at the same moment the source of truth changes. The
-     * next tick recomputes exactly these values from the very keyframes just written, so this
-     * only moves the update earlier — it is not a second, competing source of position.
-     * Deliberately not ReplayKeyframes#apply: that would re-interpolate thirty-odd channels
-     * and rebuild fourteen equipment stacks per frame to restate what is already in hand.
-     */
-
-    /** The tick a write lands on. Looping replays read their channels through
-     *  {@link Replay#getTick(int)}, so a write has to go to the same place playback
-     *  will look, not to the raw playhead. */
-    private float writeTick()
+    public void syncFromReplay(Replay replay, IEntity entity, float tick)
     {
-        if (this.replay == null)
+        this.syncFromReplays(replay, entity, null, null, tick);
+    }
+
+    /**
+     * Compute the world-space center of the selected replays for rendering and raycasting the gizmo.
+     */
+    public Vector3d getGizmoCenter(float transition)
+    {
+        if (this.isEditing() && !this.entries.isEmpty())
+        {
+            return new Vector3d(this.scratch.translate.x, this.scratch.translate.y, this.scratch.translate.z);
+        }
+
+        if (this.entries.size() > 1)
+        {
+            double sumX = 0D;
+            double sumY = 0D;
+            double sumZ = 0D;
+
+            for (ReplayEntry entry : this.entries)
+            {
+                sumX += Lerps.lerp(entry.entity.getPrevX(), entry.entity.getX(), transition);
+                sumY += Lerps.lerp(entry.entity.getPrevY(), entry.entity.getY(), transition);
+                sumZ += Lerps.lerp(entry.entity.getPrevZ(), entry.entity.getZ(), transition);
+            }
+
+            int count = this.entries.size();
+
+            return new Vector3d(sumX / count, sumY / count, sumZ / count);
+        }
+
+        if (this.entity != null)
+        {
+            return new Vector3d(
+                Lerps.lerp(this.entity.getPrevX(), this.entity.getX(), transition),
+                Lerps.lerp(this.entity.getPrevY(), this.entity.getY(), transition),
+                Lerps.lerp(this.entity.getPrevZ(), this.entity.getZ(), transition)
+            );
+        }
+
+        return new Vector3d(this.scratch.translate.x, this.scratch.translate.y, this.scratch.translate.z);
+    }
+
+    /**
+     * Build the camera-relative placement matrix for the replay gizmo at the combined center of all selected replays.
+     */
+    public Matrix4f getPlacementMatrix(IEntity fallbackEntity, double cameraX, double cameraY, double cameraZ, float transition)
+    {
+        IEntity ref = this.entity != null ? this.entity : fallbackEntity;
+        Vector3d center;
+
+        if (ref != null && (this.entries.size() > 1 || this.isEditing()))
+        {
+            center = this.getGizmoCenter(transition);
+        }
+        else if (ref != null)
+        {
+            center = new Vector3d(
+                Lerps.lerp(ref.getPrevX(), ref.getX(), transition),
+                Lerps.lerp(ref.getPrevY(), ref.getY(), transition),
+                Lerps.lerp(ref.getPrevZ(), ref.getZ(), transition)
+            );
+        }
+        else
+        {
+            center = new Vector3d();
+        }
+
+        Matrix4f matrix = new Matrix4f();
+        float bodyYaw = ref == null ? 0F : Lerps.lerp(ref.getPrevBodyYaw(), ref.getBodyYaw(), transition);
+
+        matrix.translate((float) (center.x - cameraX), (float) (center.y - cameraY), (float) (center.z - cameraZ));
+        matrix.rotateY(MathUtils.toRad(-bodyYaw));
+
+        return matrix;
+    }
+
+    private float writeTick(Replay targetReplay)
+    {
+        if (targetReplay == null)
         {
             return this.tick;
         }
@@ -178,10 +351,27 @@ public class UIReplayPropTransform extends UIPropTransform
 
         if (mchorse.bbs_mod.BBSSettings.editorSnapToTicks.get() || this.isRunning())
         {
-            return this.replay.getTick(whole);
+            return targetReplay.getTick(whole);
         }
 
-        return this.replay.getTick((int) this.tick) + (this.tick - (int) this.tick);
+        return targetReplay.getTick((int) this.tick) + (this.tick - (int) this.tick);
+    }
+
+    private static void applyChannelTransform(KeyframeChannel<Double> channel, double[] origValues, double delta, float tick, double targetValue, boolean isMulti)
+    {
+        List<Keyframe<Double>> kfs = channel.getKeyframes();
+
+        if (!kfs.isEmpty() && kfs.size() == origValues.length && (isMulti || kfs.size() > 1))
+        {
+            for (int i = 0; i < kfs.size(); i++)
+            {
+                kfs.get(i).setValue(origValues[i] + delta, true);
+            }
+        }
+        else
+        {
+            channel.insert(tick, targetValue);
+        }
     }
 
     @Override
@@ -190,22 +380,21 @@ public class UIReplayPropTransform extends UIPropTransform
         return true;
     }
 
-    /**
-     * Name the record in the drag readout. This editor draws nothing of its own — the chip
-     * row that names a bone drag's operation and axis lives in the editor's render, which
-     * never runs here — so the readout floating over the gizmo is the only place that can
-     * say which of the two things under the cursor is being moved.
-     */
     @Override
     public String readoutPrefix()
     {
+        if (this.entries.size() > 1)
+        {
+            return this.entries.size() + " replays: ";
+        }
+
         return this.replay == null ? null : this.replay.getName() + ": ";
     }
 
     @Override
     public void setT(Axis axis, double x, double y, double z)
     {
-        if (this.replay == null)
+        if (this.replay == null && this.entries.isEmpty())
         {
             return;
         }
@@ -214,23 +403,30 @@ public class UIReplayPropTransform extends UIPropTransform
 
         this.scratch.translate.set((float) x, (float) y, (float) z);
 
-        float tick = this.writeTick();
-        ReplayKeyframes keyframes = this.replay.keyframes;
+        double dx = x - this.startCenterX;
+        double dy = y - this.startCenterY;
+        double dz = z - this.startCenterZ;
+        boolean isMulti = this.entries.size() > 1;
 
-        /* All three, even for a single-axis drag: a position half-keyed at this tick would
-         * read one axis from here and the other two from whatever the neighbouring
-         * keyframes interpolate to, which is not the place the user just dropped the actor.
-         * The existing "Move replay here" and player-teleport insertions do the same. */
-        keyframes.x.insert(tick, x);
-        keyframes.y.insert(tick, y);
-        keyframes.z.insert(tick, z);
-
-        if (this.entity != null)
+        for (ReplayEntry entry : this.entries)
         {
-            this.entity.setPosition(x, y, z);
-            this.entity.setPrevX(x);
-            this.entity.setPrevY(y);
-            this.entity.setPrevZ(z);
+            double nx = entry.startX + dx;
+            double ny = entry.startY + dy;
+            double nz = entry.startZ + dz;
+            float tick = this.writeTick(entry.replay);
+            ReplayKeyframes keyframes = entry.replay.keyframes;
+
+            applyChannelTransform(keyframes.x, entry.origX, dx, tick, nx, isMulti);
+            applyChannelTransform(keyframes.y, entry.origY, dy, tick, ny, isMulti);
+            applyChannelTransform(keyframes.z, entry.origZ, dz, tick, nz, isMulti);
+
+            if (entry.entity != null)
+            {
+                entry.entity.setPosition(nx, ny, nz);
+                entry.entity.setPrevX(nx);
+                entry.entity.setPrevY(ny);
+                entry.entity.setPrevZ(nz);
+            }
         }
 
         this.postCallback();
@@ -245,36 +441,75 @@ public class UIReplayPropTransform extends UIPropTransform
     @Override
     public void setR(Axis axis, double x, double y, double z)
     {
-        if (this.replay == null)
+        if (this.replay == null && this.entries.isEmpty())
         {
             return;
         }
 
         this.preCallback();
 
-        /* Roll is dropped rather than stored: the rings that could produce one are masked
-         * off, but the hotkey walk and typed input still hand over a full euler triple. */
         this.scratch.rotate.set(MathUtils.toRad((float) x), MathUtils.toRad((float) y), 0F);
 
-        float tick = this.writeTick();
-        ReplayKeyframes keyframes = this.replay.keyframes;
-        double yaw = -y;
+        double newPrimaryYaw = -y;
+        double dYaw = newPrimaryYaw - this.startPrimaryYaw;
+        double dPitch = x - this.startPrimaryPitch;
+        double rad = -MathUtils.toRad((float) dYaw);
+        double cos = Math.cos(rad);
+        double sin = Math.sin(rad);
 
-        keyframes.yaw.insert(tick, yaw);
-        keyframes.headYaw.insert(tick, yaw + this.headYawOffset);
-        keyframes.bodyYaw.insert(tick, yaw + this.bodyYawOffset);
-        keyframes.pitch.insert(tick, x);
+        double curCenterX = this.scratch.translate.x;
+        double curCenterZ = this.scratch.translate.z;
+        boolean isMulti = this.entries.size() > 1;
 
-        if (this.entity != null)
+        for (ReplayEntry entry : this.entries)
         {
-            this.entity.setYaw((float) yaw);
-            this.entity.setHeadYaw((float) (yaw + this.headYawOffset));
-            this.entity.setBodyYaw((float) (yaw + this.bodyYawOffset));
-            this.entity.setPitch((float) x);
-            this.entity.setPrevYaw((float) yaw);
-            this.entity.setPrevHeadYaw((float) (yaw + this.headYawOffset));
-            this.entity.setPrevBodyYaw((float) (yaw + this.bodyYawOffset));
-            this.entity.setPrevPitch((float) x);
+            float tick = this.writeTick(entry.replay);
+            ReplayKeyframes keyframes = entry.replay.keyframes;
+
+            double nYaw = entry.startYaw + dYaw;
+            double nHeadYaw = nYaw + entry.headYawOffset;
+            double nBodyYaw = nYaw + entry.bodyYawOffset;
+            double nPitch = entry.startPitch + dPitch;
+
+            applyChannelTransform(keyframes.yaw, entry.origYaw, dYaw, tick, nYaw, isMulti);
+            applyChannelTransform(keyframes.headYaw, entry.origHeadYaw, dYaw, tick, nHeadYaw, isMulti);
+            applyChannelTransform(keyframes.bodyYaw, entry.origBodyYaw, dYaw, tick, nBodyYaw, isMulti);
+            applyChannelTransform(keyframes.pitch, entry.origPitch, dPitch, tick, nPitch, isMulti);
+
+            if (isMulti && Math.abs(dYaw) > 1E-5D)
+            {
+                double relX = entry.startX - this.startCenterX;
+                double relZ = entry.startZ - this.startCenterZ;
+                double rotX = relX * cos - relZ * sin;
+                double rotZ = relX * sin + relZ * cos;
+                double nx = curCenterX + rotX;
+                double nz = curCenterZ + rotZ;
+                double dx = nx - entry.startX;
+                double dz = nz - entry.startZ;
+
+                applyChannelTransform(keyframes.x, entry.origX, dx, tick, nx, true);
+                applyChannelTransform(keyframes.z, entry.origZ, dz, tick, nz, true);
+
+                if (entry.entity != null)
+                {
+                    double ny = entry.entity.getY();
+                    entry.entity.setPosition(nx, ny, nz);
+                    entry.entity.setPrevX(nx);
+                    entry.entity.setPrevZ(nz);
+                }
+            }
+
+            if (entry.entity != null)
+            {
+                entry.entity.setYaw((float) nYaw);
+                entry.entity.setHeadYaw((float) nHeadYaw);
+                entry.entity.setBodyYaw((float) nBodyYaw);
+                entry.entity.setPitch((float) nPitch);
+                entry.entity.setPrevYaw((float) nYaw);
+                entry.entity.setPrevHeadYaw((float) nHeadYaw);
+                entry.entity.setPrevBodyYaw((float) nBodyYaw);
+                entry.entity.setPrevPitch((float) nPitch);
+            }
         }
 
         this.postCallback();

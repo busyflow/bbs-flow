@@ -378,6 +378,19 @@ public class StubEntity implements IEntity
     @Override
     public double getEyeHeight()
     {
+        Form form = this.getForm();
+
+        if (form != null)
+        {
+            /* Follow the form so POV sits in the head of 16x bigger/smaller actors */
+            if (form.hitbox.get())
+            {
+                return form.hitboxHeight.get() * form.hitboxEyeHeight.get();
+            }
+
+            return 1.8F * 0.9F * form.transform.get().scale.y;
+        }
+
         return 1.8F * 0.9F;
     }
 

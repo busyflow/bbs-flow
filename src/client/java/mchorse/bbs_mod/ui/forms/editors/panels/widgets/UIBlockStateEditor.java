@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.ui.forms.editors.panels.widgets;
 
+import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.forms.CustomVertexConsumerProvider;
 import mchorse.bbs_mod.forms.FormUtilsClient;
@@ -37,9 +38,26 @@ public class UIBlockStateEditor extends UIElement
         {
             Item item = this.blockState.getBlock().asItem();
 
+            if (item == Items.AIR)
+            {
+                if (this.blockState.getBlock() == Blocks.WATER)
+                {
+                    item = Items.WATER_BUCKET;
+                }
+                else if (this.blockState.getBlock() == Blocks.LAVA)
+                {
+                    item = Items.LAVA_BUCKET;
+                }
+                else if (this.blockState.getBlock() == BBSMod.PEE_BLOCK)
+                {
+                    item = BBSMod.PEE_BUCKET;
+                }
+            }
+
             if (item != Items.AIR)
             {
-                menu.action(Icons.PLAYER, UIKeys.ITEM_STACK_CONTEXT_GIVE, () -> UIItemStack.giveToPlayer(new ItemStack(item)));
+                Item finalItem = item;
+                menu.action(Icons.PLAYER, UIKeys.ITEM_STACK_CONTEXT_GIVE, () -> UIItemStack.giveToPlayer(new ItemStack(finalItem)));
             }
         });
 

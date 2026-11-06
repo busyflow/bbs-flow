@@ -397,6 +397,41 @@ public class ModelInstance implements IModelInstance
         return this.config.culling.get();
     }
 
+    public boolean hasTranslucency()
+    {
+        if (this.model instanceof Model cubicModel)
+        {
+            for (ModelGroup group : cubicModel.getOrderedGroups())
+            {
+                if (group.color.a < 0.999F)
+                {
+                    return true;
+                }
+            }
+        }
+
+        if (this.form instanceof ModelForm modelForm)
+        {
+            for (Color matColor : modelForm.materialColorOverrides.values())
+            {
+                if (matColor != null && matColor.a < 0.999F)
+                {
+                    return true;
+                }
+            }
+
+            for (mchorse.bbs_mod.settings.values.base.BaseValue value : modelForm.materials.getAll())
+            {
+                if (value instanceof mchorse.bbs_mod.forms.forms.utils.FormMaterial mat && mat.color.get().a < 0.999F)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     public String getPoseGroup()
     {
         String group = this.config.poseGroup.get();

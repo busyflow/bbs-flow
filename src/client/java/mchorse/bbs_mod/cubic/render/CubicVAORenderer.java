@@ -90,7 +90,7 @@ public class CubicVAORenderer extends CubicCubeRenderer
             return cpu && super.renderGroup(builder, stack, group, model);
         }
 
-        if (!group.isVisible())
+        if (!group.isVisible() || this.a * group.color.a <= 0.001F)
         {
             return false;
         }
@@ -212,6 +212,11 @@ public class CubicVAORenderer extends CubicCubeRenderer
             }
         }
 
+        if (a <= 0.001F)
+        {
+            return false;
+        }
+
         int overlay = overlayColor != null ? 0 : this.overlay;
         int previousOverlayTexture = overlayColor != null ? FormOverlay.bind(overlayColor) : 0;
         boolean modelCulling = this.model.isCulling();
@@ -244,7 +249,9 @@ public class CubicVAORenderer extends CubicCubeRenderer
             Matrix3f capturedNormal = new Matrix3f(normalMat != null ? normalMat : stack.peek().getNormalMatrix());
             ShaderProgram program = this.program;
 
-            FormTranslucentQueue.add(new FormTranslucentQueue.ModelVAOCommand(vao, () -> program, FormTranslucentQueue.PASS_SINGLE, true, texture, captured, capturedNormal, r, g, b, a, light, overlay, this.model.isCulling())
+            boolean depthWrite = this.a < 0.999F && group.color.a >= 0.999F;
+
+            FormTranslucentQueue.add(new FormTranslucentQueue.ModelVAOCommand(vao, () -> program, FormTranslucentQueue.PASS_SINGLE, depthWrite, texture, captured, capturedNormal, r, g, b, a, light, overlay, this.model.isCulling())
                 .overlayColor(overlayColor));
         }
         else

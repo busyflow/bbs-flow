@@ -46,6 +46,9 @@ public class FilmControllerContext
     /** Final display height in UI pixels, even when the scene uses a larger framebuffer. */
     public float gizmoViewportHeight;
 
+    /** Optional multi-replay placement transform so the gizmo renders at the combined center of selected replays. */
+    public mchorse.bbs_mod.ui.film.replays.UIReplayPropTransform replayTransform;
+
     public String bone2;
 
     /** The preview axes' frame; always LOCAL today — the preview shows the bone's own axes. */
@@ -67,6 +70,7 @@ public class FilmControllerContext
         this.gizmoMask = Gizmo.HandleMask.ALL;
         this.gizmoView = null;
         this.gizmoViewportHeight = 0F;
+        this.replayTransform = null;
         this.bone2 = null;
         this.space2 = TransformSpace.LOCAL;
         this.nameTag = "";
@@ -165,6 +169,13 @@ public class FilmControllerContext
     public FilmControllerContext gizmoViewportHeight(float height)
     {
         this.gizmoViewportHeight = height;
+
+        return this;
+    }
+
+    public FilmControllerContext replayTransform(mchorse.bbs_mod.ui.film.replays.UIReplayPropTransform replayTransform)
+    {
+        this.replayTransform = replayTransform;
 
         return this;
     }

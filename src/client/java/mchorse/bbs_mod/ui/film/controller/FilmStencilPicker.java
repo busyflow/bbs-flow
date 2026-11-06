@@ -354,7 +354,8 @@ public class FilmStencilPicker
                     filmContext
                         .gizmoTarget(target)
                         .gizmoMask(UIReplaysEditorUtils.getFilmGizmoMask(this.controller.panel, target))
-                        .gizmoView(renderContext.matrixStack().peek().getPositionMatrix());
+                        .gizmoView(renderContext.matrixStack().peek().getPositionMatrix())
+                        .replayTransform(this.controller.panel.replayEditor == null ? null : this.controller.panel.replayEditor.replayTransform);
                 }
                 else
                 {
@@ -380,7 +381,8 @@ public class FilmStencilPicker
                 .relative(replay.relative.get())
                 .gizmoTarget(target)
                 .gizmoMask(UIReplaysEditorUtils.getFilmGizmoMask(this.controller.panel, target))
-                .gizmoView(renderContext.matrixStack().peek().getPositionMatrix()));
+                .gizmoView(renderContext.matrixStack().peek().getPositionMatrix())
+                .replayTransform(this.controller.panel.replayEditor == null ? null : this.controller.panel.replayEditor.replayTransform));
         }
 
         int x = (int) ((context.mouseX - viewport.x) / (float) viewport.w * mainTexture.width);

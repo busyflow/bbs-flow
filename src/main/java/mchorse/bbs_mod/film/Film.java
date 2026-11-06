@@ -49,6 +49,8 @@ public class Film extends ValueGroup
     public final ValueFloat mobRecordingRadius = new ValueFloat("mob_recording_radius", 0F);
 
     public final ValueString description = new ValueString("description", "");
+    /** Minecraft day/world time to apply on scene load (e.g. "6000", "day", "night", empty for none). */
+    public final ValueString worldTime = new ValueString("world_time", "");
     /** UTC instant as ISO-8601 ({@link Instant#toString()}), set when the film is first created. */
     public final ValueString createdAt = new ValueString("created_at", "");
     /** Time spent editing with recent input (excludes AFK idle in the film editor). */
@@ -77,6 +79,7 @@ public class Film extends ValueGroup
         this.add(this.mobRecordingRadius);
 
         this.add(this.description);
+        this.add(this.worldTime);
         this.add(this.createdAt);
         this.add(this.timeSpentActive);
     }

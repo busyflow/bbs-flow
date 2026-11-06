@@ -142,6 +142,11 @@ public class CubicCubeRenderer implements ICubicRenderer
     @Override
     public boolean renderGroup(BufferBuilder builder, MatrixStack stack, ModelGroup group, Model model)
     {
+        if (this.a * group.color.a <= 0.001F)
+        {
+            return false;
+        }
+
         for (ModelCube cube : group.cubes)
         {
             this.renderCube(builder, stack, group, cube);

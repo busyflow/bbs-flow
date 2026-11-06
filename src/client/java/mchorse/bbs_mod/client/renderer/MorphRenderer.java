@@ -25,13 +25,14 @@ import net.minecraft.util.math.RotationAxis;
 public class MorphRenderer
 {
     public static boolean hidePlayer = false;
+    public static boolean inInventoryDraw = false;
 
     public static boolean renderPlayer(AbstractClientPlayerEntity player, float f, float g, MatrixStack matrixStack, VertexConsumerProvider vertexConsumerProvider, int i)
     {
         /* Only the real player is hidden - the vanilla pass already skips it, but Iris'
          * shadow pass doesn't, so it would cast a shadow. Player mob forms of the film
          * render their own stand-in entities and stay */
-        if (hidePlayer && player == MinecraftClient.getInstance().player)
+        if (hidePlayer && !inInventoryDraw && player == MinecraftClient.getInstance().player)
         {
             return true;
         }

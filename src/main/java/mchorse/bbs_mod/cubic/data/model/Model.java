@@ -285,9 +285,19 @@ public class Model implements IMapSerializable, IModel
             if (clothingKey != null && !pose.transforms.containsKey(clothingKey))
             {
                 ModelGroup clothingGroup = this.getGroup(clothingKey);
-                if (clothingGroup != null && clothingGroup.parent != group)
+                if (clothingGroup != null)
                 {
-                    this.applyGroupPose(clothingGroup, transform);
+                    if (clothingGroup.parent != group)
+                    {
+                        this.applyGroupPose(clothingGroup, transform);
+                    }
+                    else
+                    {
+                        clothingGroup.lighting = transform.lighting;
+                        clothingGroup.poseVisible &= transform.visible;
+                        clothingGroup.color.copy(transform.color);
+                        clothingGroup.overlay.copy(transform.overlay);
+                    }
                 }
             }
         }

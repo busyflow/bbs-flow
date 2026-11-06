@@ -286,9 +286,11 @@ public class UIReplaysEditorUtils
             UIReplayPropTransform replayTransform = panel.replayEditor.replayTransform;
 
             replayTransform.setRunning(panel.isRunning());
-            replayTransform.syncFromReplay(
+            replayTransform.syncFromReplays(
                 panel.replayEditor.getReplay(),
                 panel.getController().getCurrentEntity(),
+                panel.replayEditor.replaysList == null ? null : panel.replayEditor.replaysList.replays.getSelectedReplays(),
+                panel.getController().getEntities(),
                 panel.getKeyframeCursor(transition)
             );
 
@@ -343,9 +345,11 @@ public class UIReplaysEditorUtils
         UIReplayPropTransform replayTransform = panel.replayEditor.replayTransform;
 
         replayTransform.setRunning(panel.isRunning());
-        replayTransform.syncFromReplay(
+        replayTransform.syncFromReplays(
             panel.replayEditor.getReplay(),
             panel.getController().getCurrentEntity(),
+            panel.replayEditor.replaysList == null ? null : panel.replayEditor.replaysList.replays.getSelectedReplays(),
+            panel.getController().getEntities(),
             panel.getKeyframeCursor(transition)
         );
         replayTransform.hotkeyDrag(() -> buildFilmGizmoDrag(
@@ -476,9 +480,9 @@ public class UIReplaysEditorUtils
             return drag;
         }
 
-        if (transform instanceof UIReplayPropTransform && entity != null)
+        if (transform instanceof UIReplayPropTransform replayPropTransform && entity != null)
         {
-            buildReplayGizmoDrag(camera, drag, entity, transition);
+            buildReplayGizmoDrag(camera, drag, replayPropTransform, entity, transition);
 
             return drag;
         }
@@ -575,13 +579,13 @@ public class UIReplaysEditorUtils
      *     frame and its "parent" frame are one and the same.</li>
      * </ul>
      */
-    private static void buildReplayGizmoDrag(Camera camera, GizmoDrag drag, IEntity entity, float transition)
+    private static void buildReplayGizmoDrag(Camera camera, GizmoDrag drag, UIReplayPropTransform replayTransform, IEntity entity, float transition)
     {
         drag.setRotateAxes(drag.gizmoWorldAxes);
 
-        Matrix4f placement = FilmMatrices.getMatrixForRenderWithRotation(
-            entity, camera.position.x, camera.position.y, camera.position.z, transition
-        );
+        Matrix4f placement = replayTransform != null
+            ? replayTransform.getPlacementMatrix(entity, camera.position.x, camera.position.y, camera.position.z, transition)
+            : FilmMatrices.getMatrixForRenderWithRotation(entity, camera.position.x, camera.position.y, camera.position.z, transition);
 
         drag.setFrameAxes(placement, placement);
     }

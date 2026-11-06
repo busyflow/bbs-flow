@@ -40,6 +40,53 @@ public class PlayerUtils
     }
 
     /**
+     * Applies a Minecraft day/world time (e.g. "6000", "day", "night", "18000") to the world.
+     */
+    public static void applyWorldTime(String timeStr)
+    {
+        if (timeStr == null || timeStr.trim().isEmpty())
+        {
+            return;
+        }
+
+        String trimmed = timeStr.trim();
+        MinecraftClient mc = MinecraftClient.getInstance();
+
+        if (mc.player != null && mc.player.networkHandler != null)
+        {
+            mc.player.networkHandler.sendCommand("time set " + trimmed);
+        }
+
+        if (mc.world != null)
+        {
+            try
+            {
+                long ticks = Long.parseLong(trimmed);
+                mc.world.setTimeOfDay(ticks);
+            }
+            catch (NumberFormatException ignored)
+            {
+                if ("day".equalsIgnoreCase(trimmed))
+                {
+                    mc.world.setTimeOfDay(1000L);
+                }
+                else if ("noon".equalsIgnoreCase(trimmed))
+                {
+                    mc.world.setTimeOfDay(6000L);
+                }
+                else if ("night".equalsIgnoreCase(trimmed))
+                {
+                    mc.world.setTimeOfDay(13000L);
+                }
+                else if ("midnight".equalsIgnoreCase(trimmed))
+                {
+                    mc.world.setTimeOfDay(18000L);
+                }
+            }
+        }
+    }
+
+    /**
      * Put the player exactly where a replay stands at the given tick &mdash; position,
      * yaw, head and body yaw, pitch. This is what the film editor's teleport key does,
      * and what recording in the world does on its own when

@@ -1,0 +1,2863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Grand Theft Minecraft - Part 1 Production Script & Guide</title>
+<style>
+  @page {
+    size: letter;
+    margin: 16mm 14mm 16mm 14mm;
+    @bottom-right {
+      content: counter(page);
+    }
+  }
+
+  :root {
+    --joofy-bg: #eafaf1;
+    --joofy-border: #27ae60;
+    --joofy-badge: #1e8449;
+    --joofy-text: #0e3a20;
+
+    --comet-bg: #e8f8f9;
+    --comet-border: #00a8b5;
+    --comet-badge: #00838f;
+    --comet-text: #004d53;
+
+    --police-bg: #edf2f9;
+    --police-border: #244b7a;
+    --police-badge: #1b365d;
+    --police-text: #0d1e38;
+
+    --jimmy-bg: #fff8e7;
+    --jimmy-border: #e67e22;
+    --jimmy-badge: #d35400;
+    --jimmy-text: #6e2c00;
+
+    --brett-bg: #f4ecf7;
+    --brett-border: #8e44ad;
+    --brett-badge: #6c3483;
+    --brett-text: #391849;
+
+    --crim-bg: #fbeee6;
+    --crim-border: #c0392b;
+    --crim-badge: #922b21;
+    --crim-text: #4d1510;
+
+    --sniff-bg: #fef9e7;
+    --sniff-border: #f39c12;
+    --sniff-badge: #b7950b;
+    --sniff-text: #5b4605;
+
+    --other-bg: #f8f9fa;
+    --other-border: #7f8c8d;
+    --other-badge: #5d6d7e;
+    --other-text: #2c3e50;
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1f2937;
+    line-height: 1.45;
+    font-size: 10pt;
+    margin: 0;
+    padding: 0;
+    background-color: #ffffff;
+  }
+
+  /* Document Header */
+  .doc-header {
+    border-bottom: 3px solid #111827;
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+  }
+  .doc-title-box h1 {
+    margin: 0 0 4px 0;
+    font-size: 22pt;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    color: #0f172a;
+    text-transform: uppercase;
+  }
+  .doc-subtitle {
+    margin: 0;
+    font-size: 11pt;
+    font-weight: 600;
+    color: #4b5563;
+  }
+  .doc-meta-badge {
+    text-align: right;
+    font-size: 8.5pt;
+    font-weight: 700;
+    color: #ffffff;
+    background: #111827;
+    padding: 6px 12px;
+    border-radius: 4px;
+    line-height: 1.3;
+    letter-spacing: 0.5px;
+  }
+
+  /* Setup & Pre-recording Grid */
+  .setup-container {
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+    break-inside: avoid;
+  }
+  .setup-header {
+    font-size: 10pt;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: #1e293b;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .setup-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px 16px;
+    font-size: 9pt;
+  }
+  .setup-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .setup-label {
+    font-weight: 700;
+    color: #334155;
+    flex-shrink: 0;
+  }
+  .setup-val {
+    color: #0f172a;
+    background: #e2e8f0;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 8.5pt;
+  }
+  .setup-note {
+    grid-column: span 2;
+    margin-top: 4px;
+    font-size: 8.5pt;
+    color: #475569;
+    border-top: 1px dashed #cbd5e1;
+    padding-top: 6px;
+  }
+
+  /* Key Color Legend */
+  .legend-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 18px;
+    padding: 6px 10px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 5px;
+    font-size: 8pt;
+    align-items: center;
+  }
+  .legend-title {
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-right: 4px;
+  }
+  .legend-chip {
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-weight: 700;
+    border-left: 3px solid transparent;
+  }
+  .chip-joofy { background: var(--joofy-bg); color: var(--joofy-badge); border-color: var(--joofy-border); }
+  .chip-comet { background: var(--comet-bg); color: var(--comet-badge); border-color: var(--comet-border); }
+  .chip-police { background: var(--police-bg); color: var(--police-badge); border-color: var(--police-border); }
+  .chip-jimmy { background: var(--jimmy-bg); color: var(--jimmy-badge); border-color: var(--jimmy-border); }
+  .chip-brett { background: var(--brett-bg); color: var(--brett-badge); border-color: var(--brett-border); }
+  .chip-sniff { background: var(--sniff-bg); color: var(--sniff-badge); border-color: var(--sniff-border); }
+  .chip-crim { background: var(--crim-bg); color: var(--crim-badge); border-color: var(--crim-border); }
+  .chip-note { background: #fef3c7; color: #92400e; border-color: #f59e0b; }
+
+  /* Scene Block */
+  .scene-card {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    margin-bottom: 14px;
+    overflow: hidden;
+    break-inside: auto;
+    page-break-inside: auto;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  }
+
+  .scene-header {
+    background: #0f172a;
+    color: #ffffff;
+    padding: 7px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  .scene-title-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .scene-num {
+    background: #3b82f6;
+    color: #ffffff;
+    font-size: 8pt;
+    font-weight: 800;
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.5px;
+  }
+  .scene-location {
+    font-size: 9.5pt;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+  .scene-coords {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 8.5pt;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.12);
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-weight: 600;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+  }
+
+  .scene-content {
+    padding: 10px 12px;
+  }
+
+  /* Directional & Visual Action blocks */
+  .action-block {
+    background: #f8fafc;
+    border-left: 3.5px solid #64748b;
+    padding: 7px 10px;
+    margin-bottom: 8px;
+    border-radius: 0 4px 4px 0;
+    font-size: 9pt;
+    color: #334155;
+    font-style: italic;
+    line-height: 1.4;
+    break-inside: avoid;
+  }
+  .action-block strong.lead {
+    font-style: normal;
+    font-weight: 700;
+    color: #0f172a;
+    text-transform: uppercase;
+    font-size: 8pt;
+    margin-right: 4px;
+  }
+
+  /* Role-Specific Directives (Animator / Editor / Audio) */
+  .directive-tag {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 7.5pt;
+    font-weight: 800;
+    font-style: normal;
+    text-transform: uppercase;
+    margin-right: 5px;
+    letter-spacing: 0.3px;
+  }
+  .tag-animator { background: #fef08a; color: #854d0e; border: 1px solid #facc15; }
+  .tag-editor { background: #fbcfe8; color: #9d174d; border: 1px solid #f472b6; }
+  .tag-audio { background: #fed7aa; color: #9a3412; border: 1px solid #fb923c; }
+
+  /* Dialogue Container & Items */
+  .dialogue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .dialogue-row {
+    border-radius: 4px;
+    padding: 5px 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-size: 9.5pt;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    line-height: 1.35;
+  }
+
+  .speaker-badge {
+    flex-shrink: 0;
+    min-width: 82px;
+    font-weight: 800;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-align: center;
+  }
+
+  .speaker-text {
+    flex-grow: 1;
+    color: #1e293b;
+  }
+
+  .voice-stage-note {
+    color: #64748b;
+    font-size: 8.5pt;
+    font-style: italic;
+    font-weight: 500;
+    margin-right: 3px;
+  }
+
+  /* Themes by Character */
+  /* Joofy: Green tint */
+  .dialogue-row.char-joofy {
+    background: var(--joofy-bg);
+    border-left: 4px solid var(--joofy-border);
+  }
+  .dialogue-row.char-joofy .speaker-badge {
+    background: var(--joofy-badge);
+    color: #ffffff;
+  }
+  .dialogue-row.char-joofy .speaker-text {
+    color: var(--joofy-text);
+  }
+
+  /* Comet: Cyan tint */
+  .dialogue-row.char-comet {
+    background: var(--comet-bg);
+    border-left: 4px solid var(--comet-border);
+  }
+  .dialogue-row.char-comet .speaker-badge {
+    background: var(--comet-badge);
+    color: #ffffff;
+  }
+  .dialogue-row.char-comet .speaker-text {
+    color: var(--comet-text);
+  }
+
+  /* Police / Authority: Dark Blue tint */
+  .dialogue-row.char-police {
+    background: var(--police-bg);
+    border-left: 4px solid var(--police-border);
+  }
+  .dialogue-row.char-police .speaker-badge {
+    background: var(--police-badge);
+    color: #ffffff;
+  }
+  .dialogue-row.char-police .speaker-text {
+    color: var(--police-text);
+  }
+
+  /* Jimmy: Amber / Warm Orange tint */
+  .dialogue-row.char-jimmy {
+    background: var(--jimmy-bg);
+    border-left: 4px solid var(--jimmy-border);
+  }
+  .dialogue-row.char-jimmy .speaker-badge {
+    background: var(--jimmy-badge);
+    color: #ffffff;
+  }
+  .dialogue-row.char-jimmy .speaker-text {
+    color: var(--jimmy-text);
+  }
+
+  /* Brett: Purple tint */
+  .dialogue-row.char-brett {
+    background: var(--brett-bg);
+    border-left: 4px solid var(--brett-border);
+  }
+  .dialogue-row.char-brett .speaker-badge {
+    background: var(--brett-badge);
+    color: #ffffff;
+  }
+  .dialogue-row.char-brett .speaker-text {
+    color: var(--brett-text);
+  }
+
+  /* The Sniffer: Mustard Gold tint */
+  .dialogue-row.char-sniffer {
+    background: var(--sniff-bg);
+    border-left: 4px solid var(--sniff-border);
+  }
+  .dialogue-row.char-sniffer .speaker-badge {
+    background: var(--sniff-badge);
+    color: #ffffff;
+  }
+  .dialogue-row.char-sniffer .speaker-text {
+    color: var(--sniff-text);
+  }
+
+  /* Criminals / Pawn: Rust / Dark Red tint */
+  .dialogue-row.char-criminal {
+    background: var(--crim-bg);
+    border-left: 4px solid var(--crim-border);
+  }
+  .dialogue-row.char-criminal .speaker-badge {
+    background: var(--crim-badge);
+    color: #ffffff;
+  }
+  .dialogue-row.char-criminal .speaker-text {
+    color: var(--crim-text);
+  }
+
+  /* General / Randoms / Speaker announcements: Neutral Slate */
+  .dialogue-row.char-other {
+    background: var(--other-bg);
+    border-left: 4px solid var(--other-border);
+  }
+  .dialogue-row.char-other .speaker-badge {
+    background: var(--other-badge);
+    color: #ffffff;
+  }
+  .dialogue-row.char-other .speaker-text {
+    color: var(--other-text);
+  }
+
+  /* Audio simultaneous cue box */
+  .audio-cue {
+    background: #fff7ed;
+    border: 1px dashed #f97316;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 8pt;
+    font-weight: 700;
+    color: #c2410c;
+    margin: 4px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    display: inline-block;
+  }
+
+  .page-footer {
+    border-top: 1px solid #e2e8f0;
+    margin-top: 14px;
+    padding-top: 6px;
+    font-size: 8pt;
+    color: #94a3b8;
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+</head>
+<body>
+
+  <!-- TOP HEADER -->
+  <div class="doc-header">
+    <div class="doc-title-box">
+      <h1>Grand Theft Minecraft &bull; Part 1</h1>
+      <p class="doc-subtitle">Master Production Script &bull; Settings, Coordinates &amp; Visual Direction</p>
+    </div>
+    <div class="doc-meta-badge">
+      RECORDING READY<br>
+      PART 1 (24 PAGES)
+    </div>
+  </div>
+
+  <!-- SETUP & REMINDERS PANEL -->
+  <div class="setup-container">
+    <div class="setup-header">
+      <span>Pre-Recording Checklist &amp; Core Settings</span>
+      <span style="font-weight: 600; text-transform: none; color: #64748b;">Review before recording</span>
+    </div>
+    <div class="setup-grid">
+      <div class="setup-item">
+        <span class="setup-label">Start Time Command:</span>
+        <span class="setup-val">/time set 6000</span>
+      </div>
+      <div class="setup-item">
+        <span class="setup-label">Starting EXP / Level:</span>
+        <span class="setup-val">Level 0 &bull; 0 EXP</span>
+      </div>
+      <div class="setup-item">
+        <span class="setup-label">Joofy Starting State:</span>
+        <span class="setup-val">Normal Skin &bull; Full HP &bull; Full Hunger &bull; Empty Inventory</span>
+      </div>
+      <div class="setup-item">
+        <span class="setup-label">Weapons Rule:</span>
+        <span class="setup-val">No guns in world &rarr; Crossbow loaded with Firework</span>
+      </div>
+      <div class="setup-item">
+        <span class="setup-label">Vehicle Assets:</span>
+        <span class="setup-val">Models / Built in Minecraft (to be animated)</span>
+      </div>
+      <div class="setup-item">
+        <span class="setup-label">Ships Copy/Paste:</span>
+        <span class="setup-val">228 112 2280</span>
+      </div>
+      <div class="setup-note">
+        <strong>Directives:</strong> Use this document to change to the correct settings and for reminders before recording. Some players have usernames; if they do, they are on this document (all others don't). Joofy's EXP should be tied to his level (starts level 0 = 0 EXP).<br>
+        <span class="directive-tag tag-animator">Animator Note</span> For this video, feel free to take some liberties with adding shots/action between voice lines. Relying more on visual humor for this video.
+      </div>
+    </div>
+  </div>
+
+  <!-- COLOR CODED ACCENT LEGEND -->
+  <div class="legend-bar">
+    <span class="legend-title">Color Guide:</span>
+    <span class="legend-chip chip-joofy">Joofy (Green)</span>
+    <span class="legend-chip chip-comet">Comet (Cyan)</span>
+    <span class="legend-chip chip-police">Police / Judge / 911 (Dark Blue)</span>
+    <span class="legend-chip chip-jimmy">Jimmy (Amber)</span>
+    <span class="legend-chip chip-brett">Brett (Purple)</span>
+    <span class="legend-chip chip-sniff">The Sniffer (Gold)</span>
+    <span class="legend-chip chip-crim">Pawn Shop / Criminals (Crimson)</span>
+    <span class="legend-chip chip-note">Visual / Audio Directives</span>
+  </div>
+
+  <!-- ==================== SCENE 1 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 1</span>
+        <span class="scene-location">City Overview &bull; Intro Establishing Shots</span>
+      </div>
+      <span class="scene-coords">City, City: 422 30 664</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Intro establishing shots overlooking the entire city. There should be various generic players, generic civilians, and generic police officers in the city. I think it’d also be cool to show some Military helicopters just flying in the air, having cars/other vehicles driving in the streets, and maybe some boats sailing away from the island. The goal is to really show how dynamic the city is.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">This is Grand Theft Minecraft…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 2 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 2</span>
+        <span class="scene-location">Citywide Crime Montage</span>
+      </div>
+      <span class="scene-coords">Any place in the city</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Show generic criminals committing random crimes in the city, sometimes against other generic players. The crimes should grow in intensity, such as starting with shoplifting/j-walking/running at a pool, and then moving to more serious ones such as robbing stores/crashing cars/attacking police officers, and maybe finalizing with exploding skyscrapers/stealing planes. You can use any place in the city for these attacks.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">To level up, you need to commit bigger and bigger crimes.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 3 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 3</span>
+        <span class="scene-location">Selection Menu &bull; Levels 1-5 Progression</span>
+      </div>
+      <span class="scene-coords">City1: 1169 194 699</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Show shots of Joofy’s character going from the 1-star area all the way through levels 2-4 to the 5-star area. Have it seem like the world around Joofy, and his armor, level up as well. As the levels change, show more and more diamonds raining from the sky. For the 5-star kingpin level, Joofy should be wearing his Joofy Boss skin, while he’s in his regular skins for the other levels.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">My goal is to go from a 1 star criminal ALL the way up to a 5-star Kingpin.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 4 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 4</span>
+        <span class="scene-location">Main Streets &bull; Punching &amp; Failed Carjacking</span>
+      </div>
+      <span class="scene-coords">City, Main Streets: 411 68 443</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is walking down the main streets. There are generic players doing random stuff like they would be in a city. Some walk down the street, others drive random cars down the roads, etc. Joofy walks up to Random1 on the sidewalk, punches him, but not much happens. Joofy then runs up to Random2’s car, who’s stopped at a red-light, and tries to steal her car, but Random2 throws her son – Jimmy – at Joofy to distract him, and then drives off quickly.<br>
+        <span class="directive-tag tag-animator">Animator</span> Jimmy is 0.5x scale of a normal player, for the whole video unless otherwise specified. Reminder- Joofy is in his normal skin until otherwise specified.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">And I’m gonna start by punching this random GUY!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Random1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(just got punched in the face, but liked it)</span> UHHh- Harder!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Yoo what?!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Alright… then I’ll just have to steal SOMEBODY’S CAR!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Hey, this is mine now!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Random2</div>
+          <div class="speaker-text"><span class="voice-stage-note">(being robbed, offering your son)</span> No I just bought this!! Take Jimmy instead!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(gets hit and falls to the ground)</span> Broo WHAT?!?</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 5 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 5</span>
+        <span class="scene-location">Bank Robbery &amp; The Betrayal</span>
+      </div>
+      <span class="scene-coords">City, Bank: -302 68 357 &bull; Menu: 1169 194 699</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy and Jimmy start outside the bank. Everything seems normal, there are some generic players walking around, in/out of the bank, etc. Joofy and Jimmy then walk into the bank, brandishing sticks as guns (pretending they are guns), and rob the bank. When they get inside, Joofy commands all the players inside to get on the ground. While Jimmy watches over the players on the ground, Joofy goes to a bankteller and has them fill one of his chests with diamonds (they fill each slot with 1 diamond - so Joofy gets 27 diamonds). When he does this, <span class="directive-tag tag-editor">Editor</span> Joofy’s star meter starts going up, signifying that he’s close to reaching a star. He does it - he reaches one star. The cops (generic police) eventually come, surrounding the bank from the front entrance, and the bank entrance - with generic officers, police cars, and police dogs. Joofy then has Jimmy hug him, and they walk out together, with Joofy pretending that Jimmy is holding him hostage so that he can get away. It works, with the police mistaking Jimmy for the robber. They tackle Jimmy, and Joofy is free.<br>
+        <span class="directive-tag tag-animator">Animator</span> Use “Bank” skin pack for these shots.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Fine… I’ll just skip a couple stars and go STRAIGHT to robbing a bank! You ready?</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(voice lines start out as being noticeably childish, until otherwise stated)</span> Owkay!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Good!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">EVERYBODY!! GET ON THE GROUND!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Jeez not you Jimmy! Get UP and make sure nobody calls the cops.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Hey, you! Put all the diamonds in this chest!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Yes… YES!! Keep doing it!! I’m so CLOSE TO REACHING ONE STARRR!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Speaker</div>
+          <div class="speaker-text">You have committed a “Bank Robbery.” Level 1 Unlocked!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">LET’S GO!!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">I see cwolors!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Okay! Let’s go through the back door then!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> There’s cops guarding the back as well. Joofy is back in the center of the bank, considering his options.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">SHOOT!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">If those cops arrest me, I’ll lose my star!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">I didn’t wanna have to do this but… Jimmy, give me a hug!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Cut to outside the bank, just showing the horde of generic police officers with firework crossbows aimed at the door, preparing for Joofy to come outside - but Joofy comes out with it seeming like Jimmy is the actual culprit.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police2</div>
+          <div class="speaker-text">Sir!! He’s coming out with a hostage!!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">Jeez, the bank robber is a kid?!?</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(quietly)</span> Am I dooing gwood?!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(quietly)</span> You’re doing great! Just a couple more steps… and… let go.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Nice! You did it!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">Hooway!! I-</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Joofy releases himself from Jimmy’s grip, and then all the police officers and some police dogs start absolutely surrounding/beating up/arresting Jimmy.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">COPS!! GET THAT GUY!! HE TRIED TO KILL ME!!</div>
+        </div>
+      </div>
+
+      <div class="audio-cue">&sung; Audio Editor: Play these bunched lines semi-simultaneously</div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">GET HIM!!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police2</div>
+          <div class="speaker-text">GET THE CRIMINAL!!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(yelling scared as he gets arrested/beat up)</span> AHHHHHH!!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 6 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 6</span>
+        <span class="scene-location">Streets &bull; Level 1 Milestone &amp; Planning</span>
+      </div>
+      <span class="scene-coords">City, Streets: You find &bull; Menu: 1169 194 699</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is now a 1-star criminal, and is just walking around the streets of the city in a different area, there are some random generic players just minding their business. Joofy checks the selection menu, showing that he’s only 4 levels away from being a 5-star criminal. Joofy also has 27 diamonds now, and he starts thinking about ways he can leverage those diamonds for his own benefit.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Well, that worked out! Since the police didn’t catch me, that means I kept my star.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Now, I just have to level up four more times!! Plus, I have these diamonds now!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 7 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 7</span>
+        <span class="scene-location">Pawn Shop &bull; The Backroom Discovery</span>
+      </div>
+      <span class="scene-coords">City, Inside Pawn Shop: -199 68 313</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is inside a pawn shop with Pawn1 behind the counter. There are some generic criminals in the pawn shop being helped by Pawn2-3 as they buy random things. Joofy asks to see other items, and Pawn1 takes him down the back hallway, where Joofy can see weapons and armor stands through a secret room up ahead. Joofy also sees, while he’s walking, a room with Rizz1-3 tied up and blindfolded, and hooked up to a chair in the middle of this scary-torture looking room. Joofy asks Pawn1 what’s going on there, but before he knows it, Pawn1 hits him and knocks him out.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Hey, you guys sell anything besides blocks?</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn1</div>
+          <div class="speaker-text">I might have something in the back.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Yoo this is what I’m talking about, I- wait… what’s going on in there?</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(suspicious, about to knock someone out)</span> Oh… that… I wish you didn’t see that…</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Huh?! <span class="voice-stage-note">(black screen)</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 8 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 8</span>
+        <span class="scene-location">Pawn Shop Torture Room &bull; Interrogation</span>
+      </div>
+      <span class="scene-coords">Torture Room: -206 60 280</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy wakes up in the torture room, now connected to the same chair that Rizz1-3 were connected to. None of them have blindfolds on anymore, but they’re all tied up and can’t move. They talk briefly, and then Pawn1-3 come through the doors, and attempt to interrogate them. Pawn3 thinks Joofy (and Rizz1-3) stole from him, but Joofy assures them that he didn’t do anything. Pawn2 then wheels out a TV, and plays a “fake video” of Big1 inside the pawn shop, seemingly stealing items. <span class="directive-tag tag-animator">Animator</span> You’re in charge of this TV/fake video, and Big1 should look noticeably “fatter” than a usual player. Joofy debates that the player isn’t him on the video, but Pawn1-3 don’t believe him. The scene cuts with Pawn1-3 about to break Joofy’s arms as Joofy struggles to break free.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Rizz1</div>
+          <div class="speaker-text">No cap I think they’ll kill us!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(waking up after being punched)</span> Uhh… What happened?</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Rizz2</div>
+          <div class="speaker-text">Unc finally woke up.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Wait- what am I doing here?!? AND… I can’t move!! I-</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Rizz2</div>
+          <div class="speaker-text">STOP YAPPING!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Rizz1</div>
+          <div class="speaker-text">Wait bro, I hear them coming!!</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn1</div>
+          <div class="speaker-text">Here they are, boss.</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn3</div>
+          <div class="speaker-text"><span class="voice-stage-note">(threatening)</span> You kids think you can steal from my shop and get away with it? I don’t think so!!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Pawn3 takes out a piston attached to an end rod in his hand, and the piston starts going really fast, as if this were a threat.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Woah- WAOH!! This is a big misunderstanding!! I’m not with these guys- I didn’t steal anything!!</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn2</div>
+          <div class="speaker-text">Save it BLUE SHIRT!! We have video proof!!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Pawn3 rolls out a TV and plays the video with Big1 on it. It should look like surveillance footage of him stealing items from within the pawn shop.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn2</div>
+          <div class="speaker-text">See, you’re right there!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Uhh… that’s not me?!</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn2</div>
+          <div class="speaker-text"><span class="voice-stage-note">(doesn’t believe it, trying to convince)</span> Oh REALLY?!? The guy wearing a blue shirt, with black hair, and green shoes?! That’s nott you?!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Well, he’s um- wider than me-</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn2</div>
+          <div class="speaker-text">Wider?! What do you mean by that?!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">THAT GUY IS FAT!! CAN YOU NOT SEE THAT?!?</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn2</div>
+          <div class="speaker-text">Oh so now you’re fat-shaming!?! That’s even worse than stealing!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">WHAT?!? But-</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn2</div>
+          <div class="speaker-text">What do we do with him?!</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Pawn3</div>
+          <div class="speaker-text">Break his arms.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">YOOO WHAT??!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 9 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 9</span>
+        <span class="scene-location">Hospital Room &bull; No Insurance</span>
+      </div>
+      <span class="scene-coords">Inside Hospital: -126 69 282</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is lying in a hospital bed with his arms dangling in the air as if they were broken. <span class="directive-tag tag-animator">Animator</span> Joofy’s in his Joofy Broken Arms Skin from now on and his inventory is now empty. Joofy is being attended to by Nurse and Doctor, who discuss what to do with him.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Nurse</div>
+          <div class="speaker-text">Doctor, what do you think he needs?</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Doctor</div>
+          <div class="speaker-text">Definitely ozempic.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(injured/depressed)</span> My arms are broken.</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Doctor</div>
+          <div class="speaker-text">Oh- didn’t even see that. Well, lucky for you this is very treatable.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">That’s a relief!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Doctor</div>
+          <div class="speaker-text">We just need your health insurance.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Ohh… About that…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 10 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 10</span>
+        <span class="scene-location">Outside Hospital &bull; Jimmy's Revenge &amp; Random1 Approaches</span>
+      </div>
+      <span class="scene-coords">Outside Hospital: -131 67 341</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is kicked out of the hospital, physically, by the Doctor. Joofy stays there, lying on the ground outside the hospital, considering his options. Remember that for this whole scene, Joofy doesn’t have normal function over his arms, they are sort of just dangling/unusuable because they are broken. Then, out of nowhere, Jimmy appears walking towards Joofy. <span class="directive-tag tag-animator">Animator</span> Jimmy is in his Jimmy Criminal skin from now on. Jimmy comes up to Joofy, and he’s angry that Joofy had tricked him during the bank robbery. Jimmy takes out a stick, and bats it against his hands, threatening to attack Joofy in his anger. Joofy starts scooting away on his butt/trying to get to his feet and get away from Jimmy (remember, Joofy can’t use his broken arms), but it doesn’t work. Jimmy ends up tackling and punching/beating up Joofy extremely badly. Joofy is defenseless without his arms so he just takes all of the blows.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Doctor</div>
+          <div class="speaker-text">And STAY OUT!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly injured)</span> Great. I’m broke and I can’t even move my arms. This day can’t get any worse!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(very angry)</span> Der you are.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Oh… Jimmy… Hey there! Already… out of Juvie?</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(very angry)</span> You lef me fwor DED!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Well… calm down… Let’s talk this out!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(very angry)</span> I’ll TWALK TO WOO WIDTH MY FWISTS!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">AHHHH!!!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> <span class="directive-tag tag-animator">Animator</span> Joofy is now in his Joofy Broken Body skin. Joofy’s two arms and two legs are now all broken, which makes it so that Joofy basically can’t move his legs/use his arms. He starts the scene alone on the ground, lying on his back, not sure what to do. Then, Random1 (who’s in his Random1 Feral Skin) walks up to Joofy, and just stares at him while deep-breathing. Joofy sees him, is instantly scared, and then starts trying to slither/crawl away from Random1 - but it’s super hard with his broken bones and he gets basically nowhere. Random1 then starts walking after Joofy and Joofy starts struggling to crawl away but he knows he’s too slow.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(injured)</span> Uhhh. I think my legs are broken now. But I probably deserved that. At least I know FOR SURE this can’t get any worse.</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Random1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(deep and intense breathing for 2 seconds)</span></div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Oh gosh…</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly injured, struggling)</span> No PLEASE!! GET AWAY FROM ME!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Random1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(trying to catch somebody)</span> Hey there good lookin’.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(worried)</span> Oh no.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 11 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 11</span>
+        <span class="scene-location">Random1's Bedroom &bull; Escape &amp; Arson</span>
+      </div>
+      <span class="scene-coords">Random1 Bedroom: -433 69 683</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Dead pan to Joofy lying down in Random1’s bed in his bedroom. The insinuation is that Joofy and Random1 just got freaky in bed. <span class="directive-tag tag-animator">Animator</span> Joofy is in his Joofy Broken Body Wide Eyes skin at the start of this scene, then goes back to the Joofy Broken Body skin. Show a couple seconds of no voice lines of Joofy just lying in bed, not sure what to do. Random1 then pokes his head into the room (Random1 is in his Random1 Naked Skin), and talks to Joofy. After he leaves the room, Joofy then tries to slither/squirm off of the bed, and towards the open window in the bedroom. Joofy has very limited use of his arms/legs, so he can’t just walk over there, he struggles immensely to crawl over there. Eventually, he’s able to crawl outside the window, and when he does, he uses a flint and steel to set fire to the house, which causes the entire house to set fire as Joofy continues squirming away from the house fire and watching it burn down.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Random1</div>
+          <div class="speaker-text">Hey. You want bacon or eggs?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(squirmy)</span> Um. Bacon.</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Random1</div>
+          <div class="speaker-text">Good boy.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(struggling)</span> I… need… to… get out of HERE!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">HUHH… uhhh… There we go! Now, I can put an end to all of this!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 12 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 12</span>
+        <span class="scene-location">Outside Burning House &bull; Level 2 &amp; Police Arrival</span>
+      </div>
+      <span class="scene-coords">20 Blocks Outside: -439 67 722</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is lying on the ground still, watching as Random1’s entire house is on fire, and Joofy is satisfied. During this time, <span class="directive-tag tag-editor">Editor</span> Joofy’s star meter goes up from 1-star to 2-star criminal. Joofy is excited. Then, Police1-2 drive up to Joofy, while some generic firefighters pull up to the house to try to stop it from burning down (if possible, give them water hoses to spray against the house). Police1-2 question Joofy about the fire, and it seems like they’re going to arrest him.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Oh yeah… sweet… sweet vengeance.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">And… Wait, my star meter is going up!! I’m almost a 2-star CRIMINAL!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Speaker</div>
+          <div class="speaker-text">You have committed “First Degree Arson.” Level 2 Unlocked.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">NO WAY!! I DID IT!! LET’S GO!!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> The police car and police officers start to drive up.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">Sir, did you see what happened to this house?!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Oh no… I’ve just been lying here… uh- resting on the sidewalk.</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">Sir, you’re 20 blocks from a crime sign, holding a flint and steel, and my partner overhead you saying “sweet vengeance.” Did you burn this house down?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(unconvinced)</span> Nooo…</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police2</div>
+          <div class="speaker-text"><span class="voice-stage-note">(serious)</span> Let’s get him to the cop car.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 13 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 13</span>
+        <span class="scene-location">Comet's House Front Porch &amp; Living Room &bull; Street Cred</span>
+      </div>
+      <span class="scene-coords">Outside Comet's House: -322 68 597</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Cut to Comet holding Joofy in his arms, outside Comet’s house, in his front Porch. Police1-2 have just delivered Joofy to Comet’s house (Joofy wasn’t actually in trouble with the cops previously, it was just supposed to seem like that). Joofy got away with the fire, and Police1-2 drive off in their police car as Comet takes Joofy inside his house, and puts him on the couch and then they talk for a bit. Reminder: Joofy’s arms/legs are still broken and he’s still in the Joofy broken body skin.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-comet">
+          <div class="speaker-badge">Comet</div>
+          <div class="speaker-text">Thanks officers! Have a great day!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police2</div>
+          <div class="speaker-text">I sure feel bad for that guy.</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">Yeah. First a hostage and then almost died in a fire!</div>
+        </div>
+        <div class="dialogue-row char-comet">
+          <div class="speaker-badge">Comet</div>
+          <div class="speaker-text">Joofy, what the heck HAPPENED to you?!?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Long story… But I did manage to level up to a two-star criminal!</div>
+        </div>
+        <div class="dialogue-row char-comet">
+          <div class="speaker-badge">Comet</div>
+          <div class="speaker-text"><span class="voice-stage-note">(impressed)</span> No way!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Yeah… but, honestly, ever since getting these stars, my life has kinda been terrible.</div>
+        </div>
+        <div class="dialogue-row char-comet">
+          <div class="speaker-badge">Comet</div>
+          <div class="speaker-text">I definitely feel that… but do you even know what you get for leveling up?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">No, what?</div>
+        </div>
+        <div class="dialogue-row char-comet">
+          <div class="speaker-badge">Comet</div>
+          <div class="speaker-text">You get street cred. Other criminals treat you differently.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Really?</div>
+        </div>
+        <div class="dialogue-row char-comet">
+          <div class="speaker-badge">Comet</div>
+          <div class="speaker-text">Yeah. I’ll show you.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 14 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 14</span>
+        <span class="scene-location">Inside Nightclub &bull; Meeting Criminal1</span>
+      </div>
+      <span class="scene-coords">Nightclub: 50 68 1060</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is back in his normal Joofy skin from now on - and his arms/legs are no longer broken, so he can walk/do things normally. Joofy is with Comet inside a nightclub, and they just look bored as Joofy appears to be waiting for something to happen. There are players dancing/enjoying themselves in the nightclub around them - it should look very busy. <span class="directive-tag tag-animator">Animator</span> Use “nightclub” skin pack. Anyways, Criminal1 comes up to Joofy and is impressed by his crimes. He gives him a piece of paper with random coordinates on it and tells him to meet him there.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly sad)</span> See. Just like I thought. Nobody even notices me, I’m-</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text">Hey. I know you.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Oh- what?</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text">You the boy who robbed that bank downtown! Nice escape! You looking for a job?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Actually, yeah!</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text">Meet me here tonight.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 15 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 15</span>
+        <span class="scene-location">Nice Restaurant &bull; The Sniffer Bounty Offer</span>
+      </div>
+      <span class="scene-coords">Restaurant: 305 67 354</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy observes the outside of the restaurant, there are lots of nice cars parked outside, and he can see generic players walking in/out of it.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Well, these are the coordinates.</div>
+        </div>
+      </div>
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Joofy meets up with Criminal1 inside the restaurant. The waiter briefly takes their order. There are generic players also eating in the restaurant if you show that. But Joofy and Criminal1 talk about Criminal1’s job for him. Criminal1 talks about The Sniffer, his target for Joofy’s kidnapping. Criminal1 also presents a chest with a stack of diamond blocks to Joofy - so Joofy can see his reward. Joofy agrees to the mission.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text">Mista Looby! Have a seat!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Waiter</div>
+          <div class="speaker-text">Your order, gentlemen?</div>
+        </div>
+      </div>
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> During Criminal1’s next line, he looks up and down at joofy as if he were examining his body, so there should be a bit of a pause in his voice line. Supposed to be a fat joke.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text">Mario get me the usual… and for the boy… he’ll just stick with water.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Bruh. Just tell me what the job is.</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text">I need you to kidnap somebody named The Sniffer. He’s a guy with a big nose – always sniffin in places he don’t belong.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">What’s in it for me?</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text">Stack of diamond blocks.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">JEEZ! I’m in.</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text">Good. Now put together a team.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 16 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 16</span>
+        <span class="scene-location">Streets Near Comet's House &bull; Daydreaming</span>
+      </div>
+      <span class="scene-coords">Streets: -245 68 543</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is just walking down the street, daydreaming about completing the mission and getting rich.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(daydreaming)</span> If I complete this mission, not only would I be rich but I’d probably level up again!</div>
+        </div>
+      </div>
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Joofy reaches outside of Comet’s house.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">I just need a team!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 17 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 17</span>
+        <span class="scene-location">Inside Comet's House &bull; Comet Declines</span>
+      </div>
+      <span class="scene-coords">Comet's House</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is talking to Comet but Comet immediately says no to his offer. They talk.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-comet">
+          <div class="speaker-badge">Comet</div>
+          <div class="speaker-text"><span class="voice-stage-note">(firm)</span> No.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(can’t believe it)</span> WHAT?! I was counting on you!</div>
+        </div>
+        <div class="dialogue-row char-comet">
+          <div class="speaker-badge">Comet</div>
+          <div class="speaker-text"><span class="voice-stage-note">(realistic and then sentimental)</span> The Sniffer is a 4-star criminal! This job is way too risky for me… But I still believe in you. Always bet on the underdog!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Thanks…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 18 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 18</span>
+        <span class="scene-location">Main Streets &bull; Posting Recruitment Posters</span>
+      </div>
+      <span class="scene-coords">City, Main Streets</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is back on the main street. He puts up a poster – Asset1 – on a pole/wall in the city, to show that he’s looking for criminals/people to be on his team.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">I guess I’ll find somebody else!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 19 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 19</span>
+        <span class="scene-location">Joofy's House &bull; The Auditions</span>
+      </div>
+      <span class="scene-coords">Joofy's House: -503 69 802</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is inside of his house, continually interviewing new players to join his team. All of the players must do some sort of audition. Starting with Xavier, who claims he can see through blocks, but can only see through glass. Then Invisible auditions, but he can only make his head invisible, and Joofy watches him bump into walls because he can’t see anything. Then Jimmy comes up to the stage (he’s in his Jimmy Boss skin from now on). He doesn’t audition, but since Joofy is scared of Jimmy, Joofy just lets him immediately join the team. Then, moving forward, Joofy and Jimmy are both behind the table, judging all of the future auditions. The next audition is Moisture, who sweats a LOT and can’t control it. Then Nervous, who is just really really weird. There’s then three more players who audition but don’t have lines, but Joofy quickly passes over them. They are Skinny (who’s much thinner than a normal player and shows that he can squeeze through a 0.5 block space in his audition), Armless (a player who doesn’t have any arms but shows that he can balance on one of his legs and use his other leg to grab things), and Short (who’s half the size of a normal player, but the same width, so he just appears fat. We see him trying to balance on a block but he quickly falls/topples over). Finally, after those 3 funny failures, Brett walks up to the audition stage - he’s a seemingly completely normal player. They talk, and Jimmy convinces Joofy to let Brett join the team.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Alright… first up. “Xavier the Xray-vier.” What’s your talent?</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Xavier</div>
+          <div class="speaker-text">I can see through walls.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Please demonstrate.</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Xavier</div>
+          <div class="speaker-text">Chest. Wood. Iron.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Uhh… What if the wall wasn’t glass?</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Xavier</div>
+          <div class="speaker-text">Then I can’t see through it.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Bruh.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Name?</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Invisible</div>
+          <div class="speaker-text">Invisible Man.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Lemme guess, you can turn invisible?</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Invisible</div>
+          <div class="speaker-text">Only my head.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(unconvinced)</span> How is that helpful?</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Invisible</div>
+          <div class="speaker-text">When I’m invisible I’m also blind.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Pass.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Mr… Jimmy… Oh- Hi. You look… different.</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(from now on Jimmy is really tough but still talks childish - spits)</span> I’m jwoining wor team.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(squirmy)</span> Okay…</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">We need won mwore gwuy.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly squirmy)</span> You got it boss.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">This guy’s name is… Mr. Moisture…</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Moisture</div>
+          <div class="speaker-text"><span class="voice-stage-note">(actively sweating and very hot)</span> Is it hot in here or is it just me…?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">I’m gonna pass.</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Nervous</div>
+          <div class="speaker-text">I’m great with kids.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Pass.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Pass.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">PASSS!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Jeez can we PLEASE just get somebody NORMAL?!?</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">Dis guy wooks pwomising.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Name?</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Yo the name’s Brett.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">What’s your power?</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Oh yu know, chilling, shredding the knar - you get the vibe!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">I wike him! He weminds me of dah dad I never had!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(whispering)</span> Are you sure?! This guy definitely won’t help us!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Jimmy takes out a stick and threatens to hit Joofy with it.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(threatening)</span> Yoo wanna get ywo butt whooped agwain, huh?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">No. No. Nevermind.</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">Yor on dah Team Bwett.</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Sick.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 20 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 20</span>
+        <span class="scene-location">Outside Restaurant &bull; Mission Briefing</span>
+      </div>
+      <span class="scene-coords">Docks near Yacht: 378 67 1191</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is with Jimmy and Brett outside the restaurant. There are still some nice cars parked outside the restaurant. Joofy is showing his team to Criminal1. Criminal1 thinks the team is stupid, but agrees to give Joofy the mission to kidnap the Sniffer. When Criminal1 is explaining the mission, show scenes of the yacht, and show players from the “Yacht” skin pack, walking onto the yacht. There are also a couple generic bouncers guarding the entrance to the yacht. Don’t show The Sniffer yet, though. It’s <span class="setup-val">/time set 12750</span> for this scene.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(sees a pathetic team)</span> This is your team?! A kid and a surfer?!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Honestly, you should be glad I didn’t go with the other guys.</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text">Whateva. As long as dah three of you can take care of dah sniffah, we won’t have any problems.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">What do we need to do?</div>
+        </div>
+        <div class="dialogue-row char-criminal">
+          <div class="speaker-badge">Criminal1</div>
+          <div class="speaker-text">Big nose is headin to the docks tonight for a yacht party with his crew. You three need to sneak on board, capture him, and get him back to shore widout nobody seeing nothing.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Got it.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 21 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 21</span>
+        <span class="scene-location">Outside Docks near Yacht &bull; Fake IDs &amp; Infiltration</span>
+      </div>
+      <span class="scene-coords">Docks Entrance: 365 69 1173</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is with Brett and Jimmy and they are spying on the yacht (use Yacht “skin” pack for these shots). They see players walking onto the yacht after passing through Bouncer, who’s security for the bridge to get onboard. Joofy is worried about passing security, but Brett created some fake ID’s for them to get on board. The three of them then walk up to the Bouncer. The Bouncer holds up Joofy’s ID – Asset2 – which is a terrible drawing of Joofy as somebody else, but the Bouncer lets them go on board. The three of them then head on board and start looking around for The Sniffer, who they don’t know what he looks like. Brett almost instantly runs off to dance in front of the DJ set. Joofy stays on the top deck, looking in random rooms/places for where the Sniffer could be, while Jimmy looks in the rooms below deck. Jimmy reconnects with Joofy eventually and tells him that he thinks he found him.<br>
+        <span class="directive-tag tag-animator">Animator</span> It’s <span class="setup-val">/time set 15000</span> from now on.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">Ders dah yacht! Let’s get mwoving!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(whispering)</span> Shoot, there’s a guard outside! No way we’re getting let in!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(whispering)</span> Bro don’t worry! I do graphic design on the side - whipped up these new ID’s!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(whispering)</span> Oh… Nice.</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Bouncer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(letting people in)</span> You’re good. You’re good. You’re- Wait a second… this is you?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(deeper voice)</span> Uhh… yeah.</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Bouncer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(not too convinced but just agrees)</span> Fine.</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Joofy, Brett, and Jimmy get onto the yacht. There should be many other people on the yacht, partying and doing random stuff.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly quiet)</span> Okay guys, split up and look for The Sniffer. And don’t draw any attention.</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(loudly)</span> YOO THEY HAVE A DJ SET!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Oh gosh…</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">Yoo take dis fwoor, I’ll go bewow deck.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Got it.</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Joofy starts looking in many different rooms for The Sniffer, but doesn’t see him. He sees random players on the yacht doing random funny things. Joofy starts checking multiple places on the boat, seeing a bunch of random stuff on board as he walks around.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Alright, just need to find a guy with a big nose.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Nobody over here…</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Definitely not there…</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Don’t see him here…</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Maybe he’s-</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Jimmy bumps into Joofy.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">I fwound him!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">No way. Let’s go!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 22 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 22</span>
+        <span class="scene-location">Inside Yacht Conference Room &bull; Laced Matcha &amp; Kidnap</span>
+      </div>
+      <span class="scene-coords">Stationary Yacht: 397 58 1235</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> <span class="directive-tag tag-animator">Animator</span> Copy/paste the Yacht and put it in the middle of the ocean, about 50-100 blocks away from the shore, as if the Yacht has been going away from the shoreline/docks. Joofy and Jimmy are sneaking around the conference room, and they see a baby villager (who’s The Sniffer), surrounded by 10 generic bouncers. Joofy/Brett consider their options, but then they are surprised to see that Brett is behind the line of bouncers, apparently brewing coffee/matchas for Sniffer, who apparently loves drinks like that. Brett seems totally clueless, but walks back in the direction of Joofy/Brett. Apparently, Brett laces all the drinks, and then all of a sudden, Sniffer and all of the generic bouncers in that room, fall to the ground, asleep. Jimmy/Brett/Joofy then run up to Sniffer’s body, and stick him inside of a double chest that they place on the ground. The three of them are now stuck all holding onto this double chest (which has the Sniffer inside of it), as they run back up to the deck to try to escape the yacht. <span class="directive-tag tag-animator">Animator</span> The coffee/matcha can just look like solid green/brown drinks inside glass bottles - keep it pretty vanilla.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly quietly)</span> That’s him?</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly quietly)</span> Pwetty sure! Wook at his nose!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly quietly)</span> Well how are we supposed to get through all his security??</div>
+        </div>
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(drinking coffee, wants more)</span> I want another one!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly quietly)</span> Huh? Is that Brett?!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Bouncer</div>
+          <div class="speaker-text">Another one of his finest beverages, your excellency.</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Yo I hope you like Matcha!</div>
+        </div>
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text">That smells AMAZING!!</div>
+        </div>
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(drinking a drink very quickly, then satiated)</span> GULP GULP GULP… ahhhh</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly quietly)</span> Brett- BRETT!!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Oh waddup dude.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly quietly)</span> What are you DOING?!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Uhh walking..</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly quietly)</span> No I mean back there - how’d you get so close to the Sniffer?!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">I’m a barista on the side, dude!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly quietly)</span> Well remember the mission - we need to kidnap this guy!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Broo chilll I laced all the drinks!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly quietly)</span> What?!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">All dah gwuards are uncawnshess!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">So is the sniffer!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> They run up to The Sniffer, and jam him into the chest.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Quick put him in here!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">Der!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Let’s move!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 23 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 23</span>
+        <span class="scene-location">Yacht Main Deck &amp; Ocean &bull; Brett the Human Boat</span>
+      </div>
+      <span class="scene-coords">Yacht Main Deck: In Ocean</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> <span class="directive-tag tag-animator">Animator</span> The Yacht is now about 100 blocks from the shoreline - with the shore behind it barely visible. Joofy/Jimmy/Brett (who are still holding the double chest) notice that they can’t get back to shore. They start getting worried as they notice that Bouncer is directing some more generic bouncers (who apparently just woke up) to search the ship. It seems like the bouncers are getting closer and closer to reaching Joofy/Jimmy/Brett, who are trying to hide behind other people. Other people on the ship get searched while Joofy’s team considers what to do. Brett jumps in the water, offering to swim everybody on his back, back to the shore. Jimmy is skeptical, but then Bouncer starts closing in on them, so Joofy/Jimmy throw the double chest onto Brett’s back, and then get on themselves, and then Brett (who’s surprisingly able to swim quickly with all of them on his back), starts swimming away. Soon after, some bouncers start chasing them in the water on boats. After not too long though, Brett starts to get tired, and his swimming gets noticeably slower. The generic bouncers start to close in on him, but then Joofy takes out some coffee from the double chest (with the Sniffer still asleep in it), and then, with Brett’s direction, Joofy pours the coffee into Brett’s butt (<span class="directive-tag tag-animator">Animator</span> only imply this - don’t show it). Brett instantly starts swimming way faster and they quickly escape the pursuing bouncers.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Shoot! We’re so far away from the shore! How are we gonna get back!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly nervous)</span> I don know… but wook… pweople are wooking at us…</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Bouncer</div>
+          <div class="speaker-text">Search everybody on this ship!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(worried)</span> No! No! WHAT DO WE DO?!?</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Yoo I’m taking a dip!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">What are you doing?!?</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(hopeful)</span> Maybee he has a bwoat!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Nahh we don’t need a boat!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Brett orientates himself so he’s ready to swim with Joofy/Jimmy/the double chest on his back.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Hop on dudes!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(refusing, slightly scared)</span> Owhhh hewckk no!! Der’s sharks in der!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Yeah… but I don’t know if we have any other options!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Bouncer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(yelling a bit)</span> Hey! What’s in the chest!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(decides to send it, even though he’s scared)</span> Scweew it! Lwet’s go!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(starting to swim with people on him, confident)</span> Hold on dudeESS!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Bouncer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(furious)</span> GET THEM!!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> 5 generic bouncers jump off the side of the ship, place boats, and start riding after them. Then cut to Brett/Joofy’s gang farther along in the water, with Brett starting to slow down.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">No- NO!! BRETT, YOU NEED TO SWIM FASTER!!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(getting slightly tried while swimming)</span> Bro I’m getting gassed!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(very worried)</span> They’re GAINING ON US!!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(getting more exhausted, but still confident)</span> Bro- go inside the chest. There should be some extra coffees! I need the caffeine bro!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Umm… Okay, I got it!! Here!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(getting more exhausted, but still confident)</span> I can’t drink it while swimming bro! You gotta give it to me the other way!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">You want me to pour it down your…</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(urging, slightly worried)</span> Yes bro!! DO IT!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(disgusted)</span> Uhh I better get three stars for this!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly happier)</span> Look! He’s alweady gwoing fwaster!!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(starting to get more energized, caffeinated)</span> That’s that quick absorption bro!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">You’re right!! We’re getting away! And I HARDLY SEE THEM ANYMORE!! WE’RE GONNA DO IT!! WE’RE GONNA BE RICH, WE’RE-</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 24 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 24</span>
+        <span class="scene-location">Middle of the Ocean &bull; Stranded &amp; Shark Sacrifice</span>
+      </div>
+      <span class="scene-coords">Middle of Ocean: You find</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Cut to Jimmy, Brett, and Joofy sitting on top of the double chest, which is floating in the ocean with nothing around. <span class="directive-tag tag-animator">Animator</span> It’s <span class="setup-val">/time set 1000</span> from now on. All of them are exhausted/resting on top of eachother on the chest. Show them just lying there for a couple seconds with no voice lines. There is absolutely no land around them - they are completely stranded. Then, Sniffer starts waking up while inside the double chest that they are sitting on. They hear that the sniffer appears to be starting to drown, so they eventually open the double chest. They let him out, and now the four of them are sitting, stranded, on top of the double chest as they float aimlessly in the ocean. Then, a shark fin appears close to them, and getting closer. Then a lot more shark fins appear, and it looks like a ton of sharks are surrounding their position in the ocean. Everybody is panicking. Brett then punts Sniffer into the water away from them, and all the sharks start swarming/attacking him in the water. During that time, Joofy and the others jump into the water and start swimming away.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(instantly depressed)</span> Uhh.. where even are we?!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(depressed)</span> Wha hawpened, Bwett?!?</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(super de-energized, about ready to fall asleep)</span> Caffeine crash bro… always makes me soo sleepyy…</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">We’re totally stranded! We’re-</div>
+        </div>
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(as if waking up, and instantly slightly startled/confused)</span> Where am I!?</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Joofy/Jimmy start to get up/lift their heads as they listen for the voice that they just heard. Eventually realizing that it’s The Sniffer who’s in the chest that they’re lying on. The chest starts shaking slightly as The Sniffer inside of it starts banging against the walls of it. Brett eventually wakes up as well.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(startled)</span> Did woo hear dat?!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Yeah… What was that?!</div>
+        </div>
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(startled, begging to be released)</span> HEY!! LET ME OUT OF HERE!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Wait- it’s The Sniffer! He’s awake!</div>
+        </div>
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(startled, begging to be released)</span> THERE’S WATER IN HERE!! OPEN UP!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Do we open it?!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(firm)</span> No WHEY!! He cwood be awrmed!</div>
+        </div>
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(starting to choke on water/coughing)</span> I’m- NOT!! I’m drowning!!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(firm)</span> Iw’m NOT opening DIS!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">But if he dies, we won’t get our money!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Yoo NO!! I need those diamonds for a new BOARD!! I’M OPENING IT!!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> They let the Sniffer out of the chest cautiously, and they see that he was actually drowning in there, with the water almost completely filled up in the chests. The Sniffer climbs out, they close the chest, and then they all sit on it together.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(still coughing a little, but safer)</span> Finally- Idiots!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Idiots?!? We just saved your life!!</div>
+        </div>
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text">You’re not idiots for that… you’re idiots for trying to kidnap me!!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">Owh yweah… why is dat?!?</div>
+        </div>
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text">I’m a 4-star criminal! I got guys on every block of this city! You really think you can get away with this?!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Phff we can handle your guys! Just like we did on the yacht!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(worried)</span> Yooo bros… We might have a problem…</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> A shark fin appears coming towards the chest with everybody on it. It starts from about 30-50 blocks away but Brett sees it in the distance. Then, continually more shark fins appear, all making their way towards them. <span class="directive-tag tag-animator">Animator</span> You’ll need to find some shark/shark fin model.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(starts to get worried)</span> What's dat?!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(worried)</span> A shark…</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(more worried)</span> DER’S ANUDER ONE!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">WE’RE COMPLETELY SURROUNDED!!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(trying to calm, but also worried)</span> Bro’s don’t panic. I know exactly how to deal with this!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Okay! HOW?!? They’re getting CLOSER!!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">The only way to stop a shark from eating you… is to get it to eat SOMEBODY ELSE!!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Brett picks up Sniffer and drop-kicks him about 50 blocks away from them into the water, all of the sharks swarm over to him when he lands. After that, Brett/Joofy/Jimmy swim away in the water as in the background, we can see Jimmy splashing in the water as the sharks quickly swim over to him and start attacking him.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(getting kicked away, yelling for 3 seconds)</span> AHHHHHHHHhhhh!!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Now, dudes!! FOLLOW ME!!</div>
+        </div>
+        <div class="dialogue-row char-sniffer">
+          <div class="speaker-badge">Sniffer</div>
+          <div class="speaker-text"><span class="voice-stage-note">(getting attacked by sharks)</span> AHHH!! YOU’LL PAY FOR THIS YOU RATS!!!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 25 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 25</span>
+        <span class="scene-location">Middle of the Ocean &bull; Swimming for Shore</span>
+      </div>
+      <span class="scene-coords">Coastguard Boat to Paste: 922 68 1054</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy, Brett, and Jimmy are swimming slowly in the ocean, with still no land around them. They are still exhausted. In the far distance, a coastguard boat appears, and it appears to be coming towards them. They think they’re saved.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(swimming and struggling)</span> Huh… huhh… How much longer… do we have to swim FOR!!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text"><span class="voice-stage-note">(swimming and struggling, tired)</span> The shoreline should be… about 500 more blocks bro!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(swimming and struggling)</span> Uhhh… SERIOUSLY?!?</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(out of breath)</span> Waidd… look ovah dar!! A bwoat!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(calling while out of breath)</span> HEY!! HEYY!!! OVER HERE!! PLEASE!! COME GET US!!!</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(slightly happier but still out of breath)</span> DEH’RE COMING!!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 26 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 26</span>
+        <span class="scene-location">On Coastguard Boat &bull; The Environmental Hazard Arrest</span>
+      </div>
+      <span class="scene-coords">Middle of Ocean: On Coastguard Boat</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy, Jimmy, and Brett get onto the coastguard boat, and Joofy plops to the ground immediately, exhausted. They hadn’t seen these guys earlier, but the boat is being driven by Police1-2, who walk up to Joofy and Jimmy/Brett and interrogate them. At the end of the scene, they start arresting them.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Uhh… FINALLY! I’m soo glad this fishing boat found us!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">This isn’t a fishing boat.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">What.</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">What were you three doing this far from land?!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Oh… um… Just swimming, yeah!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">Are you aware that you were swimming farther than the legal limit?</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(arguementative)</span> Dah wegal wimit… das not a ting!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">Oh it is. Anything 100 blocks past the beach, and you’re considered an environmental hazard. All three of you just broke the law.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">You’ve GOT to be joking me…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 27 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 27</span>
+        <span class="scene-location">Police Station &bull; Small Jail Cell &amp; Demotion</span>
+      </div>
+      <span class="scene-coords">Cell: 1029 68 349 &bull; Menu</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Cut to Joofy, Brett, and Jimmy inside a small jail cell, arguing about how they got there. All of their inventories are empty if they weren’t already. Reminder: Joofy is in his normal skin, Brett is in his normal skin, Jimmy is still in his Jimmy Boss skin. Joofy is frustrated because his star meter goes down from 2-star to 1-star. Soon, Police1 comes outside the cell to lead Joofy to his trial.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">WE’RE IN PRISON! SERIOUSLY?!?</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">Dis is awll wor fauwlt.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">MY FAULT?!? Brett was the one who swam us into the middle of the ocean!</div>
+        </div>
+        <div class="dialogue-row char-brett">
+          <div class="speaker-badge">Brett</div>
+          <div class="speaker-text">Broo not my fault the ocean has like zero landmarks.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Whatever… Wait- what’s going on?! MY star meter is going down!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Speaker</div>
+          <div class="speaker-text">You have been demoted to a 1-star criminal.</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text">Das what happens when deh popo cawtches woo. Ywoo wose wevels.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">I can’t believe this.</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">JoofyLooby. It’s time for your trial.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 28 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 28</span>
+        <span class="scene-location">Police Station Courtroom &bull; Bail or Community Service</span>
+      </div>
+      <span class="scene-coords">Courtroom: 1048 68 331</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is in the courtroom, looking at Judge1 who is overseeing the hearing. There are generic police officers all around him guarding Joofy/the room. Joofy doesn’t have the diamonds to post bail, so he agrees to community service.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Judge1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(pronouncing a name terribly incorrectly)</span> Mister… Juicy… Loofy?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Uh. Just Joofy is fine.</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Judge1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(pronouncing a name terribly incorrectly, trying to word it)</span> Jiggily… L-rizzily?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Uhh… still a bit off. But, just tell me why I’m here.</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Judge1</div>
+          <div class="speaker-text">You’ve broken the law!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Oh COME ON!! I was just swimming!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Judge1</div>
+          <div class="speaker-text">I am not here to argue! You can either post bail or do community service!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Joofy checks his empty inventory.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Bail?? I don’t have any diamonds…</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Judge1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(making a sentence)</span> Then community service it is!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 29 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 29</span>
+        <span class="scene-location">Near Beach &bull; Porta-Potty Cleanup Duty</span>
+      </div>
+      <span class="scene-coords">Beach: 163 68 1128</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Police1 leads Joofy with handcuffs, who’s now in his Joofy Service Skin, towards the beach. <span class="directive-tag tag-animator">Animator</span> Use the “beach” skin pack for all the players here - who are in the sand and playing near the water. Police1 leads Joofy towards the porta potties. Behind the porta potties, there’s a pool of pee behind them in a pool (maybe just pee/yellow-textured water/liquid), and Joofy is instructed to use a bucket to pick up the pee, and then put that into chests. He starts making progress, but then notices that the pee is being refilled back in the pit, and he notices that Random4 is actively peeing into the pit (don’t actually show this). Show the time of day going from morning all the way to nighttime (with nobody left at the beach), when Joofy finally finishes cleaning up all of the pee. Joofy is now done with his community service, and is free.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Wait.. the beach?! This isn’t so bad! Do I just need to pick up trash?</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(chuckling)</span> Oh… definitely not.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Huh?</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">This is what you’ll be cleaning up!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Oh my gosh.</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Cut to Joofy slowly and cautiously draining the pee, he’s disgusted by it.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">This is so disgusting… Huh… But, at least I’m making progress-</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">I, wait- what?! How is there more?</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Random4</div>
+          <div class="speaker-text"><span class="voice-stage-note">(peeing, satisfied)</span> Ohh yeah… I’ve been holding this in allll day.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">ARE YOU SERIOUS?!? Hey- HEY! Do you see this?!? He’s peeing in public!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(disinterested)</span> Ehh. I’m off the clock.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Bro.</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Cut to way later in the day, around sunset. Not many people are still at the beach, and Joofy has just finished picking up the last of the pee.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Finally. I’m done.</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police1</div>
+          <div class="speaker-text">This marks the end of your community service. Don’t break the law again.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 30 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 30</span>
+        <span class="scene-location">Main Streets &bull; Night Walk Home</span>
+      </div>
+      <span class="scene-coords">City, Main Streets</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> It’s still nighttime or <span class="setup-val">/time set 13000</span>. Joofy is exhausted, he’s walking aimlessly down the street, not sure really what to do. Joofy is back in his normal skin from now on.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Well, now that I’m free. I’m gonna go home and think about how to get back to level 2.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 31 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 31</span>
+        <span class="scene-location">Inside Joofy's House &bull; Squatters' Rights &amp; SWAT Raid</span>
+      </div>
+      <span class="scene-coords">Joofy's House</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is back inside his house, and he sits down on his couch, excited to be back inside his home and not working or doing anything. Right when he’s getting comfortable, Squatter appears out of nowhere and talks to Joofy. Squatter shows Joofy that inside his bedroom, his entire squatter family is living there (Squatter1 and four Squatter kids - which are just 0.5x scale versions of Squatter/Squatter1, and are running around all over the place/playing). Joofy is overwhelmed and tells them to leave. But then Squatter1 flashes Asset3 to Joofy - which says that they have the right to live there. Joofy is stunned. Squatter1 calls 911 over the phone, and then Police3/generic police officers show up to the house dressed in full iron armor, they quickly barge into the house, knock Joofy to the ground unnecessarily, and then taser Joofy while he’s not cooperating. Joofy gets tased and then stops struggling.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Uhh… It feels so good to be back…</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Squatter</div>
+          <div class="speaker-text">What are you doing here?</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Umm… This is my house… What are you doing here?!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Squatter</div>
+          <div class="speaker-text">I thought this place was vacant. I’ve just been chilling here with my family.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">You have a family?!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Joofy walks into the other room and sees the whole family there, as if they’ve made themselves comfortable inside his house for a while.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Jeez- what. I’m sorry guys - but you all need to leave! You can’t just stay inside of my house!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Squatter1</div>
+          <div class="speaker-text">Actually we can.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">What?!</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Squatter1 shows Asset3 to Joofy.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Squatter1</div>
+          <div class="speaker-text">We have squatters’ rights! This house is legally ours!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">That can’t POSSIBLY be true.</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Squatter1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(knows she’s right)</span> Oh yeahh?!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">911</div>
+          <div class="speaker-text">911. What’s your emergency?</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Squatter1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(suddenly frantic)</span> There is an INTRUDER IN MY HOUSE!! PLEASE! SEND HELP!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">You can’t be serious…</div>
+        </div>
+      </div>
+
+      <div class="action-block" style="margin-top: 8px;">
+        <strong class="lead">Action:</strong> Police immediately are outside the door, and bust down the door to tackle Joofy and then arrest him violently. Joofy thinks this is all a misunderstanding, so he tries to get up, but the police consider that resisting arrest, so then they taser Joofy, who shakes erratically before slumping to the ground.
+      </div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police3</div>
+          <div class="speaker-text">POLICE!! WE’RE COMING IN!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Squatter1</div>
+          <div class="speaker-text">THERE’S THE INTRUDER!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">What- no I’m not!! I LIVE HERE, I-</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police3</div>
+          <div class="speaker-text">ON THE GROUND!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(getting knocked to the ground)</span> UHHH- WHAT?!?</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police3</div>
+          <div class="speaker-text">HANDS BEHIND YOUR BACK!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(struggling)</span> This is- just- a- mis-under-standing!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police3</div>
+          <div class="speaker-text">HE’S RESISTING ARREST!! GET THE TASER!!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police2</div>
+          <div class="speaker-text">ON IT!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">What- NO I’M NOT!! I’M-</div>
+        </div>
+      </div>
+
+      <div class="audio-cue">&sung; Audio Editor: Play semi-simultaneously</div>
+
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(getting tasered)</span> HASHJFNGJKFNG</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police2</div>
+          <div class="speaker-text">ON THE GROUND!!</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police3</div>
+          <div class="speaker-text">STOP- RESISTING!!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(still slightly being tasered, gives up)</span> OKAY!!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 32 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 32</span>
+        <span class="scene-location">Outside Joofy's House &bull; Police Bullying</span>
+      </div>
+      <span class="scene-coords">Outside Joofy's House</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Police3 and another cop have arrested Joofy and are outside of his house, talking to the squatters. They talk, and midway through, when Joofy contests what is said, Police3 knees Joofy in the stomach. It should just seem like he’s unnecessarily bullied/attacked.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police3</div>
+          <div class="speaker-text">This pest is getting locked away for a long time.</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Squatter1</div>
+          <div class="speaker-text"><span class="voice-stage-note">(very shaken)</span> Thank you officer. You should’ve seen what he was saying to us… He said he was gonna EAT OUR KIDS!! IT WAS TERRIBLE!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(tired)</span> Oh come on- I did not say that.</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police3</div>
+          <div class="speaker-text">Shut UP FATSO!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(being hit in the stomach)</span> UHHH…</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Police3</div>
+          <div class="speaker-text">YOU’RE GOING TO JAIL!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 33 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 33</span>
+        <span class="scene-location">Police Station &bull; Small Jail Cell &bull; Zero Stars</span>
+      </div>
+      <span class="scene-coords">Jail Cell &bull; Menu</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is now back in the jail cell, with Jimmy (not Brett) still inside of it. Jimmy is still in Jimmy Boss Skin, Joofy is in his normal skin. Joofy is surprised to see Jimmy there, and is also angry when he sees his star meter go down to 0 stars. <span class="directive-tag tag-editor">Editor</span> Show his star meter going down.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Seriously… I’m already back here! And no- my star meter is draining again! No stop STOP!! NOOO!!</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Speaker</div>
+          <div class="speaker-text">You have lost all of your stars.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">This is SO stupid…</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(depressed. Should sound even more like a locked up criminal who’s been in prison for a while from now on)</span> Das waht hapwens wen woo gwet cwaught.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Jimmy?? You’re still here? I thought you’d be out by now…</div>
+        </div>
+        <div class="dialogue-row char-jimmy">
+          <div class="speaker-badge">Jimmy</div>
+          <div class="speaker-text"><span class="voice-stage-note">(still depressed)</span> Dis is my secwond time in jail… I’m a weepeat offwender.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Oh gosh… What does that mean for me?!</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 34 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 34</span>
+        <span class="scene-location">Courtroom &bull; Guilty Verdict &amp; Supermax Sentence</span>
+      </div>
+      <span class="scene-coords">City, Courtroom</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is back in the courtroom, with lots of generic police surrounding him - providing unnecessary security. Joofy talks to Judge1, and he then looks over to Jury1, along with 9 other generic players in the jury seats. Joofy is sentenced to prison and the police officers start dragging him out of the courtroom.
+      </div>
+      <div class="dialogue-list">
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Judge1</div>
+          <div class="speaker-text">You were arrested for home invasion, tresspassing, and threatening a minor! You’re going away for a longgg time.</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">What…</div>
+        </div>
+        <div class="dialogue-row char-police">
+          <div class="speaker-badge">Judge1</div>
+          <div class="speaker-text">Has the jury made its decision?</div>
+        </div>
+        <div class="dialogue-row char-other">
+          <div class="speaker-badge">Jury1</div>
+          <div class="speaker-text">Yes. We find the defendant… GUILTY. We sentence him to TEN YEARS in Prison SUPERMAX!!</div>
+        </div>
+        <div class="dialogue-row char-joofy">
+          <div class="speaker-badge">Joofy</div>
+          <div class="speaker-text">Prison… Supermax??</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 35 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 35</span>
+        <span class="scene-location">Brett's Armory &bull; Gear Up &amp; Gang Assembly</span>
+      </div>
+      <span class="scene-coords">Inside Brett's House</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Cut to Brett opening a room/door in his house which leads to a huge armory with TONS of armor and firework crossbows, swords, and other weapons/storage. Joofy, Brett, and Jimmy start loading up on resources. Joofy/others get a firework crossbow, full iron armor, iron swords/tools (notably - NO PICKAXE, as they shouldn’t have a pickaxe later on) food, and some blocks. They should just be prepared for their plan.<br>
+        <span class="directive-tag tag-audio">Audio Editor</span> Play these lines semi-simultaneously<br>
+        <span class="directive-tag tag-animator">Animator</span> Whenever I reference Rizz1-3 - DON’T INCLUDE RIZZ2 because he’s supposed to be arrested. Joofy is back inside Brett’s house with Rizz1-3, showing to Comet that he’s now put together a little group of guys.
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SCENE 36 ==================== -->
+  <div class="scene-card">
+    <div class="scene-header">
+      <div class="scene-title-left">
+        <span class="scene-num">SCENE 36</span>
+        <span class="scene-location">Syndicate Penthouse &bull; Helicopter Raid &amp; Gang Battle</span>
+      </div>
+      <span class="scene-coords">City, Syndicate Penthouse</span>
+    </div>
+    <div class="scene-content">
+      <div class="action-block">
+        <strong class="lead">Action:</strong> Joofy is riding in dozens of helicopters with his whole criminal army. Him, Comet, Pawn1-3, Rizz1-3, and HUNDREDS of other generic criminals are spread across dozens of helicopters, which are all flying towards the Syndicate Penthouse. They eventually start hovering above the penthouse, and then the entire criminal army jumps down from the helicopters, MLG’ing down on top of the penthouse, and everybody starts breaking inside and digging down to get into the actual penthouse. There, Joofy’s army (which should be denoted by being in full diamond armor), comes up against the Syndicate’s army, which can still just be players in generic criminal skins, but they don’t have any armor. There’s a huge gang battle within the penthouse.
+      </div>
+    </div>
+  </div>
+
+  <div class="page-footer">
+    <span>Grand Theft Minecraft &bull; Part 1 Production Script</span>
+    <span>End of Document &bull; Prepared for Animator, Editor &amp; Voice Cast</span>
+  </div>
+
+</body>
+</html>

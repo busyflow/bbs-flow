@@ -143,7 +143,9 @@ public class ActorEntity extends LivingEntity implements IEntityFormProvider
             return super.getActiveEyeHeight(pose, dimensions);
         }
 
-        return this.form.hitboxEyeHeight.get();
+        /* Eye height is a fraction of the hitbox height (same as PlayerEntityMixin), so a
+         * 16x bigger/smaller hitbox keeps the eyes at the head. */
+        return this.form.hitboxEyeHeight.get() * dimensions.height;
     }
 
     @Override

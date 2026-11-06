@@ -22,9 +22,11 @@ import mchorse.bbs_mod.network.ClientNetwork;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.settings.values.IValueListener;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
+import mchorse.bbs_mod.settings.values.core.StableIds;
 import mchorse.bbs_mod.settings.values.core.ValueForm;
 import mchorse.bbs_mod.settings.values.core.ValueLink;
 import mchorse.bbs_mod.ui.Keys;
+import mchorse.bbs_mod.forms.forms.utils.Anchor;
 import mchorse.bbs_mod.forms.structure.StructureCut;
 import mchorse.bbs_mod.forms.structure.StructureManager;
 import mchorse.bbs_mod.forms.structure.StructureSelection;
@@ -33,7 +35,9 @@ import mchorse.bbs_mod.ui.film.UIFilmPanel;
 import mchorse.bbs_mod.ui.forms.UIFormPalette;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
+import mchorse.bbs_mod.ui.framework.elements.buttons.UIButton;
 import mchorse.bbs_mod.ui.framework.elements.context.UIContextMenu;
+import mchorse.bbs_mod.ui.framework.elements.input.UITexturePicker;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UIList;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UISearchList;
@@ -44,6 +48,7 @@ import mchorse.bbs_mod.ui.framework.elements.overlay.UINumberOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.framework.elements.utils.RowStyle;
 import mchorse.bbs_mod.ui.model_blocks.UIModelBlockEntityList;
+import mchorse.bbs_mod.ui.textures.TextureEntry;
 import mchorse.bbs_mod.ui.textures.TextureFiles;
 import mchorse.bbs_mod.ui.utils.context.MenuVerb;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
@@ -69,9 +74,12 @@ import org.joml.Vector3d;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -110,9 +118,9 @@ public class UIReplayList extends UIList<ReplayListEntry>
         this.panel = panel;
 
         this.presetController = new UICopyPasteController(PresetManager.REPLAYS, "_CopyReplay")
-            .supplier(() -> this.hasReplaySelection() ? this.replaysToData() : null)
+            .supplier(() -> this.canCopyReplayOrCategory() ? this.replaysToData() : null)
             .consumer((data, mouseX, mouseY) -> this.pasteReplay(data))
-            .canCopy(this::hasReplaySelection)
+            .canCopy(this::canCopyReplayOrCategory)
             .canPaste(() -> this.panel != null && this.panel.getData() != null)
             .labels(UIKeys.SCENE_REPLAYS_CONTEXT_COPY, UIKeys.SCENE_REPLAYS_CONTEXT_PASTE);
 
@@ -141,6 +149,7 @@ public class UIReplayList extends UIList<ReplayListEntry>
             {
                 boolean enabled = this.isCategoryEnabled(folder);
 
+                menu.action(Icons.COPY, UIKeys.SCENE_REPLAYS_CONTEXT_COPY, () -> this.copyCategory(folder));
                 menu.action(Icons.EDIT, UIKeys.SCENE_REPLAYS_CONTEXT_EDIT_CATEGORY, () -> this.openCategoryEditMenu(folder));
                 menu.action(enabled ? Icons.INVISIBLE : Icons.VISIBLE, enabled ? UIKeys.SCENE_REPLAYS_CONTEXT_DISABLE_CATEGORY : UIKeys.SCENE_REPLAYS_CONTEXT_ENABLE_CATEGORY, () -> this.setCategoryEnabled(folder, !enabled));
                 menu.action(Icons.TRASH, UIKeys.SCENE_REPLAYS_CONTEXT_REMOVE_CATEGORY, () -> this.removeReplayCategory(folder));
@@ -219,7 +228,7 @@ public class UIReplayList extends UIList<ReplayListEntry>
         this.keys().register(Keys.COPY, this::copyReplay)
             .inside()
             .label(UIKeys.SCENE_REPLAYS_CONTEXT_COPY)
-            .active(this::hasReplaySelection)
+            .active(this::canCopyReplayOrCategory)
             .category(UIKeys.FILM_REPLAY_TITLE);
         this.keys().register(Keys.PASTE, () ->
         {
@@ -307,17 +316,36 @@ public class UIReplayList extends UIList<ReplayListEntry>
             if (e.isFolder() && !e.folderPath.isEmpty())
             {
                 this.contextFolderPath = e.folderPath;
+                this.cursor = idx;
             }
         }
 
-        try
+        return super.createContextMenu(context);
+    }
+
+    private String getActiveFolderPath()
+    {
+        if (this.contextFolderPath != null && !this.contextFolderPath.isEmpty())
         {
-            return super.createContextMenu(context);
+            return this.contextFolderPath;
         }
-        finally
+
+        if (this.exists(this.cursor))
         {
-            this.contextFolderPath = null;
+            ReplayListEntry e = this.list.get(this.cursor);
+
+            if (e.isFolder() && !e.folderPath.isEmpty())
+            {
+                return e.folderPath;
+            }
         }
+
+        return null;
+    }
+
+    private boolean canCopyReplayOrCategory()
+    {
+        return this.hasReplaySelection() || this.getActiveFolderPath() != null;
     }
 
     /**
@@ -701,6 +729,8 @@ public class UIReplayList extends UIList<ReplayListEntry>
     /** Ask for a name and make the folder - inside {@code parent}, when the ask came from a folder. */
     private void openAddCategoryOverlay(String parent)
     {
+        List<Replay> selected = new ArrayList<>(this.getSelectedReplays());
+
         this.openCategoryNameOverlay(UIKeys.SCENE_REPLAYS_ADD_CATEGORY_TITLE, UIKeys.SCENE_REPLAYS_ADD_CATEGORY_DESCRIPTION, "", (name) ->
         {
             Film film = this.panel.getData();
@@ -713,8 +743,17 @@ public class UIReplayList extends UIList<ReplayListEntry>
 
             film.replayCategories.ensure(path);
             this.expandTo(path);
-            this.refreshReplayList();
-            this.updateFilmEditor();
+
+            if (!selected.isEmpty())
+            {
+                this.applyReplayCategory(selected, path);
+                this.selectReplays(selected);
+            }
+            else
+            {
+                this.refreshReplayList();
+                this.updateFilmEditor();
+            }
         });
     }
 
@@ -1402,12 +1441,94 @@ public class UIReplayList extends UIList<ReplayListEntry>
             return;
         }
 
-        UIFolderOverlayPanel panel = new UIFolderOverlayPanel(UIKeys.SCENE_REPLAYS_RANDOM_TEXTURES_TITLE, UIKeys.SCENE_REPLAYS_RANDOM_TEXTURES_DESCRIPTION, (folder) ->
-        {
-            this.applyRandomTextures(folder, selected, this.getContext());
-        }).confirmLabel(UIKeys.SCENE_REPLAYS_RANDOM_TEXTURES_APPLY);
+        UIContext context = this.getContext();
 
-        UIOverlay.addOverlay(this.getContext(), panel, 320, 0.8F);
+        if (context == null)
+        {
+            return;
+        }
+
+        Link initial = null;
+
+        for (Replay replay : selected)
+        {
+            Form form = replay.form.get();
+
+            if (form != null)
+            {
+                BaseValue property = FormUtils.getProperty(form, "texture");
+
+                if (property instanceof ValueLink valueLink && valueLink.get() != null)
+                {
+                    initial = valueLink.get();
+
+                    break;
+                }
+            }
+        }
+
+        final Link finalInitial = initial;
+        UITexturePicker[] holder = new UITexturePicker[1];
+        boolean[] applied = new boolean[] {false};
+
+        UITexturePicker picker = UITexturePicker.open(context, finalInitial, (link) ->
+        {
+            if (applied[0] || link == null)
+            {
+                return;
+            }
+
+            UITexturePicker p = holder[0];
+
+            /* Ignore the initial close callback if the user didn't pick anything new and closed with X */
+            if (p != null && !p.hasParent() && java.util.Objects.equals(link, finalInitial))
+            {
+                return;
+            }
+
+            Link folder = link.path.endsWith("/") ? TextureEntry.folderLink(link) : TextureEntry.folderLink(link.parent());
+
+            applied[0] = true;
+            this.applyRandomTextures(folder, selected, context);
+
+            if (p != null && p.hasParent())
+            {
+                p.removeFromParent();
+            }
+        });
+
+        holder[0] = picker;
+
+        if (picker != null)
+        {
+            if (initial != null && !initial.source.isEmpty())
+            {
+                Link initialFolder = initial.path.endsWith("/") ? initial : initial.parent();
+
+                if (initialFolder != null && !initialFolder.source.isEmpty())
+                {
+                    picker.browser.navigate(initialFolder);
+                }
+            }
+
+            UIButton applyBtn = new UIButton(UIKeys.SCENE_REPLAYS_RANDOM_TEXTURES_APPLY, (b) ->
+            {
+                Link folder = picker.browser.getPath();
+
+                if ((folder == null || folder.source.isEmpty()) && picker.current != null)
+                {
+                    folder = TextureEntry.folderLink(picker.current.parent());
+                }
+
+                applied[0] = true;
+                this.applyRandomTextures(folder, selected, context);
+                picker.removeFromParent();
+            });
+
+            applyBtn.w(90);
+            picker.browser.bar.add(applyBtn);
+            picker.browser.resize();
+        }
     }
 
     private void applyRandomTextures(Link folder, List<Replay> replays, UIContext context)
@@ -1571,26 +1692,133 @@ public class UIReplayList extends UIList<ReplayListEntry>
 
     public void copyReplay()
     {
-        Window.setClipboard(this.replaysToData(), "_CopyReplay");
+        MapType data = this.replaysToData();
+
+        if (data != null)
+        {
+            Window.setClipboard(data, "_CopyReplay");
+        }
+    }
+
+    public void copyCategory(String folderPath)
+    {
+        MapType data = this.categoryToData(folderPath);
+
+        if (data != null)
+        {
+            Window.setClipboard(data, "_CopyReplay");
+        }
     }
 
     /**
-     * Serialize the selected replays into the shared {@code {"replays": [...]}} format
-     * used by both clipboard copy/paste and presets.
+     * Serialize the selected replays or active category/group into the shared
+     * {@code {"replays": [...], "categories": [...]}} format used by both clipboard copy/paste and presets.
      */
     private MapType replaysToData()
     {
-        MapType replays = new MapType();
-        ListType replayList = new ListType();
-
-        replays.put("replays", replayList);
-
-        for (Replay replay : this.getSelectedReplays())
+        if (this.contextFolderPath != null && !this.contextFolderPath.isEmpty())
         {
-            replayList.add(replay.toData());
+            return this.categoryToData(this.contextFolderPath);
         }
 
-        return replays;
+        if (this.hasReplaySelection())
+        {
+            return this.replaysAndCategoriesToData(this.getSelectedReplays(), Collections.emptySet());
+        }
+
+        String folder = this.getActiveFolderPath();
+
+        if (folder != null)
+        {
+            return this.categoryToData(folder);
+        }
+
+        return null;
+    }
+
+    private MapType categoryToData(String folderPath)
+    {
+        Film film = this.panel == null ? null : this.panel.getData();
+        String folder = CategoryPath.normalize(folderPath);
+
+        if (film == null || folder.isEmpty())
+        {
+            return null;
+        }
+
+        List<Replay> matching = new ArrayList<>();
+
+        for (Replay replay : film.replays.getList())
+        {
+            if (CategoryPath.isInside(Replay.normalizeCategory(replay.category.get()), folder))
+            {
+                matching.add(replay);
+            }
+        }
+
+        Set<String> extraPaths = new LinkedHashSet<>();
+        extraPaths.add(folder);
+
+        for (Category cat : film.replayCategories.getList())
+        {
+            String path = CategoryPath.normalize(cat.path.get());
+
+            if (CategoryPath.isInside(path, folder))
+            {
+                extraPaths.add(path);
+            }
+        }
+
+        return this.replaysAndCategoriesToData(matching, extraPaths);
+    }
+
+    private MapType replaysAndCategoriesToData(List<Replay> sourceReplays, Set<String> extraCategoryPaths)
+    {
+        Film film = this.panel == null ? null : this.panel.getData();
+        MapType root = new MapType();
+        ListType replayList = new ListType();
+        ListType categoryList = new ListType();
+
+        root.put("replays", replayList);
+
+        Set<String> categoryPaths = new LinkedHashSet<>(extraCategoryPaths);
+
+        for (Replay replay : sourceReplays)
+        {
+            BaseType serialized = replay.toData();
+
+            if (serialized.isMap())
+            {
+                serialized.asMap().putString(StableIds.KEY, replay.getId());
+            }
+
+            replayList.add(serialized);
+
+            String catPath = Replay.normalizeCategory(replay.category.get());
+
+            for (String walk = catPath; !walk.isEmpty(); walk = CategoryPath.parent(walk))
+            {
+                categoryPaths.add(walk);
+            }
+        }
+
+        if (film != null && !categoryPaths.isEmpty())
+        {
+            for (String path : categoryPaths)
+            {
+                Category cat = film.replayCategories.getByPath(path);
+                MapType catMap = new MapType();
+
+                catMap.putString("path", path);
+                catMap.putBool("expanded", cat == null || cat.expanded.get());
+                catMap.putInt("color", cat == null ? 0 : cat.color.get());
+                categoryList.add(catMap);
+            }
+
+            root.put("categories", categoryList);
+        }
+
+        return root;
     }
 
     /**
@@ -1608,12 +1836,55 @@ public class UIReplayList extends UIList<ReplayListEntry>
 
     public void pasteReplay(MapType data)
     {
-        Film film = this.panel.getData();
+        Film film = this.panel == null ? null : this.panel.getData();
+
+        if (film == null || data == null)
+        {
+            return;
+        }
+
+        if (data.has("categories"))
+        {
+            ListType categories = data.getList("categories");
+
+            for (BaseType catType : categories)
+            {
+                if (catType.isMap())
+                {
+                    MapType catMap = catType.asMap();
+                    String path = CategoryPath.normalize(catMap.getString("path"));
+
+                    if (!path.isEmpty())
+                    {
+                        Category cat = film.replayCategories.ensure(path);
+
+                        if (cat != null)
+                        {
+                            if (catMap.has("color"))
+                            {
+                                cat.color.set(catMap.getInt("color"));
+                            }
+
+                            if (catMap.has("expanded"))
+                            {
+                                cat.expanded.set(catMap.getBool("expanded"));
+                            }
+                        }
+
+                        this.expandTo(path);
+                    }
+                }
+            }
+        }
+
         ListType replays = data.getList("replays");
+        List<Replay> pasted = new ArrayList<>();
+        Map<String, String> idRemap = new HashMap<>();
         Replay last = null;
 
         for (BaseType replayType : replays)
         {
+            String oldId = replayType.isMap() ? replayType.asMap().getString(StableIds.KEY) : "";
             Replay replay = film.replays.addReplay();
 
             /* The folder travels with the replay: a path means the same thing in any film, and the
@@ -1621,12 +1892,51 @@ public class UIReplayList extends UIList<ReplayListEntry>
             BaseValue.edit(replay, (r) -> r.fromData(replayType));
             this.assignReplayCategoryValue(replay, replay.category.get());
 
+            if (!oldId.isEmpty())
+            {
+                idRemap.put(oldId, replay.getId());
+            }
+
+            pasted.add(replay);
             last = replay;
+        }
+
+        if (!idRemap.isEmpty())
+        {
+            for (Replay replay : pasted)
+            {
+                Anchor anchor = replay.anchor.get();
+
+                if (anchor != null && idRemap.containsKey(anchor.replay))
+                {
+                    anchor.replay = idRemap.get(anchor.replay);
+                }
+
+                for (Keyframe<Anchor> kf : replay.keyframes.anchor.getKeyframes())
+                {
+                    Anchor kfAnchor = kf.getValue();
+
+                    if (kfAnchor != null && idRemap.containsKey(kfAnchor.replay))
+                    {
+                        kfAnchor.replay = idRemap.get(kfAnchor.replay);
+                    }
+                }
+            }
         }
 
         if (last != null)
         {
             this.showNewReplay(last);
+
+            if (pasted.size() > 1)
+            {
+                this.selectReplays(pasted);
+            }
+        }
+        else
+        {
+            this.refreshReplayList();
+            this.updateFilmEditor();
         }
     }
 

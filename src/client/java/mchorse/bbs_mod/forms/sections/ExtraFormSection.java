@@ -11,6 +11,7 @@ import mchorse.bbs_mod.forms.forms.ExtrudedForm;
 import mchorse.bbs_mod.forms.forms.FramebufferForm;
 import mchorse.bbs_mod.forms.forms.ItemForm;
 import mchorse.bbs_mod.forms.forms.LabelForm;
+import mchorse.bbs_mod.forms.forms.NameTagForm;
 import mchorse.bbs_mod.forms.forms.MobForm;
 import mchorse.bbs_mod.forms.forms.StructureForm;
 import mchorse.bbs_mod.forms.forms.TrailForm;
@@ -69,6 +70,7 @@ public class ExtraFormSection extends FormSection
         extra.addForm(new SplineForm());
         extra.addForm(billboard);
         extra.addForm(label);
+        extra.addForm(new NameTagForm());
         extra.addForm(extruded);
         extra.addForm(block);
         extra.addForm(item);
@@ -101,6 +103,18 @@ public class ExtraFormSection extends FormSection
             form.mobID.set(mobId);
             category.addForm(form);
         }
+    }
+
+    /** The "Misc" category (anchor, name tag, label, ...). */
+    public FormCategory getExtraCategory()
+    {
+        return this.extra;
+    }
+
+    /** The four mob categories, in palette order. */
+    public List<FormCategory> getMobCategories()
+    {
+        return Arrays.asList(this.mobsAnimals, this.mobsNeutral, this.mobsHostile, this.mobsMisc);
     }
 
     @Override

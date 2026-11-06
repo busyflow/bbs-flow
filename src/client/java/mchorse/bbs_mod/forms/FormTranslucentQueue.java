@@ -581,12 +581,14 @@ public class FormTranslucentQueue
 
         public RenderLayerCommand(net.minecraft.client.render.RenderLayer layer, VertexBuffer buffer, Matrix4f modelView, Vector3f cameraSpaceOrigin)
         {
-            /* Depth writes stay on, matching what these vanilla entity layers do when they draw
-             * themselves (ALL_MASK): a block or an item model is solid geometry — an item's
-             * extruded sprite is a stack of layers — so its faces must occlude each other, or
-             * the back ones pile over the front. Forms behind it stay visible through the
-             * far-to-near sort, not through a disabled depth mask. */
-            super(cameraSpaceOrigin, true, true);
+            this(layer, buffer, modelView, cameraSpaceOrigin, !layer.toString().contains("text"));
+        }
+
+        public RenderLayerCommand(net.minecraft.client.render.RenderLayer layer, VertexBuffer buffer, Matrix4f modelView, Vector3f cameraSpaceOrigin, boolean depthWrite)
+        {
+            /* Depth writes stay on for solid geometry (blocks, items) so its faces occlude each other.
+             * For text and text background layers, depth writes stay off so they don't occlude glyphs. */
+            super(cameraSpaceOrigin, true, depthWrite);
 
             this.layer = layer;
             this.buffer = buffer;

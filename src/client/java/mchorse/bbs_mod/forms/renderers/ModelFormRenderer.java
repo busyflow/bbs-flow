@@ -1086,9 +1086,10 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
              * under Iris; without Iris the BBS shader's own discard covers it), TRANSLUCENT forbids
              * the cutout degrade so the model stays in the pack's translucent phase. */
             int renderLayer = this.form.renderLayer.get();
+            boolean boneTranslucent = model.hasTranslucency();
             boolean cutout = renderLayer == Form.LAYER_AUTO
                 ? irisWorld && textureObject != null && textureObject.hasTranslucency()
-                    && contextColor.a >= 1F && formColor.a >= 1F
+                    && contextColor.a >= 1F && formColor.a >= 1F && !boneTranslucent
                 : renderLayer == Form.LAYER_CUTOUT && irisWorld;
             boolean noBlend = cutout || renderLayer == Form.LAYER_SOLID
                 || (renderLayer == Form.LAYER_CUTOUT && !irisWorld);
@@ -1347,7 +1348,12 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
 
                 MatrixStackUtils.applyTransform(stack, part.transform.get());
 
-                FormUtilsClient.getRenderer(form).collectMatrices(part.getRenderEntity(entity), stack, matrices, StringUtils.combinePaths(prefix, part.getId()), transition);
+                FormRenderer formRenderer = FormUtilsClient.getRenderer(form);
+
+                if (formRenderer != null)
+                {
+                    formRenderer.collectMatrices(part.getRenderEntity(entity), stack, matrices, StringUtils.combinePaths(prefix, part.getId()), transition);
+                }
 
                 stack.pop();
             }

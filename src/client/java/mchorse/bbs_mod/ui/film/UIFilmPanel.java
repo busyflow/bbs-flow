@@ -1252,7 +1252,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         menu.action(Icons.HELP, L10n.lang("bbs.ui.film.details.button"), () ->
         {
-            UIOverlay.addOverlay(this.getContext(), new UIFilmDetailsOverlayPanel(this.getData()), 300, 260);
+            UIOverlay.addOverlay(this.getContext(), new UIFilmDetailsOverlayPanel(this.getData()), 300, 290);
         });
     }
 
@@ -2416,6 +2416,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         if (data != null)
         {
             this.filmUserActivity.onFilmOpened();
+            PlayerUtils.applyWorldTime(data.worldTime.get());
         }
         else
         {

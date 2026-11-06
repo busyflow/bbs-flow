@@ -596,6 +596,9 @@ public class UIKeys
     public static final IKey FORMS_EDITORS_LABEL_SHADOW_COLOR = L10n.lang("bbs.ui.forms.editors.label.shadow_color");
     public static final IKey FORMS_EDITORS_LABEL_SHADOW_OFFSET = L10n.lang("bbs.ui.forms.editors.label.shadow_offset");
     public static final IKey FORMS_EDITORS_LABEL_TITLE = L10n.lang("bbs.ui.forms.editors.label.title");
+    public static final IKey FORMS_EDITORS_NAMETAG_TITLE = L10n.lang("bbs.ui.forms.editors.nametag.title");
+    public static final IKey FORMS_EDITORS_NAMETAG_SEE_THROUGH = L10n.lang("bbs.ui.forms.editors.nametag.see_through");
+    public static final IKey FORMS_EDITORS_NAMETAG_BACKGROUND = L10n.lang("bbs.ui.forms.editors.nametag.background");
     public static final IKey FORMS_EDITORS_MOB_ID = L10n.lang("bbs.ui.forms.editors.mob.mob_id");
     public static final IKey FORMS_EDITORS_MOB_NBT = L10n.lang("bbs.ui.forms.editors.mob.nbt");
     public static final IKey FORMS_EDITORS_MOB_TITLE = L10n.lang("bbs.ui.forms.editors.mob.title");

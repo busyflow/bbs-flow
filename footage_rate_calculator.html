@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Footage Earnings Calculator • USD to ZAR</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes pulse-slow {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.95); }
+    }
+    .animate-pulse-slow {
+      animation: pulse-slow 2.5s infinite;
+    }
+    input[type=range] {
+      accent-color: #10b981;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-emerald-500 selection:text-white p-4 sm:p-8 font-sans">
+
+  <div class="max-w-6xl mx-auto space-y-6">
+
+    <!-- TOP HEADER & LIVE EXCHANGE TICKER -->
+    <header class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2">
+          <div class="h-3 w-3 rounded-full bg-emerald-400 animate-pulse-slow"></div>
+          <span class="text-xs font-semibold tracking-wider uppercase text-emerald-400">Live Rate Engine</span>
+        </div>
+        <h1 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white mt-1">
+          Footage Payout Studio
+        </h1>
+        <p class="text-sm text-slate-400">Real-time USD to ZAR footage compensation & invoicing</p>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 bg-slate-950/80 border border-slate-800/80 px-4 py-3 rounded-xl shadow-inner">
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-slate-400 font-medium">Exchange Rate</div>
+          <div class="text-lg font-bold text-emerald-400 flex items-center gap-1.5" id="exchangeDisplay">
+            <span>$1 USD =</span>
+            <span id="rateValue" class="text-white">R16.37</span>
+            <span class="text-xs text-slate-400 font-normal">ZAR</span>
+          </div>
+          <div class="text-[11px] text-slate-400" id="lastUpdated">Updated just now</div>
+        </div>
+
+        <button id="refreshRateBtn" onclick="fetchLiveRate(true)" class="ml-2 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5 shadow-sm active:scale-95" title="Fetch latest live market rate">
+          <svg id="refreshIcon" class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+          </svg>
+          Sync
+        </button>
+      </div>
+    </header>
+
+    <!-- MAIN CALCULATOR & CONFIG CARDS -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+      <!-- LEFT 2 COLS: QUICK CALCULATOR -->
+      <div class="lg:col-span-2 bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col justify-between space-y-6">
+        <div>
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-5">
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+              Footage Duration Calculator
+            </h2>
+            <span class="text-xs px-2.5 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full font-mono" id="rateBadge">$14.25 / min</span>
+          </div>
+
+          <!-- TIME INPUT CONTROLS -->
+          <div class="grid grid-cols-3 gap-3 mb-5">
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1 font-semibold">Hours</label>
+              <input type="number" id="inputHours" min="0" max="999" value="0" class="w-full bg-transparent text-xl font-mono font-bold text-white focus:outline-none focus:text-emerald-400" oninput="updateFromInputs()">
+            </div>
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1 font-semibold">Minutes</label>
+              <input type="number" id="inputMinutes" min="0" max="59" value="12" class="w-full bg-transparent text-xl font-mono font-bold text-white focus:outline-none focus:text-emerald-400" oninput="updateFromInputs()">
+            </div>
+            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800">
+              <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1 font-semibold">Seconds</label>
+              <input type="number" id="inputSeconds" min="0" max="59" value="30" class="w-full bg-transparent text-xl font-mono font-bold text-white focus:outline-none focus:text-emerald-400" oninput="updateFromInputs()">
+            </div>
+          </div>
+
+          <!-- DURATION SLIDER -->
+          <div class="space-y-2 mb-6">
+            <div class="flex justify-between text-xs text-slate-400">
+              <span>Slider Adjustment (0 to 60 Mins)</span>
+              <span id="sliderLabel" class="font-mono text-emerald-400 font-bold">12.5 mins (750s)</span>
+            </div>
+            <input type="range" id="durationSlider" min="0" max="60" step="0.25" value="12.5" class="w-full h-2 bg-slate-800 rounded-lg cursor-pointer" oninput="updateFromSlider()">
+            <div class="flex justify-between text-[11px] text-slate-400 font-mono">
+              <span>0m</span>
+              <span>15m</span>
+              <span>30m</span>
+              <span>45m</span>
+              <span>60m</span>
+            </div>
+          </div>
+
+          <!-- BIG PAYOUT CARDS -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- USD CARD -->
+            <div class="bg-gradient-to-br from-slate-950 to-slate-900 border border-slate-800 p-5 rounded-2xl relative overflow-hidden group">
+              <div class="absolute -right-4 -bottom-4 w-24 h-24 bg-blue-500/5 rounded-full blur-xl group-hover:bg-blue-500/10 transition"></div>
+              <div class="text-xs uppercase tracking-wider text-blue-400 font-semibold mb-1 flex items-center justify-between">
+                <span>Total Pay (USD)</span>
+                <span class="text-[11px] text-slate-400 font-mono" id="usdPerSec">$0.238/sec</span>
+              </div>
+              <div class="text-3xl sm:text-4xl font-extrabold text-white font-mono tracking-tight" id="calcUsdTotal">$178.13</div>
+              <div class="text-xs text-slate-400 mt-2 font-mono flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                <span id="usdFormula">12.50 mins × $14.25</span>
+              </div>
+            </div>
+
+            <!-- ZAR CARD -->
+            <div class="bg-gradient-to-br from-emerald-950/40 via-slate-900 to-slate-950 border border-emerald-500/30 p-5 rounded-2xl relative overflow-hidden group shadow-lg shadow-emerald-950/20">
+              <div class="absolute -right-4 -bottom-4 w-28 h-28 bg-emerald-500/10 rounded-full blur-xl group-hover:bg-emerald-500/20 transition"></div>
+              <div class="text-xs uppercase tracking-wider text-emerald-400 font-semibold mb-1 flex items-center justify-between">
+                <span>Total Pay (ZAR)</span>
+                <span class="text-[11px] text-emerald-400/80 font-mono" id="zarPerSec">R3.89/sec</span>
+              </div>
+              <div class="text-3xl sm:text-4xl font-extrabold text-emerald-300 font-mono tracking-tight" id="calcZarTotal">R2,916.89</div>
+              <div class="text-xs text-slate-400 mt-2 font-mono flex items-center gap-1.5">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                <span id="zarFormula">$178.13 × R16.37</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- QUICK ACTION BAR -->
+        <div class="pt-4 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+          <div class="text-xs text-slate-400">
+            Need this logged? Add it to your project invoice below with one click.
+          </div>
+          <button onclick="addCurrentToSession()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow-lg shadow-emerald-900/30 active:scale-95 transition flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            Add to Invoice Session
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT 1 COL: CONFIGURATION & GOAL TRACKER -->
+      <div class="space-y-6">
+
+        <!-- RATE CONFIG -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+          <h2 class="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path></svg>
+            Rate Configuration
+          </h2>
+
+          <!-- USD RATE INPUT -->
+          <div>
+            <label class="block text-xs text-slate-400 font-medium mb-1">Your Pay Rate ($USD / Minute)</label>
+            <div class="relative">
+              <span class="absolute left-3 top-2.5 text-slate-400 font-bold">$</span>
+              <input type="number" id="baseRateInput" step="0.25" min="1" value="14.25" class="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-2 text-white font-mono font-bold text-base focus:border-emerald-500 focus:outline-none" oninput="saveAndRecalculate()">
+            </div>
+            <!-- QUICK PRESETS -->
+            <div class="flex gap-1.5 mt-2">
+              <button onclick="setBaseRate(10)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] rounded font-mono transition">$10</button>
+              <button onclick="setBaseRate(14.25)" class="px-2 py-1 bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 text-[11px] rounded font-mono font-bold transition">$14.25</button>
+              <button onclick="setBaseRate(15)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] rounded font-mono transition">$15</button>
+              <button onclick="setBaseRate(20)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] rounded font-mono transition">$20</button>
+            </div>
+          </div>
+
+          <!-- MANUAL EXCHANGE RATE LOCK -->
+          <div class="pt-2 border-t border-slate-800/80">
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="text-xs text-slate-400 font-medium">USD to ZAR Rate Lock</label>
+              <label class="inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="overrideToggle" class="sr-only peer" onchange="toggleRateOverride()">
+                <div class="w-8 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
+                <span class="ml-2 text-[11px] text-slate-400 peer-checked:text-emerald-400">Fixed</span>
+              </label>
+            </div>
+            <div class="relative">
+              <span class="absolute left-3 top-2 text-slate-400 font-semibold text-xs">R</span>
+              <input type="number" id="customRateInput" step="0.01" min="1" value="16.37" disabled class="w-full bg-slate-950/60 disabled:opacity-50 border border-slate-800 rounded-xl pl-7 pr-3 py-1.5 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none" oninput="saveAndRecalculate()">
+            </div>
+          </div>
+        </div>
+
+        <!-- GOAL TARGET ESTIMATOR -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+          <h2 class="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+            Target Income Estimator
+          </h2>
+          <p class="text-xs text-slate-400">Calculate how many minutes of footage you need to hit an earnings milestone:</p>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+              <label class="block text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Target (ZAR)</label>
+              <div class="flex items-center gap-1 mt-1">
+                <span class="text-xs text-emerald-400 font-bold">R</span>
+                <input type="number" id="goalZar" value="10000" step="500" class="w-full bg-transparent text-sm font-mono font-bold text-white focus:outline-none" oninput="calculateGoalFromZar()">
+              </div>
+            </div>
+            <div class="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+              <label class="block text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Target (USD)</label>
+              <div class="flex items-center gap-1 mt-1">
+                <span class="text-xs text-blue-400 font-bold">$</span>
+                <input type="number" id="goalUsd" value="610.70" step="50" class="w-full bg-transparent text-sm font-mono font-bold text-white focus:outline-none" oninput="calculateGoalFromUsd()">
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-emerald-950/30 border border-emerald-500/20 p-3 rounded-xl text-center">
+            <div class="text-[11px] uppercase tracking-wider text-emerald-400/90 font-medium">Required Footage</div>
+            <div class="text-xl font-bold font-mono text-emerald-300 mt-0.5" id="goalResultTime">42m 51s</div>
+            <div class="text-[11px] text-slate-400 font-mono" id="goalResultDecimal">~42.86 total minutes</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- PROJECT / EPISODE SESSION BATCH TRACKER -->
+    <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+            Session / Project Invoice Tracker
+          </h2>
+          <p class="text-xs text-slate-400">Log scenes or episodes, tally cumulative time, and generate ready-to-send invoice text.</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <input type="text" id="sessionProjectName" value="Grand Theft Minecraft • Part 1" class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:border-emerald-500 focus:outline-none font-medium placeholder-slate-600" placeholder="Project Name">
+          <button onclick="copyInvoiceText()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-semibold transition active:scale-95 flex items-center gap-1.5" title="Copy formatted invoice summary to clipboard">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
+            <span id="copyBtnText">Copy Invoice</span>
+          </button>
+          <button onclick="clearSession()" class="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-xl text-xs font-medium transition" title="Clear all scenes">Clear</button>
+        </div>
+      </div>
+
+      <!-- SESSION CLIP ADD ROW -->
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+        <input type="text" id="clipLabel" placeholder="Scene name (e.g. Scene 4 Carjack)" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500">
+        <input type="number" id="clipMins" placeholder="Minutes" min="0" value="3" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500">
+        <input type="number" id="clipSecs" placeholder="Seconds" min="0" max="59" value="45" class="bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500">
+        <button onclick="addManualClip()" class="bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs rounded-lg py-1.5 transition active:scale-95 flex items-center justify-center gap-1">
+          + Add Clip
+        </button>
+      </div>
+
+      <!-- CLIPS TABLE -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs font-mono">
+          <thead class="bg-slate-950/90 text-slate-400 uppercase tracking-wider text-[11px] border-b border-slate-800">
+            <tr>
+              <th class="py-2.5 px-3">#</th>
+              <th class="py-2.5 px-3">Scene / Description</th>
+              <th class="py-2.5 px-3">Duration</th>
+              <th class="py-2.5 px-3 text-right">USD ($)</th>
+              <th class="py-2.5 px-3 text-right">ZAR (R)</th>
+              <th class="py-2.5 px-3 text-center">Action</th>
+            </tr>
+          </thead>
+          <tbody id="sessionClipsBody" class="divide-y divide-slate-800/60 text-slate-300">
+            <!-- Dynamically populated -->
+          </tbody>
+          <tfoot class="bg-slate-950/90 font-bold border-t border-slate-800 text-white">
+            <tr>
+              <td class="py-3 px-3" colspan="2">TOTAL SESSION</td>
+              <td class="py-3 px-3 text-emerald-400" id="sessionTotalTime">0m 0s</td>
+              <td class="py-3 px-3 text-right text-blue-400" id="sessionTotalUsd">$0.00</td>
+              <td class="py-3 px-3 text-right text-emerald-300" id="sessionTotalZar">R0.00</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- FULL 1-60 MINUTE RATE MATRIX TABLE (FROM USER DATA) -->
+    <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+            1 to 60+ Minute Footage Compensation Matrix
+          </h2>
+          <p class="text-xs text-slate-400">Exact calculations based on current live exchange rate (<span id="matrixRateLabel">R16.37</span>/USD) at <span id="matrixBaseRateLabel">$14.25</span>/min.</p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- SEARCH FILTER -->
+          <div class="relative">
+            <input type="number" id="tableFilter" placeholder="Filter minute..." class="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 w-36 font-mono" oninput="renderTable()">
+          </div>
+
+          <!-- EXPORT CSV -->
+          <button onclick="exportTableToCSV()" class="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-xl text-xs font-semibold transition active:scale-95 flex items-center gap-1.5" title="Export this updated table to CSV">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- MATRIX TABLE -->
+      <div class="overflow-x-auto max-h-[500px] overflow-y-auto rounded-xl border border-slate-800">
+        <table class="w-full text-left text-xs font-mono">
+          <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider text-[11px] sticky top-0 z-10 border-b border-slate-800">
+            <tr>
+              <th class="py-3 px-4">Minutes</th>
+              <th class="py-3 px-4">Duration (Timecode)</th>
+              <th class="py-3 px-4 text-right">Pay in USD ($)</th>
+              <th class="py-3 px-4 text-right">Pay in ZAR (R)</th>
+              <th class="py-3 px-4 text-center">Quick Load</th>
+            </tr>
+          </thead>
+          <tbody id="matrixTableBody" class="divide-y divide-slate-800/60 bg-slate-900/60 text-slate-300">
+            <!-- Dynamically generated rows -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer class="text-center text-xs text-slate-400 pb-4 font-mono">
+      Forever Payout Studio • Local Storage Enabled • Always Real-Time
+    </footer>
+
+  </div>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    // State
+    let liveRate = 16.3749;
+    let baseRate = 14.25;
+    let isOverride = false;
+    let sessionClips = [
+      { id: 1, label: "Scene 4: Punching & Carjack", seconds: 225 },
+      { id: 2, label: "Scene 5: Bank Robbery", seconds: 480 },
+      { id: 3, label: "Scene 8: Torture Room", seconds: 310 }
+    ];
+
+    // Load persisted data
+    function loadSavedState() {
+      try {
+        const savedBase = localStorage.getItem("footage_base_rate");
+        if (savedBase) baseRate = parseFloat(savedBase) || 14.25;
+        document.getElementById("baseRateInput").value = baseRate;
+
+        const savedOverride = localStorage.getItem("footage_rate_override");
+        const savedCustomRate = localStorage.getItem("footage_custom_rate");
+        if (savedOverride === "true" && savedCustomRate) {
+          isOverride = true;
+          document.getElementById("overrideToggle").checked = true;
+          document.getElementById("customRateInput").disabled = false;
+          document.getElementById("customRateInput").value = savedCustomRate;
+        }
+
+        const savedClips = localStorage.getItem("footage_session_clips");
+        if (savedClips) {
+          sessionClips = JSON.parse(savedClips);
+        }
+
+        const savedProject = localStorage.getItem("footage_project_name");
+        if (savedProject) {
+          document.getElementById("sessionProjectName").value = savedProject;
+        }
+      } catch (e) {
+        console.warn("Could not load local storage", e);
+      }
+    }
+
+    // Live API fetch
+    async function fetchLiveRate(manual = false) {
+      const btn = document.getElementById("refreshRateBtn");
+      const icon = document.getElementById("refreshIcon");
+      if (icon) icon.classList.add("animate-spin");
+
+      try {
+        // Primary API: open.er-api.com
+        const res = await fetch("https://open.er-api.com/v6/latest/USD");
+        if (!res.ok) throw new Error("Primary API failed");
+        const data = await res.json();
+        if (data && data.rates && data.rates.ZAR) {
+          liveRate = data.rates.ZAR;
+          document.getElementById("lastUpdated").textContent = "Live: " + new Date().toLocaleTimeString();
+        }
+      } catch (err) {
+        console.warn("Primary API failed, trying fallback...", err);
+        try {
+          const res2 = await fetch("https://api.exchangerate-api.com/v4/latest/USD");
+          const data2 = await res2.json();
+          if (data2 && data2.rates && data2.rates.ZAR) {
+            liveRate = data2.rates.ZAR;
+            document.getElementById("lastUpdated").textContent = "Live: " + new Date().toLocaleTimeString();
+          }
+        } catch (err2) {
+          console.warn("Using cached fallback rate", err2);
+          document.getElementById("lastUpdated").textContent = "Cached Fallback";
+        }
+      }
+
+      if (icon) icon.classList.remove("animate-spin");
+      recalculate();
+    }
+
+    function getActiveRate() {
+      if (isOverride) {
+        const custom = parseFloat(document.getElementById("customRateInput").value);
+        return custom > 0 ? custom : liveRate;
+      }
+      return liveRate;
+    }
+
+    function toggleRateOverride() {
+      const toggle = document.getElementById("overrideToggle");
+      const customInput = document.getElementById("customRateInput");
+      isOverride = toggle.checked;
+      customInput.disabled = !isOverride;
+      if (isOverride) {
+        customInput.value = liveRate.toFixed(2);
+      }
+      localStorage.setItem("footage_rate_override", isOverride);
+      localStorage.setItem("footage_custom_rate", customInput.value);
+      recalculate();
+    }
+
+    function setBaseRate(val) {
+      baseRate = val;
+      document.getElementById("baseRateInput").value = val;
+      saveAndRecalculate();
+    }
+
+    function saveAndRecalculate() {
+      baseRate = parseFloat(document.getElementById("baseRateInput").value) || 14.25;
+      localStorage.setItem("footage_base_rate", baseRate);
+
+      if (isOverride) {
+        localStorage.setItem("footage_custom_rate", document.getElementById("customRateInput").value);
+      }
+
+      recalculate();
+    }
+
+    function updateFromInputs() {
+      const h = parseInt(document.getElementById("inputHours").value) || 0;
+      const m = parseInt(document.getElementById("inputMinutes").value) || 0;
+      const s = parseInt(document.getElementById("inputSeconds").value) || 0;
+      const totalMins = (h * 60) + m + (s / 60);
+
+      document.getElementById("durationSlider").value = Math.min(60, totalMins);
+      document.getElementById("sliderLabel").textContent = `${totalMins.toFixed(2)} mins (${Math.round(totalMins * 60)}s)`;
+      recalculate();
+    }
+
+    function updateFromSlider() {
+      const totalMins = parseFloat(document.getElementById("durationSlider").value) || 0;
+      const totalSecs = Math.round(totalMins * 60);
+      const h = Math.floor(totalSecs / 3600);
+      const m = Math.floor((totalSecs % 3600) / 60);
+      const s = totalSecs % 60;
+
+      document.getElementById("inputHours").value = h;
+      document.getElementById("inputMinutes").value = m;
+      document.getElementById("inputSeconds").value = s;
+      document.getElementById("sliderLabel").textContent = `${totalMins.toFixed(2)} mins (${totalSecs}s)`;
+      recalculate();
+    }
+
+    function recalculate() {
+      const rate = getActiveRate();
+      document.getElementById("rateValue").textContent = `R${rate.toFixed(2)}`;
+      document.getElementById("rateBadge").textContent = `$${baseRate.toFixed(2)} / min`;
+      document.getElementById("matrixRateLabel").textContent = `R${rate.toFixed(2)}`;
+      document.getElementById("matrixBaseRateLabel").textContent = `$${baseRate.toFixed(2)}`;
+
+      const h = parseInt(document.getElementById("inputHours").value) || 0;
+      const m = parseInt(document.getElementById("inputMinutes").value) || 0;
+      const s = parseInt(document.getElementById("inputSeconds").value) || 0;
+      const totalMinutes = (h * 60) + m + (s / 60);
+
+      const usdTotal = totalMinutes * baseRate;
+      const zarTotal = usdTotal * rate;
+
+      const perSecUsd = baseRate / 60;
+      const perSecZar = perSecUsd * rate;
+
+      document.getElementById("usdPerSec").textContent = `$${perSecUsd.toFixed(4)}/sec`;
+      document.getElementById("zarPerSec").textContent = `R${perSecZar.toFixed(2)}/sec`;
+
+      document.getElementById("calcUsdTotal").textContent = `$${usdTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById("calcZarTotal").textContent = `R${zarTotal.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+      document.getElementById("usdFormula").textContent = `${totalMinutes.toFixed(2)} mins × $${baseRate.toFixed(2)}`;
+      document.getElementById("zarFormula").textContent = `$${usdTotal.toFixed(2)} × R${rate.toFixed(2)}`;
+
+      calculateGoalFromZar();
+      renderSessionClips();
+      renderTable();
+    }
+
+    // Goal calculation
+    function calculateGoalFromZar() {
+      const rate = getActiveRate();
+      const targetZar = parseFloat(document.getElementById("goalZar").value) || 0;
+      const targetUsd = rate > 0 ? targetZar / rate : 0;
+      document.getElementById("goalUsd").value = targetUsd.toFixed(2);
+      updateGoalDisplay(targetUsd);
+    }
+
+    function calculateGoalFromUsd() {
+      const rate = getActiveRate();
+      const targetUsd = parseFloat(document.getElementById("goalUsd").value) || 0;
+      const targetZar = targetUsd * rate;
+      document.getElementById("goalZar").value = targetZar.toFixed(2);
+      updateGoalDisplay(targetUsd);
+    }
+
+    function updateGoalDisplay(targetUsd) {
+      if (baseRate <= 0) return;
+      const requiredMinutes = targetUsd / baseRate;
+      const totalSecs = Math.round(requiredMinutes * 60);
+      const h = Math.floor(totalSecs / 3600);
+      const m = Math.floor((totalSecs % 3600) / 60);
+      const s = totalSecs % 60;
+
+      let timeStr = "";
+      if (h > 0) timeStr += `${h}h `;
+      timeStr += `${m}m ${s}s`;
+
+      document.getElementById("goalResultTime").textContent = timeStr;
+      document.getElementById("goalResultDecimal").textContent = `~${requiredMinutes.toFixed(2)} total mins`;
+    }
+
+    // Session Tracker
+    function addCurrentToSession() {
+      const h = parseInt(document.getElementById("inputHours").value) || 0;
+      const m = parseInt(document.getElementById("inputMinutes").value) || 0;
+      const s = parseInt(document.getElementById("inputSeconds").value) || 0;
+      const totalSecs = (h * 3600) + (m * 60) + s;
+      if (totalSecs <= 0) return;
+
+      const clipNum = sessionClips.length + 1;
+      sessionClips.push({
+        id: Date.now(),
+        label: `Clip ${clipNum}`,
+        seconds: totalSecs
+      });
+      saveClips();
+      renderSessionClips();
+    }
+
+    function addManualClip() {
+      const label = document.getElementById("clipLabel").value.trim() || `Clip ${sessionClips.length + 1}`;
+      const m = parseInt(document.getElementById("clipMins").value) || 0;
+      const s = parseInt(document.getElementById("clipSecs").value) || 0;
+      const totalSecs = (m * 60) + s;
+      if (totalSecs <= 0) return;
+
+      sessionClips.push({
+        id: Date.now(),
+        label: label,
+        seconds: totalSecs
+      });
+      document.getElementById("clipLabel").value = "";
+      saveClips();
+      renderSessionClips();
+    }
+
+    function removeClip(id) {
+      sessionClips = sessionClips.filter(c => c.id !== id);
+      saveClips();
+      renderSessionClips();
+    }
+
+    function clearSession() {
+      if (confirm("Clear all session clips?")) {
+        sessionClips = [];
+        saveClips();
+        renderSessionClips();
+      }
+    }
+
+    function saveClips() {
+      localStorage.setItem("footage_session_clips", JSON.stringify(sessionClips));
+      localStorage.setItem("footage_project_name", document.getElementById("sessionProjectName").value);
+    }
+
+    function renderSessionClips() {
+      const tbody = document.getElementById("sessionClipsBody");
+      const rate = getActiveRate();
+      tbody.innerHTML = "";
+
+      let totalSecs = 0;
+
+      sessionClips.forEach((clip, index) => {
+        totalSecs += clip.seconds;
+        const mins = clip.seconds / 60;
+        const usd = mins * baseRate;
+        const zar = usd * rate;
+
+        const m = Math.floor(clip.seconds / 60);
+        const s = clip.seconds % 60;
+
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-800/40 transition";
+        tr.innerHTML = `
+          <td class="py-2.5 px-3 text-slate-400 font-bold">${index + 1}</td>
+          <td class="py-2.5 px-3 font-medium text-white">${clip.label}</td>
+          <td class="py-2.5 px-3 text-slate-300 font-mono">${m}m ${s.toString().padStart(2, '0')}s</td>
+          <td class="py-2.5 px-3 text-right text-blue-400 font-mono">$${usd.toFixed(2)}</td>
+          <td class="py-2.5 px-3 text-right text-emerald-300 font-mono">R${zar.toFixed(2)}</td>
+          <td class="py-2.5 px-3 text-center">
+            <button onclick="removeClip(${clip.id})" class="text-rose-400 hover:text-rose-300 p-1 rounded hover:bg-rose-500/10 transition" title="Delete Clip">✕</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      const totalMins = totalSecs / 60;
+      const totalUsd = totalMins * baseRate;
+      const totalZar = totalUsd * rate;
+
+      const th = Math.floor(totalSecs / 3600);
+      const tm = Math.floor((totalSecs % 3600) / 60);
+      const ts = totalSecs % 60;
+      let totalTimeStr = th > 0 ? `${th}h ${tm}m ${ts}s` : `${tm}m ${ts}s`;
+
+      document.getElementById("sessionTotalTime").textContent = totalTimeStr;
+      document.getElementById("sessionTotalUsd").textContent = `$${totalUsd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      document.getElementById("sessionTotalZar").textContent = `R${totalZar.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    function copyInvoiceText() {
+      const proj = document.getElementById("sessionProjectName").value.trim() || "Footage Production";
+      const rate = getActiveRate();
+      let totalSecs = 0;
+      let lines = [];
+
+      lines.push(`==========================================`);
+      lines.push(`INVOICE SUMMARY: ${proj}`);
+      lines.push(`Date: ${new Date().toLocaleDateString()}`);
+      lines.push(`Rate: $${baseRate.toFixed(2)} / min  |  Live FX: 1 USD = R${rate.toFixed(2)} ZAR`);
+      lines.push(`------------------------------------------`);
+
+      sessionClips.forEach((clip, i) => {
+        totalSecs += clip.seconds;
+        const mins = clip.seconds / 60;
+        const usd = mins * baseRate;
+        const zar = usd * rate;
+        const m = Math.floor(clip.seconds / 60);
+        const s = clip.seconds % 60;
+        lines.push(`${i + 1}. ${clip.label.padEnd(28)} ${m}m ${s.toString().padStart(2, '0')}s | $${usd.toFixed(2)} | R${zar.toFixed(2)}`);
+      });
+
+      const totalMins = totalSecs / 60;
+      const totalUsd = totalMins * baseRate;
+      const totalZar = totalUsd * rate;
+      const th = Math.floor(totalSecs / 3600);
+      const tm = Math.floor((totalSecs % 3600) / 60);
+      const ts = totalSecs % 60;
+      const totalTimeStr = th > 0 ? `${th}h ${tm}m ${ts}s` : `${tm}m ${ts}s`;
+
+      lines.push(`------------------------------------------`);
+      lines.push(`TOTAL FOOTAGE: ${totalTimeStr} (${totalMins.toFixed(2)} mins)`);
+      lines.push(`TOTAL PAY (USD): $${totalUsd.toFixed(2)}`);
+      lines.push(`TOTAL PAY (ZAR): R${totalZar.toFixed(2)}`);
+      lines.push(`==========================================`);
+
+      const text = lines.join("\n");
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById("copyBtnText");
+        btn.textContent = "Copied! ✓";
+        setTimeout(() => btn.textContent = "Copy Invoice", 2000);
+      });
+    }
+
+    // 1-60 Matrix Table
+    function renderTable() {
+      const tbody = document.getElementById("matrixTableBody");
+      const rate = getActiveRate();
+      const filter = document.getElementById("tableFilter").value.trim();
+      tbody.innerHTML = "";
+
+      for (let min = 1; min <= 60; min++) {
+        if (filter && min.toString() !== filter && !min.toString().startsWith(filter)) {
+          continue;
+        }
+
+        const usd = min * baseRate;
+        const zar = usd * rate;
+
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-slate-800/40 transition group cursor-pointer";
+        tr.onclick = (e) => {
+          if (e.target.tagName !== 'BUTTON') {
+            loadMinute(min);
+          }
+        };
+
+        tr.innerHTML = `
+          <td class="py-2.5 px-4 font-bold text-white flex items-center gap-1.5">
+            <span class="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center text-emerald-400 text-xs font-mono">${min}</span>
+            <span>Minute${min > 1 ? 's' : ''}</span>
+          </td>
+          <td class="py-2.5 px-4 text-slate-400 font-mono">${min.toString().padStart(2, '0')}:00</td>
+          <td class="py-2.5 px-4 text-right font-mono text-blue-400 font-semibold">$${usd.toFixed(2)}</td>
+          <td class="py-2.5 px-4 text-right font-mono text-emerald-300 font-bold">R${zar.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          <td class="py-2.5 px-4 text-center">
+            <button onclick="loadMinute(${min}); event.stopPropagation();" class="px-2.5 py-1 bg-slate-800 hover:bg-emerald-600 hover:text-white text-slate-300 rounded text-[11px] font-sans transition" title="Load into top calculator">
+              Load
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    function loadMinute(m) {
+      document.getElementById("inputHours").value = 0;
+      document.getElementById("inputMinutes").value = m;
+      document.getElementById("inputSeconds").value = 0;
+      document.getElementById("durationSlider").value = Math.min(60, m);
+      document.getElementById("sliderLabel").textContent = `${m.toFixed(2)} mins (${m * 60}s)`;
+      recalculate();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function exportTableToCSV() {
+      const rate = getActiveRate();
+      let csv = "Minutes,Timecode,USD_Rate_Per_Min,Total_USD,Exchange_Rate_ZAR,Total_ZAR\n";
+
+      for (let min = 1; min <= 60; min++) {
+        const usd = min * baseRate;
+        const zar = usd * rate;
+        csv += `${min},${min}:00,${baseRate.toFixed(2)},${usd.toFixed(2)},${rate.toFixed(4)},${zar.toFixed(2)}\n`;
+      }
+
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Footage_Payout_Rates_${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // Initialize
+    loadSavedState();
+    fetchLiveRate();
+    updateFromInputs();
+  </script>
+</body>
+</html>

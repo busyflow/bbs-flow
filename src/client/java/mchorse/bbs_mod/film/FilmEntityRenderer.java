@@ -121,7 +121,7 @@ public class FilmEntityRenderer
             if (UIBaseMenu.shouldRenderAxes())
             {
                 if (gizmo.is(FilmTarget.Kind.ANCHOR)) renderAnchorGizmo(entities, entity, target, defaultMatrix, cx, cy, cz, transition, gizmo.space(), context.gizmoView, context.map, stack, anchorFrame);
-                else if (gizmo.is(FilmTarget.Kind.ROOT)) renderReplayGizmo(entity, cx, cy, cz, transition, gizmo.space(), context.gizmoView, context.map, stack);
+                else if (gizmo.is(FilmTarget.Kind.ROOT)) renderReplayGizmo(entity, context.replayTransform, cx, cy, cz, transition, gizmo.space(), context.gizmoView, context.map, stack);
             }
             return;
         }
@@ -245,7 +245,7 @@ public class FilmEntityRenderer
             }
             else if (gizmoTarget.is(FilmTarget.Kind.ROOT))
             {
-                renderReplayGizmo(entity, cx, cy, cz, transition, gizmoTarget.space(), context.gizmoView, context.map, stack);
+                renderReplayGizmo(entity, context.replayTransform, cx, cy, cz, transition, gizmoTarget.space(), context.gizmoView, context.map, stack);
             }
         }
 
@@ -459,12 +459,16 @@ public class FilmEntityRenderer
      * a record has three position channels and two angles, and no third rotational
      * degree of freedom for the rest to write into.
      */
-    private static void renderReplayGizmo(IEntity entity, double cx, double cy, double cz, float transition, TransformSpace space, Matrix4f gizmoView, StencilMap stencilMap, MatrixStack stack)
+    private static void renderReplayGizmo(IEntity entity, UIReplayPropTransform replayTransform, double cx, double cy, double cz, float transition, TransformSpace space, Matrix4f gizmoView, StencilMap stencilMap, MatrixStack stack)
     {
         if (FilmGizmoEvents.DRAW.invoker().draw(FilmControllerContext.instance, stencilMap, stack)) return;
 
+        Matrix4f placement = replayTransform != null
+            ? replayTransform.getPlacementMatrix(entity, cx, cy, cz, transition)
+            : FilmMatrices.getMatrixForRenderWithRotation(entity, cx, cy, cz, transition);
+
         stack.push();
-        MatrixStackUtils.multiply(stack, FilmMatrices.getMatrixForRenderWithRotation(entity, cx, cy, cz, transition));
+        MatrixStackUtils.multiply(stack, placement);
 
         /* Same lockstep as renderAxes: reorient before the frame is captured, so the
          * visual and the pick stencil built from it agree with the drag. */

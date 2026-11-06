@@ -104,9 +104,9 @@ public class CustomVertexConsumerProvider extends VertexConsumerProvider.Immedia
     {
         Vector3f origin = FormTranslucentQueue.getSortOrigin();
 
-        /* Text layers defer only inside a recorded group (labels), where the group preserves
+        /* Text layers defer only inside a recorded group (labels, nametags), where the group preserves
          * the text-over-background order. */
-        boolean textLayer = FormTranslucentQueue.isGroupOpen() && layer.getVertexFormat() == VertexFormats.POSITION_COLOR_TEXTURE_LIGHT;
+        boolean textLayer = FormTranslucentQueue.isGroupOpen() && (layer.getVertexFormat() == VertexFormats.POSITION_COLOR_TEXTURE_LIGHT || layer.getVertexFormat() == VertexFormats.POSITION_COLOR_LIGHT);
 
         if (origin == null || !FormTranslucentQueue.isActive() || !(textLayer || isDeferrableTranslucent(layer)))
         {

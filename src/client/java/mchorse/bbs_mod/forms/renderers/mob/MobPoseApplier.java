@@ -102,7 +102,7 @@ public class MobPoseApplier
             SavedTransform transform = new SavedTransform();
 
             transform.hidden = part.hidden;
-            part.hidden |= !poseTransform.visible;
+            part.hidden |= !poseTransform.visible || poseTransform.color.a <= 0.001F;
 
             transform.translate.set(part.pivotX, part.pivotY, part.pivotZ);
             transform.rotate.set(part.pitch, part.yaw, part.roll);

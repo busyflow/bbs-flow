@@ -74,6 +74,15 @@ public class UIMessageOverlayPanel extends UIOverlayPanel
             height += this.bottom.area.h - this.bottom.getFlex().y.offset;
         }
 
+        /* Include any additional controls (such as input fields) stacked above the bottom block */
+        for (UIElement child : this.content.getChildren(UIElement.class))
+        {
+            if (child != this.message && child != this.bottom && child.isVisible() && child.area.h > 0)
+            {
+                height += child.area.h + Math.max(0, -child.getFlex().y.offset);
+            }
+        }
+
         return height;
     }
 }

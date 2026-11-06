@@ -1,5 +1,10 @@
 package mchorse.bbs_mod;
 
+import net.fabricmc.fabric.api.blockrenderlayer.v1.BlockRenderLayerMap;
+import net.fabricmc.fabric.api.client.render.fluid.v1.FluidRenderHandlerRegistry;
+import net.fabricmc.fabric.api.client.render.fluid.v1.SimpleFluidRenderHandler;
+import net.minecraft.client.render.RenderLayer;
+
 import mchorse.bbs_mod.api.client.editor.TrackCategories;
 import mchorse.bbs_mod.api.client.events.RegisterTrackCategoriesEvent;
 
@@ -579,6 +584,16 @@ public class BBSModClient implements ClientModInitializer
         films = new Films();
 
         BBSResources.init();
+
+        BlockRenderLayerMap.INSTANCE.putFluids(RenderLayer.getTranslucent(), BBSMod.STILL_PEE, BBSMod.FLOWING_PEE);
+        BlockRenderLayerMap.INSTANCE.putBlock(BBSMod.PEE_BLOCK, RenderLayer.getTranslucent());
+
+        FluidRenderHandlerRegistry.INSTANCE.register(BBSMod.STILL_PEE, BBSMod.FLOWING_PEE,
+            new SimpleFluidRenderHandler(
+                new Identifier(BBSMod.MOD_ID, "block/pee_still"),
+                new Identifier(BBSMod.MOD_ID, "block/pee_flow")
+            )
+        );
 
         /* While the dashboard is open or a model block is held, model blocks
          * are targetable as at least a full cube even with a tiny hitbox. */

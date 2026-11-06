@@ -9,13 +9,17 @@ import org.joml.Vector3f;
 
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.camera.Camera;
+import mchorse.bbs_mod.cubic.ModelInstance;
 import mchorse.bbs_mod.film.FilmMatrices;
 import mchorse.bbs_mod.film.FilmTarget;
 import mchorse.bbs_mod.film.replays.Replay;
+import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.Form;
+import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.forms.forms.utils.Anchor;
 import mchorse.bbs_mod.forms.renderers.FormRenderer;
+import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
 import mchorse.bbs_mod.forms.renderers.utils.FormFrameCache;
 import mchorse.bbs_mod.forms.renderers.utils.MatrixCache;
 import mchorse.bbs_mod.forms.renderers.utils.MatrixCacheEntry;
@@ -156,11 +160,45 @@ public class OrbitFilmCameraController extends OrbitViewportController
         this.updateAnchor(this.getCurrentTransition());
     }
 
+    private String getMainAnchorBone(Form form)
+    {
+        if (form == null)
+        {
+            return null;
+        }
+
+        Form root = FormUtils.getRoot(form);
+
+        if (root instanceof ModelForm modelForm)
+        {
+            ModelInstance model = ModelFormRenderer.getModel(modelForm);
+
+            if (model != null)
+            {
+                String anchor = model.getAnchor();
+
+                if (anchor != null && !anchor.isEmpty())
+                {
+                    return anchor;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private String getAnchorTargetKey(Replay replay, IEntity entity)
     {
         if (replay == null || entity == null || !BBSSettings.editorOrbitBodyPartAnchor.get())
         {
             return "root";
+        }
+
+        String mainBone = this.getMainAnchorBone(entity.getForm());
+
+        if (mainBone != null && !mainBone.isEmpty())
+        {
+            return "main_bone:" + mainBone;
         }
 
         Anchor anchor = FilmMatrices.getAnchor(entity, replay);
@@ -170,31 +208,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
             return "anchor:" + anchor.replay + ":" + anchor.attachment;
         }
 
-        Pair<String, TransformSpace> bone = this.controller.getBone();
-
-        if (bone != null && !bone.a.isEmpty())
-        {
-            return "bone:" + bone.a;
-        }
-
-        FilmTarget editTarget = this.controller.getEditTarget();
-
-        if (editTarget.is(FilmTarget.Kind.BONE) && editTarget.bone() != null && !editTarget.bone().isEmpty())
-        {
-            return "bone:" + editTarget.bone();
-        }
-
-        if (this.controller.panel.replayEditor != null)
-        {
-            String activePart = this.controller.panel.replayEditor.getActiveBodyPart();
-
-            if (activePart != null && !activePart.isEmpty())
-            {
-                return "part:" + activePart;
-            }
-        }
-
-        return "root";
+        return "pose_center";
     }
 
     public Matrix4f getTargetAnchorMatrix(Replay replay, IEntity entity, float transition)
@@ -204,34 +218,12 @@ public class OrbitFilmCameraController extends OrbitViewportController
             return null;
         }
 
-        Anchor anchor = FilmMatrices.getAnchor(entity, replay);
+        Form form = entity.getForm();
+        String mainBone = this.getMainAnchorBone(form);
 
-        if (anchor != null && anchor.hasTarget())
+        if (mainBone != null && !mainBone.isEmpty())
         {
-            Matrix4f anchorMatrix = FilmMatrices.getAnchorMatrix(this.controller.getEntities(), entity, replay, 0D, 0D, 0D, transition, anchor);
-
-            if (anchorMatrix != null)
-            {
-                return anchorMatrix;
-            }
-        }
-
-        Pair<String, TransformSpace> bone = this.controller.getBone();
-        String boneName = bone != null ? bone.a : null;
-
-        if (boneName == null || boneName.isEmpty())
-        {
-            FilmTarget editTarget = this.controller.getEditTarget();
-
-            if (editTarget.is(FilmTarget.Kind.BONE))
-            {
-                boneName = editTarget.bone();
-            }
-        }
-
-        if (boneName != null && !boneName.isEmpty())
-        {
-            Matrix4f boneMatrix = FilmMatrices.getBoneCompositeMatrix(this.controller.getEntities(), entity, replay, 0D, 0D, 0D, transition, boneName, true);
+            Matrix4f boneMatrix = FilmMatrices.getBoneCompositeMatrix(this.controller.getEntities(), entity, replay, 0D, 0D, 0D, transition, mainBone, true);
 
             if (boneMatrix != null)
             {
@@ -239,22 +231,27 @@ public class OrbitFilmCameraController extends OrbitViewportController
             }
         }
 
-        if (this.controller.panel.replayEditor != null)
+        Anchor anchor = FilmMatrices.getAnchor(entity, replay);
+        Matrix4f baseMatrix = FilmMatrices.getAnchorMatrix(this.controller.getEntities(), entity, replay, 0D, 0D, 0D, transition, anchor);
+
+        if (baseMatrix == null)
         {
-            String activePart = this.controller.panel.replayEditor.getActiveBodyPart();
+            baseMatrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, transition);
+        }
 
-            if (activePart != null && !activePart.isEmpty())
+        if (form != null)
+        {
+            FormFrameCache frame = new FormFrameCache();
+            MatrixCache map = FormFrameCache.collect(frame, form, entity, transition);
+            Vector3f center = this.getPoseCenter(map);
+
+            if (center != null)
             {
-                Matrix4f partMatrix = FilmMatrices.getBoneCompositeMatrix(this.controller.getEntities(), entity, replay, 0D, 0D, 0D, transition, activePart, true);
-
-                if (partMatrix != null)
-                {
-                    return partMatrix;
-                }
+                return new Matrix4f(baseMatrix).translate(center);
             }
         }
 
-        return null;
+        return baseMatrix;
     }
 
     @Override
@@ -324,7 +321,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
      */
     private void writeAnchor(IEntity entity, float transition)
     {
-        Replay replay = this.anchorReplay != null ? this.anchorReplay : this.controller.panel.replayEditor.getReplay();
+        Replay replay = this.anchorReplay != null ? this.anchorReplay : (this.controller.panel.replayEditor != null ? this.controller.panel.replayEditor.getReplay() : null);
         Matrix4f targetMatrix = BBSSettings.editorOrbitBodyPartAnchor.get() ? this.getTargetAnchorMatrix(replay, entity, transition) : null;
         Matrix4f matrix;
 
@@ -415,14 +412,24 @@ public class OrbitFilmCameraController extends OrbitViewportController
     {
         IEntity entity = this.controller.getCurrentEntity();
 
+        if (entity == null && this.anchorReplay != null)
+        {
+            entity = this.resolveEntity(this.anchorReplay);
+        }
+
         if (entity == null)
         {
             return null;
         }
 
-        Replay replay = this.controller.panel.replayEditor.getReplay();
+        Replay replay = this.controller.panel.replayEditor != null ? this.controller.panel.replayEditor.getReplay() : null;
 
-        if (BBSSettings.editorOrbitBodyPartAnchor.get() && replay != null)
+        if (replay == null)
+        {
+            replay = this.anchorReplay;
+        }
+
+        if (replay != null)
         {
             Matrix4f targetMatrix = this.getTargetAnchorMatrix(replay, entity, transition);
 
@@ -449,7 +456,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
 
             if (center != null)
             {
-                Anchor v = FilmMatrices.getAnchor(entity);
+                Anchor v = FilmMatrices.getAnchor(entity, replay);
                 Matrix4f defaultMatrix = FilmMatrices.getMatrixForRenderWithRotation(entity, x, y, z, transition);
                 Pair<Matrix4f, Float> totalMatrix = FilmMatrices.getTotalMatrix(this.controller.getEntities(), v, defaultMatrix, x, y, z, transition, 0, false, frame);
 

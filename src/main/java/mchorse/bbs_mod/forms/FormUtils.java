@@ -183,6 +183,11 @@ public class FormUtils
 
     public static Form getRoot(Form form)
     {
+        if (form == null)
+        {
+            return null;
+        }
+
         while (form.getParent() != null)
         {
             form = form.getParentForm();

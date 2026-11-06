@@ -502,7 +502,12 @@ public class FramebufferFormRenderer extends FormRenderer<FramebufferForm>
                 childStack.push();
                 MatrixStackUtils.applyTransform(childStack, part.transform.get());
 
-                FormUtilsClient.getRenderer(form).collectMatrices(entity, childStack, children, StringUtils.combinePaths(prefix, part.getId()), transition);
+                FormRenderer formRenderer = FormUtilsClient.getRenderer(form);
+
+                if (formRenderer != null)
+                {
+                    formRenderer.collectMatrices(entity, childStack, children, StringUtils.combinePaths(prefix, part.getId()), transition);
+                }
 
                 childStack.pop();
             }

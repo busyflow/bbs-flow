@@ -1,0 +1,12 @@
+{
+  "sources": [
+    {
+      "type": "single",
+      "resource": "bbs:block/pee_still"
+    },
+    {
+      "type": "single",
+      "resource": "bbs:block/pee_flow"
+    }
+  ]
+}

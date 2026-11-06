@@ -350,6 +350,7 @@ public class FilmEditorController extends BaseFilmController
              * actually drawing this pass, before any actor transforms go on it. */
             .gizmoView(context.matrixStack().peek().getPositionMatrix())
             .gizmoViewportHeight(this.controller.panel.preview.getViewport().h)
+            .replayTransform(this.controller.panel.replayEditor == null ? null : this.controller.panel.replayEditor.replayTransform)
             .bone2(aBone2, TransformSpace.LOCAL);
     }
 
