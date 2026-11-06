@@ -1455,6 +1455,8 @@
 	"bbs.ui.forms.editors.general.lighting-tooltip": "Apply world lighting to this form.",
 	"bbs.ui.forms.editors.general.movement_speed": "Speed",
 	"bbs.ui.forms.editors.general.movement_speed-tooltip": "Only affects the morphed player, not replay actors.",
+	"bbs.ui.forms.editors.general.swing_speed": "Swing speed",
+	"bbs.ui.forms.editors.general.swing_speed-tooltip": "Multiplier for limb and arm swing animation speed.",
 	"bbs.ui.forms.editors.general.pickable": "Pickable",
 	"bbs.ui.forms.editors.general.pickable-tooltip": "Allow picking this form and its body parts in the viewport.",
 	"bbs.ui.forms.editors.general.shader_shadow": "Shader's shadow",

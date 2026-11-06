@@ -102,6 +102,7 @@ public abstract class Form extends ValueGroup
     /* Morphing properties */
     public final ValueFloat hp = new ValueFloat("hp", 20F);
     public final ValueFloat speed = new ValueFloat("movement_speed", 0.1F);
+    public final ValueFloat swingSpeed = new ValueFloat("swing_speed", 1F);
     public final ValueFloat stepHeight = new ValueFloat("step_height", 0.5F);
 
     public final ValueInt hotkey = new ValueInt("keybind", 0);
@@ -193,10 +194,12 @@ public abstract class Form extends ValueGroup
 
         this.hp.animatable(false).invisible();
         this.speed.animatable(false).invisible();
+        this.swingSpeed.animatable(false).invisible();
         this.stepHeight.animatable(false).invisible();
 
         this.add(this.hp);
         this.add(this.speed);
+        this.add(this.swingSpeed);
         this.add(this.stepHeight);
 
         this.hotkey.animatable(false).invisible();
@@ -434,6 +437,13 @@ public abstract class Form extends ValueGroup
         }
 
         return scale > 0.0001F ? scale : 1F;
+    }
+
+    public float getSwingSpeed()
+    {
+        float swing = this.swingSpeed.get();
+
+        return swing > 0.0001F ? swing : (swing < -0.0001F ? swing : 0F);
     }
 
     /* ID and display name */

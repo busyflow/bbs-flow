@@ -572,6 +572,8 @@ public class UIKeys
     public static final IKey FORMS_EDITORS_GENERAL_LIGHTING_TOOLTIP = L10n.lang("bbs.ui.forms.editors.general.lighting-tooltip");
     public static final IKey FORMS_EDITORS_GENERAL_MOVEMENT_SPEED = L10n.lang("bbs.ui.forms.editors.general.movement_speed");
     public static final IKey FORMS_EDITORS_GENERAL_MOVEMENT_SPEED_TOOLTIP = L10n.lang("bbs.ui.forms.editors.general.movement_speed-tooltip");
+    public static final IKey FORMS_EDITORS_GENERAL_SWING_SPEED = L10n.lang("bbs.ui.forms.editors.general.swing_speed");
+    public static final IKey FORMS_EDITORS_GENERAL_SWING_SPEED_TOOLTIP = L10n.lang("bbs.ui.forms.editors.general.swing_speed-tooltip");
     public static final IKey FORMS_EDITORS_GENERAL_PICKABLE = L10n.lang("bbs.ui.forms.editors.general.pickable");
     public static final IKey FORMS_EDITORS_GENERAL_PICKABLE_TOOLTIP = L10n.lang("bbs.ui.forms.editors.general.pickable-tooltip");
     public static final IKey FORMS_EDITORS_GENERAL_SHADER_SHADOW = L10n.lang("bbs.ui.forms.editors.general.shader_shadow");

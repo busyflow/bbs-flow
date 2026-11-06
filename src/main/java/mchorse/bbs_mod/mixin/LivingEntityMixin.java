@@ -112,7 +112,8 @@ public class LivingEntityMixin
         if (form != null)
         {
             float scale = form.getScaleY();
-            if (Math.abs(scale - 1F) > 0.001F && scale > 0.001F)
+            float swingSpeed = form.getSwingSpeed();
+            if ((Math.abs(scale - 1F) > 0.001F && scale > 0.001F) || Math.abs(swingSpeed - 1F) > 0.001F)
             {
                 float targetSpeed = Math.min(posDelta * 4.0F, 1.0F);
                 LivingEntity living = (LivingEntity) (Object) this;
@@ -120,7 +121,7 @@ public class LivingEntityMixin
                 {
                     float prevSpeed = accessor.getSpeed();
                     float newSpeed = prevSpeed + (targetSpeed - prevSpeed) * 0.4F;
-                    float step = newSpeed / scale;
+                    float step = (newSpeed / scale) * swingSpeed;
                     accessor.setPrevSpeed(prevSpeed);
                     accessor.setSpeed(newSpeed);
                     accessor.setPos(accessor.getPos() + step);

@@ -55,6 +55,7 @@ public class UIGeneralFormPanel extends UIFormPanel
 
     public UITrackpad hp;
     public UITrackpad speed;
+    public UITrackpad swingSpeed;
     public UITrackpad stepHeight;
 
     public UIGeneralFormPanel(UIForm editor)
@@ -132,6 +133,8 @@ public class UIGeneralFormPanel extends UIFormPanel
         this.hp.limit(1F);
         this.speed = UIValues.trackpad(() -> this.form.speed);
         this.speed.limit(0F);
+        this.swingSpeed = UIValues.trackpad(() -> this.form.swingSpeed);
+        this.swingSpeed.limit(0F);
         this.stepHeight = UIValues.trackpad(() -> this.form.stepHeight);
         this.stepHeight.limit(0F);
 
@@ -169,6 +172,7 @@ public class UIGeneralFormPanel extends UIFormPanel
         movement.fields.add(
             UI.labelRow(UIKeys.FORMS_EDITORS_GENERAL_HP, this.hp),
             UI.labelRow(UIKeys.FORMS_EDITORS_GENERAL_MOVEMENT_SPEED, this.speed.tooltip(UIKeys.FORMS_EDITORS_GENERAL_MOVEMENT_SPEED_TOOLTIP)),
+            UI.labelRow(UIKeys.FORMS_EDITORS_GENERAL_SWING_SPEED, this.swingSpeed.tooltip(UIKeys.FORMS_EDITORS_GENERAL_SWING_SPEED_TOOLTIP)),
             UI.labelRow(UIKeys.FORMS_EDITORS_GENERAL_STEP_HEIGHT, this.stepHeight)
         );
 
