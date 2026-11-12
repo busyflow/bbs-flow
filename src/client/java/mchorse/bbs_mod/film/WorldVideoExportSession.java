@@ -44,6 +44,11 @@ public class WorldVideoExportSession extends VideoExportSession
      * to record the live world (F4). The film is used to render its audio track when the
      * settings export audio.
      */
+    public boolean start(String filmId, Film film)
+    {
+        return this.start(VideoExportSettings.global(), filmId, film);
+    }
+
     public boolean start(VideoExportSettings settings, String filmId, Film film)
     {
         if (this.isExporting() || this.getRecorder().isRecording())
