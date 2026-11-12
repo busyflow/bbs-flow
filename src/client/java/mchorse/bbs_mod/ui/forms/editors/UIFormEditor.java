@@ -68,6 +68,7 @@ import mchorse.bbs_mod.ui.forms.editors.utils.UIPickableFormRenderer;
 import mchorse.bbs_mod.ui.forms.editors.utils.UISetupFaceOverlayPanel;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
+import mchorse.bbs_mod.ui.framework.elements.utils.ScrollSnapshot;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
 import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
@@ -81,7 +82,9 @@ import mchorse.bbs_mod.ui.utils.BoneSelection;
 import mchorse.bbs_mod.ui.utils.IBoneSelectionHost;
 import mchorse.bbs_mod.ui.utils.ILivePoseHost;
 import mchorse.bbs_mod.ui.utils.Gizmo;
+import mchorse.bbs_mod.ui.utils.ScreenOverlay;
 import mchorse.bbs_mod.ui.utils.SplineOverlay;
+import mchorse.bbs_mod.cubic.rig.RigMarkup;
 import mchorse.bbs_mod.ui.utils.SplineEditorUtils;
 import mchorse.bbs_mod.ui.utils.GizmoDrag;
 import mchorse.bbs_mod.ui.utils.StencilFormFramebuffer;
@@ -113,20 +116,77 @@ import java.util.function.Supplier;
 public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBoneSelectionHost, ILivePoseHost
 {
     private final BoneSelection boneSelection = new BoneSelection();
+    /** The preview's markup: the rig's handles, spline points and shape key handles on one screen layer. */
+    public final ScreenOverlay markup = new ScreenOverlay();
     public final ShapeControllerOverlay shapeControllerOverlay = new ShapeControllerOverlay();
 
-    public void renderShapeControllers(UIContext context)
+    public void renderMarkup(UIContext context)
+    {
+        this.markup.begin(this.renderer.area);
+        RigMarkup.draw(this.markup, this.renderer.getRigMarkup(), this::isShownRig, this::isPickedBone);
+        this.renderSplineOverlay(context);
+        this.renderShapeControllers(context);
+        this.markup.flush(context);
+    }
+
+    /** Only the picked body part shows its controls; a part that is no model leaves everyone's. */
+    private boolean isShownRig(ModelForm form)
+    {
+        return this.editor == null || !(this.editor.form instanceof ModelForm) || this.editor.form == form;
+    }
+
+    /** Whether a bone is being edited at all (the pose panel's bone, or the states timeline's), for the selection outline. */
+    public boolean hasPickedBone()
+    {
+        if (this.statesEditor.isVisible())
+        {
+            var picked = this.statesKeyframes.keyframeEditor == null ? null : this.statesKeyframes.keyframeEditor.getBone();
+
+            return picked != null && picked.a != null && !picked.a.isEmpty();
+        }
+
+        if (this.editor == null || !(this.editor.form instanceof ModelForm) || this.editor.getPoseEditor() == null)
+        {
+            return false;
+        }
+
+        String group = this.editor.getPoseEditor().getGroup();
+
+        return group != null && !group.isEmpty();
+    }
+
+    /** {@link #isPickedBone} for any form part the pick pass draws, as the selection outline looks it up. */
+    public boolean isPickedPart(Form form, String bone)
+    {
+        return form instanceof ModelForm model && this.isPickedBone(model, bone);
+    }
+
+    /** Whether the bone is the one being edited: its rig handle gets the selection ring. */
+    private boolean isPickedBone(mchorse.bbs_mod.forms.forms.ModelForm form, String bone)
+    {
+        if (this.statesEditor.isVisible())
+        {
+            var picked = this.statesKeyframes.keyframeEditor == null ? null : this.statesKeyframes.keyframeEditor.getBone();
+
+            return picked != null && mchorse.bbs_mod.utils.StringUtils.combinePaths(FormUtils.getPath(form), bone).equals(picked.a);
+        }
+
+        return this.editor != null && this.editor.form == form && this.editor.getPoseEditor() != null
+            && bone.equals(this.editor.getPoseEditor().getGroup());
+    }
+
+    private void renderShapeControllers(UIContext context)
     {
         if (this.statesEditor.isVisible())
         {
             /* No state picked, or one without tracks, leaves the states editor without a timeline. */
             if (this.statesKeyframes.keyframeEditor != null && this.statesKeyframes.keyframeEditor.editor instanceof UIShapeKeysKeyframeFactory keys)
-                this.shapeControllerOverlay.preview(context, this.renderer, keys.form, keys.controls, keys::beginControllerGesture, keys::endControllerGesture);
+                this.shapeControllerOverlay.preview(context, this.markup, this.renderer, keys.form, keys.controls, keys::beginControllerGesture, keys::endControllerGesture);
             else this.shapeControllerOverlay.clear();
         }
         else if (this.editor != null && this.editor.view instanceof mchorse.bbs_mod.ui.forms.editors.panels.UIModelFormPanel panel)
         {
-            this.shapeControllerOverlay.preview(context, this.renderer, (mchorse.bbs_mod.forms.forms.ModelForm) this.editor.form,
+            this.shapeControllerOverlay.preview(context, this.markup, this.renderer, (mchorse.bbs_mod.forms.forms.ModelForm) this.editor.form,
                 panel.shapeControllers, panel.shapeControllers::endGesture, panel.shapeControllers::endGesture);
         }
         else this.shapeControllerOverlay.clear();
@@ -403,7 +463,7 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
             UIAnimationStatesOverlayPanel panel = new UIAnimationStatesOverlayPanel(this.form.states, this.statesKeyframes.getState(), (state) -> this.pickState(state));
 
             panel.setUndoId("animation_states_overlay_panel");
-            UIOverlay.addOverlay(this.getContext(), panel, 280, 0.5F).eventPropagataion(EventPropagation.PASS);
+            UIOverlay.addOverlay(this.getContext(), panel).eventPropagataion(EventPropagation.PASS);
         });
         this.openStates.relative(this.statesEditor).x(1F, -20);
         this.openStates.tooltip(UIKeys.FORMS_EDITOR_STATES_OPEN, Direction.LEFT);
@@ -555,7 +615,12 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
                 else
                 {
                     Consumer<Pair<Form, String>> callback = this.bonePicking;
-                    Pair<Form, String> pair = stencil.hasPicked() ? stencil.getPicked() : null;
+                    Pair<Form, String> pair = RigMarkup.pick(this.markup, context.mouseX, context.mouseY);
+
+                    if (pair == null && stencil.hasPicked())
+                    {
+                        pair = stencil.getPicked();
+                    }
 
                     this.bonePicking = null;
                     callback.accept(pair);
@@ -564,8 +629,6 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
                 }
             }
         }
-
-        if (this.shapeControllerOverlay.click(context)) return true;
 
         if (!this.statesEditor.isVisible() && !context.isFocused() && context.mouseButton == 0 && Window.isCtrlPressed()
             && this.renderer.area.isInside(context) && this.editor != null
@@ -580,14 +643,37 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
             }
         }
 
-        if (this.renderer.getGizmoInteraction().mouseClicked(context))
+        /* The gizmo's handles, then the markup's (nearest to the cursor, whichever overlay), then
+         * the gizmo's sphere: a picked point or goal sits right under the gizmo. */
+        if (this.renderer.getGizmoInteraction().mouseClickedHandle(context))
         {
             return true;
         }
 
+        if (this.shapeControllerOverlay.click(context)) return true;
+
+        Pair<Form, String> rigHandle = RigMarkup.pick(this.markup, context.mouseX, context.mouseY);
+
+        if (rigHandle != null)
+        {
+            if (this.statesEditor.isVisible())
+            {
+                if (this.statesKeyframes.clickViewport(context, rigHandle)) return true;
+            }
+            else if (context.mouseButton == 0)
+            {
+                this.pickFormFromRenderer(rigHandle);
+
+                return true;
+            }
+        }
+
         if (this.statesEditor.isVisible())
         {
-            return this.statesKeyframes.pickSplinePoint(context) || this.statesKeyframes.clickViewport(context, stencil);
+            if (this.statesKeyframes.pickSplinePoint(context)) return true;
+            if (this.renderer.getGizmoInteraction().mouseClickedSphere(context)) return true;
+
+            return this.statesKeyframes.clickViewport(context, stencil);
         }
 
         SplineOverlay.Hit splineHit = context.mouseButton == 0 && this.editor != null ? this.splineOverlay.pick(context.mouseX, context.mouseY) : null;
@@ -620,6 +706,11 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
                 this.editor.setPanel(this.editor.defaultPanel);
                 tool.pointEditor().select(hit.point().getId());
             }
+            return true;
+        }
+
+        if (this.renderer.getGizmoInteraction().mouseClickedSphere(context))
+        {
             return true;
         }
 
@@ -684,14 +775,14 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         return panel.getGizmoTransform() == null && this.editor.getPoseEditor() != null;
     }
 
-    public void renderSplineOverlay(UIContext context)
+    private void renderSplineOverlay(UIContext context)
     {
         if (this.editor != null && this.editor.view instanceof SplineFormTool panel) panel.pointEditor().points.viewportHover = ("");
         SplineEditorUtils.viewportHover(this.statesKeyframes.keyframeEditor, null);
-        if (!this.splineOverlay.begin()) return;
+        if (!this.splineOverlay.begin(this.markup)) return;
         if (this.statesEditor.isVisible())
         {
-            this.statesKeyframes.renderSplineOverlay(context);
+            this.statesKeyframes.renderSplineOverlay(context, this.markup);
             return;
         }
         if (this.editor == null) return;
@@ -707,12 +798,12 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
             Matrix4f modelView = new Matrix4f(this.renderer.camera.view)
                 .translate((float) -this.renderer.camera.position.x, (float) -this.renderer.camera.position.y, (float) -this.renderer.camera.position.z)
                 .mul(this.renderer.toSceneMatrix(parent));
-            this.splineOverlay.draw(context, modelView, this.renderer.camera.projection, this.renderer.area, chain,
+            this.splineOverlay.draw(context, modelView, this.renderer.camera.projection, chain,
                 panel != null && chain == panel.activeSpline() ? panel.pointEditor().selected() : java.util.Set.of(),
                 panel != null && chain == panel.activeSpline() ? panel.pointEditor().points.hoveredPoint(context) : "");
         }
         if (panel != null && Window.isCtrlPressed() && !context.isFocused() && !panel.pointEditor().position.isEditing())
-            this.splineOverlay.drawInsertionPreview(context, this.renderer.area);
+            this.splineOverlay.drawInsertionPreview(context);
         SplineOverlay.Hit hovered = this.renderer.area.isInside(context) ? this.splineOverlay.pick(context.mouseX, context.mouseY) : null;
         if (panel != null) panel.pointEditor().points.viewportHover = (hovered != null && hovered.chain() == panel.activeSpline() ? hovered.point().getId() : "");
     }
@@ -979,7 +1070,7 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
             {
                 menu.action(Icons.CAMERA, UIKeys.FORMS_EDITOR_CONTEXT_SETUP_FACE, () ->
                 {
-                    UIOverlay.addOverlay(this.getContext(), new UISetupFaceOverlayPanel((model, offset) -> this.setupFace(framebuffer, parent, model, offset)), 240, 170);
+                    UIOverlay.addOverlay(this.getContext(), new UISetupFaceOverlayPanel((model, offset) -> this.setupFace(framebuffer, parent, model, offset)));
                 });
             }
 
@@ -1184,6 +1275,11 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
 
     private void pickForm(UIForms.FormEntry entry)
     {
+        this.pickForm(entry, false);
+    }
+
+    private void pickForm(UIForms.FormEntry entry, boolean keepView)
+    {
         if (entry == null)
         {
             this.bodyPartEditor.setVisible(false);
@@ -1199,7 +1295,7 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         }
 
         this.resizeSidebar();
-        this.switchEditor(entry.getForm());
+        this.switchEditor(entry.getForm(), keepView);
     }
 
     /** The panel the body parts are docked under, or null while they sit in the left sidebar. */
@@ -1386,6 +1482,16 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
 
     public boolean switchEditor(Form form)
     {
+        return this.switchEditor(form, false);
+    }
+
+    /**
+     * @param keepView the same form is shown again (undo refills the editor this way): the lists and
+     *                 options keep their scroll instead of starting from the top. The same form object
+     *                 always counts as that.
+     */
+    private boolean switchEditor(Form form, boolean keepView)
+    {
         UIForm editor = createPanel(form);
 
         if (editor == null)
@@ -1396,9 +1502,15 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         editor.setUndoId("form_panel");
 
         Class<?> activePanel = this.editor == null ? null : this.editor.getActivePanelClass();
+        ScrollSnapshot scrolls = null;
 
         if (this.editor != null)
         {
+            if ((keepView || this.editor.form == form) && this.editor.getClass() == editor.getClass())
+            {
+                scrolls = ScrollSnapshot.of(this.editor);
+            }
+
             this.editor.removeFromParent();
         }
 
@@ -1410,6 +1522,11 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
         this.editor.startEdit(form, activePanel);
         this.editor.full(this.formEditor).resize();
         this.refillState();
+
+        if (scrolls != null)
+        {
+            scrolls.apply(this.editor);
+        }
 
         return true;
     }
@@ -1492,17 +1609,34 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
     {
         super.applyUndoData(data);
 
+        /* The same body part stays where the user has scrolled the list and the options to; only
+         * another one is scrolled to. The editor is still rebuilt: that is what shows the restored values. */
+        int index = data.getInt("body_part");
+        boolean same = index == this.formsList.getIndex();
+        double listScroll = this.formsList.scroll.getScroll();
+
         this.refreshFormList();
 
-        UIForms.FormEntry bodyPart = CollectionUtils.getSafe(this.formsList.getList(), data.getInt("body_part"));
+        UIForms.FormEntry bodyPart = CollectionUtils.getSafe(this.formsList.getList(), index);
 
         if (bodyPart != null)
         {
-            this.formsList.setCurrentScroll(bodyPart);
-            this.pickForm(bodyPart);
-        }
+            if (same)
+            {
+                this.formsList.setCurrent(bodyPart);
+                this.formsList.scroll.setScroll(listScroll);
+            }
+            else
+            {
+                this.formsList.setCurrentScroll(bodyPart);
+            }
 
-        this.refillState();
+            this.pickForm(bodyPart, same);
+        }
+        else
+        {
+            this.refillState();
+        }
     }
 
     public void preFormRender(UIContext context, Form form)

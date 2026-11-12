@@ -4,12 +4,14 @@ import java.util.Map;
 import java.util.Objects;
 
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
 
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.camera.Camera;
 import mchorse.bbs_mod.cubic.ModelInstance;
+import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.film.FilmMatrices;
 import mchorse.bbs_mod.film.FilmTarget;
 import mchorse.bbs_mod.film.replays.Replay;
@@ -33,26 +35,55 @@ import mchorse.bbs_mod.utils.Pair;
 import mchorse.bbs_mod.utils.interps.Lerps;
 
 /**
- * The film's orbit: what it turns around is the selected replay, and — while attached — the
- * orbit hangs off that replay's own frame, so the camera rides along as the actor moves and
- * turns. Everything about flying the viewport itself lives in {@link OrbitViewportController}.
+ * The film's orbit: what it turns around is the bone it was pinned to from its menu, else what
+ * is selected - the body part open on the timeline, else the selected replay as a whole - and, while
+ * attached, the orbit hangs off that same thing, so the camera rides along as it moves.
+ * Everything about flying the viewport itself lives in {@link OrbitViewportController}.
  */
 public class OrbitFilmCameraController extends OrbitViewportController
 {
     private final UIFilmController controller;
 
     /*
-     * When attached, pivot and rotation are stored relative to the selected
-     * replay's anchor (where the replay is and which way it faces, its own
-     * transform included), and world values are composed on the fly. Detached,
-     * the anchor is identity, so the same math passes world values through
-     * untouched. Rebasing between anchors preserves the world state, so
-     * attaching, detaching and switching replays never moves the camera.
-     * Whether it is attached is a global setting, so it survives restarts.
+     * When attached, pivot and rotation are stored relative to the subject's frame: where it
+     * is, and, when the orbit turns with it, which way it is turned. World values are composed
+     * on the fly. Detached, the frame is identity, so the same math passes world values through
+     * untouched. Rebasing between frames preserves the world state, so attaching, detaching,
+     * picking another bone or switching replays never moves the camera.
+     * Both switches are global settings, so they survive restarts.
      */
+    private String anchorKey;
     private Replay anchorReplay;
     private boolean wasAutoRotateDisabled;
     private String lastTargetKey = "root";
+    private float anchorTime = Float.NaN;
+
+    /*
+     * The tick the film last put its actors at, and the one the anchor last saw. The pose follows
+     * the cursor in the very frame it moves, but the actors take their place only on the film's
+     * next tick (see UIFilmController#update), up to a tick later - so a jump in time reaches the
+     * anchor in two steps, and the second one is time going by just as much as the first.
+     */
+    private int placedTick;
+    private int anchorPlacedTick;
+
+    /*
+     * The body the anchor last read, and whether a new one is still waiting for the film's next
+     * tick. Rebuilding the actors (a restart on seek, an undo, toggling a replay) swaps the body
+     * under the same subject, and until the film has placed it once its place says nothing: a
+     * body seen standing elsewhere was neither edited nor taken there by time, and whichever of
+     * the two the orbit took it for, the camera stayed behind by that much for good.
+     */
+    private IEntity anchorEntity;
+    private boolean awaitingPlacement;
+
+    /*
+     * The bone the orbit was pinned to from its menu, and whose replay it is. Unlike a pick in
+     * the pose, it stays put until it is unpinned or another film is opened, whatever is
+     * selected meanwhile - pinning is a decision, not a side effect of editing.
+     */
+    private Replay pinnedReplay;
+    private String pinnedBone;
 
     public OrbitFilmCameraController(UIFilmController controller)
     {
@@ -112,14 +143,105 @@ public class OrbitFilmCameraController extends OrbitViewportController
         return !this.controller.panel.isFlying() && super.canStart(context);
     }
 
-    /* The replay it turns around */
+    /* What it turns around */
+
+    /**
+     * What the orbit holds on to: the pinned bone ({@code bone} true), else what is selected in
+     * the replay editor - the body part the timeline shows, else the replay itself ({@code path}
+     * null). A part counts only below the form's root - the root is the replay. A bone merely
+     * picked in a pose doesn't count: the centre would jump with every pick.
+     */
+    private record Subject(Replay replay, IEntity entity, String path, boolean bone)
+    {
+        public String key(boolean turning)
+        {
+            return this.replay.getId() + "|" + this.path + "|" + this.bone + "|" + turning;
+        }
+    }
+
+    private Subject getSubject()
+    {
+        if (this.pinnedBone != null)
+        {
+            IEntity pinned = this.resolveEntity(this.pinnedReplay);
+
+            if (pinned != null)
+            {
+                return new Subject(this.pinnedReplay, pinned, this.pinnedBone, true);
+            }
+        }
+
+        Replay replay = this.controller.panel.replayEditor.getReplay();
+        IEntity entity = replay == null ? null : this.resolveEntity(replay);
+
+        if (entity == null)
+        {
+            return null;
+        }
+
+        String part = this.controller.panel.replayEditor.getActiveBodyPart();
+
+        return new Subject(replay, entity, part.isEmpty() ? null : part, false);
+    }
 
     @Override
     protected Vector3f getSubjectPivot(float transition)
     {
-        Vector3d target = this.getOrbitTarget(transition);
+        Subject subject = this.getSubject();
 
-        return target == null ? null : new Vector3f((float) target.x, (float) target.y, (float) target.z);
+        if (subject == null)
+        {
+            return null;
+        }
+
+        Vector3f center = this.getSelectionCenter(subject, transition);
+
+        if (center != null)
+        {
+            return center;
+        }
+
+        Vector3d target = this.getPoseCenter(subject.entity(), "", transition);
+
+        return new Vector3f((float) target.x, (float) target.y, (float) target.z);
+    }
+
+    /** A body part is turned around and zoomed into; the replay as a whole leaves that to the pivot. */
+    @Override
+    protected Vector3f getTurnCenter(float transition)
+    {
+        Subject subject = this.getSubject();
+
+        return subject == null ? null : this.getSelectionCenter(subject, transition);
+    }
+
+    /** The marker shows what the camera turns around, which is the selection when there is one. */
+    @Override
+    public Vector3d getOrbitCenter(float transition)
+    {
+        Vector3f center = this.getTurnCenter(transition);
+
+        return center == null ? super.getOrbitCenter(transition) : new Vector3d(center);
+    }
+
+    /** Where the pinned bone is (where its gizmo sits), or the middle of the selected body part; null for the replay itself. */
+    private Vector3f getSelectionCenter(Subject subject, float transition)
+    {
+        if (subject.path() == null)
+        {
+            return null;
+        }
+
+        if (subject.bone())
+        {
+            Matrix4f matrix = this.getBoneFrame(subject, transition);
+
+            return matrix == null ? null : matrix.getTranslation(new Vector3f());
+        }
+
+        Vector3d center = this.getPoseCenter(subject.entity(), subject.path(), transition);
+
+        return center == null ? null : new Vector3f((float) center.x, (float) center.y, (float) center.z);
     }
 
     @Override
@@ -134,7 +256,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
         this.teleportPivotToSubject();
     }
 
-    /* The replay it hangs off */
+    /* What it hangs off */
 
     public boolean isAttached()
     {
@@ -148,191 +270,302 @@ public class OrbitFilmCameraController extends OrbitViewportController
         this.updateAnchor(this.getCurrentTransition());
     }
 
-    public boolean isAnchorBodyPart()
+    /* The pinned bone */
+
+    /** The bone selected in the replay editor right now, if any. */
+    private String getSelectedBone()
     {
-        return BBSSettings.editorOrbitBodyPartAnchor.get();
+        return this.controller.panel.replayEditor.getReplay() == null ? null : this.controller.getEditTarget().boneOrNull();
     }
 
-    public void toggleAnchorBodyPart()
+    public boolean isPinnedToBone()
     {
-        BBSSettings.editorOrbitBodyPartAnchor.set(!BBSSettings.editorOrbitBodyPartAnchor.get());
+        return this.pinnedBone != null;
+    }
+
+    /** Whether there is anything to pin or unpin: a pinned bone, or a bone selected right now. */
+    public boolean canPinToBone()
+    {
+        return this.isPinnedToBone() || this.getSelectedBone() != null;
+    }
+
+    /**
+     * Pins the orbit to the bone selected right now and attaches it, so the camera rides along
+     * with that bone; with the pinned bone itself (or nothing) selected, unpins it. The anchor
+     * is rebased either way, so the camera doesn't move when the centre changes hands.
+     */
+    public void togglePinToBone()
+    {
+        Replay replay = this.controller.panel.replayEditor.getReplay();
+        String bone = this.getSelectedBone();
+
+        if (bone == null || (replay == this.pinnedReplay && bone.equals(this.pinnedBone)))
+        {
+            this.pinnedReplay = null;
+            this.pinnedBone = null;
+        }
+        else
+        {
+            this.pinnedReplay = replay;
+            this.pinnedBone = bone;
+
+            BBSSettings.editorOrbitAttached.set(true);
+        }
 
         this.updateAnchor(this.getCurrentTransition());
     }
 
-    private String getMainAnchorBone(Form form)
+    /** Whether the attached orbit turns with what it hangs off, or only goes where it goes. */
+    public boolean isTurningWithAnchor()
     {
-        if (form == null)
-        {
-            return null;
-        }
-
-        Form root = FormUtils.getRoot(form);
-
-        if (root instanceof ModelForm modelForm)
-        {
-            ModelInstance model = ModelFormRenderer.getModel(modelForm);
-
-            if (model != null)
-            {
-                String anchor = model.getAnchor();
-
-                if (anchor != null && !anchor.isEmpty())
-                {
-                    return anchor;
-                }
-            }
-        }
-
-        return null;
+        return BBSSettings.editorOrbitTurnsWithAnchor.get();
     }
 
-    private String getAnchorTargetKey(Replay replay, IEntity entity)
+    public void toggleTurningWithAnchor()
     {
-        if (replay == null || entity == null || !BBSSettings.editorOrbitBodyPartAnchor.get())
-        {
-            return "root";
-        }
+        BBSSettings.editorOrbitTurnsWithAnchor.set(!BBSSettings.editorOrbitTurnsWithAnchor.get());
 
-        String mainBone = this.getMainAnchorBone(entity.getForm());
-
-        if (mainBone != null && !mainBone.isEmpty())
-        {
-            return "main_bone:" + mainBone;
-        }
-
-        Anchor anchor = FilmMatrices.getAnchor(entity, replay);
-
-        if (anchor != null && anchor.hasTarget())
-        {
-            return "anchor:" + anchor.replay + ":" + anchor.attachment;
-        }
-
-        return "pose_center";
+        this.updateAnchor(this.getCurrentTransition());
     }
 
-    public Matrix4f getTargetAnchorMatrix(Replay replay, IEntity entity, float transition)
+    /* The wall cut */
+
+    /** Whether the blocks between the camera and the orbit centre are left out of the picture. */
+    public boolean isCuttingWalls()
     {
-        if (replay == null || entity == null)
+        return BBSSettings.editorOrbitWallCut.get();
+    }
+
+    public void toggleWallCut()
+    {
+        BBSSettings.editorOrbitWallCut.set(!BBSSettings.editorOrbitWallCut.get());
+    }
+
+    /** How many blocks in front of the orbit centre are still drawn. */
+    public float getWallCutDepth()
+    {
+        return BBSSettings.editorOrbitWallCutDepth.get();
+    }
+
+    public void setWallCutDepth(float depth)
+    {
+        BBSSettings.editorOrbitWallCutDepth.set(depth);
+    }
+
+    /** The point the cut is measured from, right now. */
+    public Vector3d getWallCutCenter()
+    {
+        return this.getOrbitCenter(this.getCurrentTransition());
+    }
+
+    /** The cut is armed only for the frames the orbit places the camera, so it never outlives it. */
+    @Override
+    public void setup(Camera camera, float transition)
+    {
+        super.setup(camera, transition);
+
+        if (this.isCuttingWalls())
         {
-            return null;
-        }
-
-        Form form = entity.getForm();
-        String mainBone = this.getMainAnchorBone(form);
-
-        if (mainBone != null && !mainBone.isEmpty())
-        {
-            Matrix4f boneMatrix = FilmMatrices.getBoneCompositeMatrix(this.controller.getEntities(), entity, replay, 0D, 0D, 0D, transition, mainBone, true);
-
-            if (boneMatrix != null)
-            {
-                return boneMatrix;
-            }
-        }
-
-        Anchor anchor = FilmMatrices.getAnchor(entity, replay);
-        Matrix4f baseMatrix = FilmMatrices.getAnchorMatrix(this.controller.getEntities(), entity, replay, 0D, 0D, 0D, transition, anchor);
-
-        if (baseMatrix == null)
-        {
-            baseMatrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, transition);
-        }
-
-        if (form != null)
-        {
-            FormFrameCache frame = new FormFrameCache();
-            MatrixCache map = FormFrameCache.collect(frame, form, entity, transition);
-            Vector3f center = this.getPoseCenter(map);
+            Vector3d center = this.getOrbitCenter(transition);
 
             if (center != null)
             {
-                return new Matrix4f(baseMatrix).translate(center);
+                BBSRendering.setTerrainCut(center, this.getWallCutDepth());
             }
         }
 
-        return baseMatrix;
+        this.traceCamera(camera, transition, "");
     }
 
     @Override
-    protected void updateAnchor(float transition)
+    public void follow(Camera camera, float transition)
     {
-        Replay target = null;
-        IEntity entity = null;
+        super.follow(camera, transition);
 
-        if (BBSSettings.editorOrbitAttached.get())
+        this.traceCamera(camera, transition, "F");
+    }
+
+    /* TEMPORARY diagnostics (OrbitTrace): remove with it */
+
+    private final OrbitTrace trace = new OrbitTrace();
+    private boolean traceFallback;
+
+    @Override
+    protected void noteInput(String what)
+    {
+        if (this.trace != null)
         {
-            target = this.controller.panel.replayEditor.getReplay();
-            entity = target == null ? null : this.resolveEntity(target);
-
-            if (entity == null)
-            {
-                target = this.anchorReplay;
-                entity = target == null ? null : this.resolveEntity(target);
-            }
-
-            if (entity == null)
-            {
-                target = null;
-            }
-        }
-
-        String targetKey = this.getAnchorTargetKey(target, entity);
-        boolean keyChanged = !Objects.equals(targetKey, this.lastTargetKey);
-
-        if (target != this.anchorReplay || keyChanged)
-        {
-            this.lastTargetKey = targetKey;
-            this.rebase(target, entity, transition);
-        }
-        else if (entity != null)
-        {
-            this.writeAnchor(entity, transition);
+            this.trace.input(what);
         }
     }
 
-    private void rebase(Replay replay, IEntity entity, float transition)
+    private void traceAnchor(Subject subject, String key, boolean keyChanged, boolean moved, boolean follow, boolean timeMoved, boolean placedMoved, Vector3d position, Quaternionf rotation, Matrix4f frame, float time, boolean turning)
     {
-        this.rebaseAnchor(() ->
+        if (this.trace == null)
         {
-            this.anchorReplay = replay;
+            return;
+        }
 
-            if (entity == null)
-            {
-                this.anchorPosition.set(0D, 0D, 0D);
-                this.anchorYaw = 0F;
-            }
-            else
-            {
-                this.writeAnchor(entity, transition);
-            }
-        });
+        String decision = keyChanged ? "KEY" : this.awaitingPlacement ? "HOLD" : !moved ? "-" : follow ? "FOLLOW" : "REBASE";
+        String why = (timeMoved ? "t" : "") + (placedMoved ? "p" : "") + (this.controller.isControlling() ? "h" : "") + (this.controller.isRecording() ? "r" : "");
+        float dot = Math.abs(rotation.x * this.anchorRotation.x + rotation.y * this.anchorRotation.y + rotation.z * this.anchorRotation.z + rotation.w * this.anchorRotation.w);
+        float dr = (float) Math.toDegrees(2D * Math.acos(Math.min(1F, dot)));
+        String name = subject == null ? "none" : (subject.path() == null ? "actor" : subject.path()) + (turning ? "+turn" : "");
+        float det = frame == null ? 0F : frame.determinant3x3();
+        float sx = frame == null ? 0F : (float) Math.sqrt(frame.m00() * frame.m00() + frame.m01() * frame.m01() + frame.m02() * frame.m02());
+        float sy = frame == null ? 0F : (float) Math.sqrt(frame.m10() * frame.m10() + frame.m11() * frame.m11() + frame.m12() * frame.m12());
+        float sz = frame == null ? 0F : (float) Math.sqrt(frame.m20() * frame.m20() + frame.m21() * frame.m21() + frame.m22() * frame.m22());
+
+        this.trace.anchor(decision, why, position.distance(this.anchorPosition), dr, time, this.placedTick, name, this.traceFallback, det, sx, sy, sz);
+    }
+
+    private void traceCamera(Camera camera, float transition, String extra)
+    {
+        if (this.trace == null)
+        {
+            return;
+        }
+
+        Vector3f subject = this.getSubjectPivot(transition);
+        Vector3f local = null;
+
+        if (subject != null)
+        {
+            Quaternionf turn = new Quaternionf(this.anchorRotation).mul(orbitRotation(this.rotation.y, this.rotation.x));
+
+            local = turn.transformInverse(subject.sub((float) camera.position.x, (float) camera.position.y, (float) camera.position.z));
+        }
+
+        String flags = (this.isAttached() ? "A" : "") + (this.isTurningWithAnchor() ? "W" : "")
+            + (this.controller.isPlaying() ? "P" : "") + (this.controller.isControlling() ? "H" : "")
+            + (this.controller.isRecording() ? "R" : "") + extra;
+        float smoothing = this.pivot.distance(this.targetPivot) + Math.abs(this.rotation.x - this.targetRotation.x) + Math.abs(this.rotation.y - this.targetRotation.y);
+
+        this.trace.camera(local, flags, this.distance, smoothing);
     }
 
     /**
-     * The frame the camera hangs off: where the replay stands and which way it faces, its own
-     * transform folded in - so a form moved or turned by its transform (keyframed or not)
-     * carries the camera along instead of sliding out from under it.
+     * The camera rides along only as time goes by - playback, scrubbing, a jump to a keyframe -
+     * or as the actor is steered live. An edit on the same frame (a gizmo drag, a controller
+     * handle, a typed value, an undo) moves the subject under a camera that stays where it is:
+     * the orbit is rebased instead, so it goes on from the new place without a jump.
      *
-     * <p>Only the turn about the vertical is taken. The pivot and the rotation are stored in
-     * this frame and the camera has no roll of its own, so a form tipped on its side would tip
-     * the horizon with it; following the yaw is what "the camera stays with the actor" means,
-     * and the horizon staying level is what every other frame of this editor promises.</p>
+     * <p>Time moves the actor's place a tick later than its pose (see {@link #placedTick}).
+     * Taking that late step for an edit left the camera where the jump started, and the subject
+     * walked out of the middle of the screen by however far it had gone.</p>
+     *
+     * <p>A body the actors were just rebuilt with waits for the film's next tick
+     * (see {@link #awaitingPlacement}): the anchor holds until then and judges the place it gets.</p>
      */
-    private void writeAnchor(IEntity entity, float transition)
+    @Override
+    protected void updateAnchor(float transition)
     {
-        Replay replay = this.anchorReplay != null ? this.anchorReplay : (this.controller.panel.replayEditor != null ? this.controller.panel.replayEditor.getReplay() : null);
-        Matrix4f targetMatrix = BBSSettings.editorOrbitBodyPartAnchor.get() ? this.getTargetAnchorMatrix(replay, entity, transition) : null;
-        Matrix4f matrix;
+        Subject subject = null;
 
-        if (targetMatrix != null)
+        if (this.isAttached())
         {
-            matrix = new Matrix4f(targetMatrix);
+            subject = this.getSubject();
+
+            if (subject == null && this.anchorReplay != null)
+            {
+                /* The selected replay isn't in the scene right now: stay with the last one. */
+                IEntity entity = this.resolveEntity(this.anchorReplay);
+
+                subject = entity == null ? null : new Subject(this.anchorReplay, entity, null, false);
+            }
         }
-        else
+
+        boolean turning = this.isTurningWithAnchor();
+        String key = subject == null ? null : subject.key(turning);
+        Vector3d position = new Vector3d();
+        Quaternionf rotation = new Quaternionf();
+        float time = this.controller.panel.getCursor(transition);
+        boolean timeMoved = time != this.anchorTime;
+        boolean placedMoved = this.placedTick != this.anchorPlacedTick;
+        boolean follow = timeMoved || placedMoved || this.controller.isControlling() || this.controller.isRecording();
+
+        this.anchorTime = time;
+        this.anchorPlacedTick = this.placedTick;
+
+        Matrix4f frame = null;
+
+        this.traceFallback = false;
+
+        if (subject != null)
+        {
+            frame = this.getFrame(subject, transition);
+            Vector3f translation = frame.getTranslation(new Vector3f());
+
+            position.set(translation.x, translation.y, translation.z);
+
+            if (turning)
+            {
+                frame.getNormalizedRotation(rotation);
+            }
+        }
+
+        boolean moved = !position.equals(this.anchorPosition) || !rotation.equals(this.anchorRotation);
+        boolean keyChanged = !Objects.equals(key, this.anchorKey);
+        IEntity entity = subject == null ? null : subject.entity();
+
+        /* A new subject is a rebase whatever its body, so only the same one can be waiting. */
+        this.awaitingPlacement = !keyChanged && (this.awaitingPlacement || entity != this.anchorEntity);
+        this.anchorEntity = entity;
+
+        this.traceAnchor(subject, key, keyChanged, moved, follow, timeMoved, placedMoved, position, rotation, frame, time, turning);
+
+        if (this.awaitingPlacement)
+        {
+            return;
+        }
+
+        if (keyChanged || (moved && !follow))
+        {
+            this.anchorKey = key;
+            this.anchorReplay = subject == null ? null : subject.replay();
+
+            if (moved)
+            {
+                this.rebaseAnchor(() ->
+                {
+                    this.anchorPosition.set(position);
+                    this.anchorRotation.set(rotation);
+                });
+            }
+        }
+        else if (moved)
+        {
+            this.anchorPosition.set(position);
+            this.anchorRotation.set(rotation);
+        }
+    }
+
+    /**
+     * The frame the camera hangs off, scale taken out. A body part gives its own frame, where
+     * its gizmo is placed. The replay gives where it stands and which way it faces,
+     * its own transform folded in - so a form moved or turned by its transform (keyframed or
+     * not) carries the camera along instead of sliding out from under it.
+     */
+    private Matrix4f getFrame(Subject subject, float transition)
+    {
+        Matrix4f matrix = subject.path() == null ? null : this.getBoneFrame(subject, transition);
+
+        if (matrix != null)
+        {
+            return matrix;
+        }
+
+        this.traceFallback = subject.path() != null;
+
+        IEntity entity = subject.entity();
+        FormRenderer renderer = FormUtilsClient.getRenderer(entity.getForm());
+
+        matrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, transition);
+
+        if (renderer == null)
         {
             matrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, transition);
-            FormRenderer renderer = FormUtilsClient.getRenderer(entity.getForm());
+            renderer = FormUtilsClient.getRenderer(entity.getForm());
 
             if (renderer != null)
             {
@@ -340,46 +573,19 @@ public class OrbitFilmCameraController extends OrbitViewportController
             }
         }
 
-        Vector3f translation = matrix.getTranslation(new Vector3f());
-        Matrix4f axes = MatrixStackUtils.stripScale(matrix);
+        return MatrixStackUtils.stripScale(matrix);
+    }
 
-        boolean autoRotate = BBSSettings.editorOrbitAutoRotate.get();
+    /** The film has just put its actors at the cursor's tick. */
+    public void markActorsPlaced()
+    {
+        this.placedTick = this.controller.panel.getCursor();
+        this.awaitingPlacement = false;
+    }
 
-        if (!autoRotate)
-        {
-            if (this.anchorYaw != 0F)
-            {
-                this.rebaseAnchor(() ->
-                {
-                    this.anchorPosition.set(translation.x, translation.y, translation.z);
-                    this.anchorYaw = 0F;
-                });
-            }
-            else
-            {
-                this.anchorPosition.set(translation.x, translation.y, translation.z);
-            }
-        }
-        else
-        {
-            float targetYaw = (float) Math.atan2(-axes.m02(), axes.m00());
-
-            if (this.anchorYaw == 0F && targetYaw != 0F && this.wasAutoRotateDisabled)
-            {
-                this.rebaseAnchor(() ->
-                {
-                    this.anchorPosition.set(translation.x, translation.y, translation.z);
-                    this.anchorYaw = targetYaw;
-                });
-            }
-            else
-            {
-                this.anchorPosition.set(translation.x, translation.y, translation.z);
-                this.anchorYaw = targetYaw;
-            }
-        }
-
-        this.wasAutoRotateDisabled = !autoRotate;
+    private Matrix4f getBoneFrame(Subject subject, float transition)
+    {
+        return FilmMatrices.getGizmoBoneCompositeMatrix(this.controller.getEntities(), subject.entity(), subject.replay(), 0D, 0D, 0D, transition, subject.path(), true);
     }
 
     private IEntity resolveEntity(Replay replay)
@@ -392,55 +598,38 @@ public class OrbitFilmCameraController extends OrbitViewportController
     {
         super.reset();
 
+        this.noteInput("reset");
+        this.anchorKey = null;
         this.anchorReplay = null;
         this.wasAutoRotateDisabled = false;
         this.lastTargetKey = "root";
+        this.anchorTime = Float.NaN;
+        this.anchorEntity = null;
+        this.awaitingPlacement = false;
+        this.pinnedReplay = null;
+        this.pinnedBone = null;
     }
 
     /**
-     * Where the replay's model actually is: the middle of the pose it is standing in, carried
-     * into the world by the replay's own frame (so a form hung off another replay is found
-     * where it is drawn).
+     * Where the replay's model, or one of its body parts, actually is: the middle of the pose
+     * it is standing in, carried into the world by the replay's own frame (so a form hung off
+     * another replay is found where it is drawn).
      *
      * <p>The middle is read from the frames themselves and from nothing else - not from the
      * picking hitbox, which is a separate number the author sets by hand and which says nothing
      * about a form that never declared one, and not from the anchor bone, whose pivot sits
-     * wherever the model editor left it (for a rig anchored at the waist, already half way up).
-     * The pose is the one thing that always describes the form as it is right now.</p>
+     * wherever the model editor left it (for a rig anchored at the waist, already half way up;
+     * for a head, at the neck rather than at the eyes worn on it).
+     * The pose is the one thing that always describes the form as it is right now.
+     * Bones the model marks as standing apart from the body (IK poles, look targets, settings
+     * handles) are left out.</p>
+     *
+     * @param part the body part's path, or empty for the whole form
+     * @return null only for a body part that isn't in the form; the whole form falls back to
+     *         where the replay stands
      */
-    private Vector3d getOrbitTarget(float transition)
+    private Vector3d getPoseCenter(IEntity entity, String part, float transition)
     {
-        IEntity entity = this.controller.getCurrentEntity();
-
-        if (entity == null && this.anchorReplay != null)
-        {
-            entity = this.resolveEntity(this.anchorReplay);
-        }
-
-        if (entity == null)
-        {
-            return null;
-        }
-
-        Replay replay = this.controller.panel.replayEditor != null ? this.controller.panel.replayEditor.getReplay() : null;
-
-        if (replay == null)
-        {
-            replay = this.anchorReplay;
-        }
-
-        if (replay != null)
-        {
-            Matrix4f targetMatrix = this.getTargetAnchorMatrix(replay, entity, transition);
-
-            if (targetMatrix != null)
-            {
-                Vector3f pos = targetMatrix.getTranslation(new Vector3f());
-
-                return new Vector3d(pos.x, pos.y, pos.z);
-            }
-        }
-
         Form form = entity.getForm();
         double x = Lerps.lerp(entity.getPrevX(), entity.getX(), transition);
         double y = Lerps.lerp(entity.getPrevY(), entity.getY(), transition);
@@ -452,11 +641,16 @@ public class OrbitFilmCameraController extends OrbitViewportController
              * anchored within its own tree would otherwise evaluate the same pose twice. */
             FormFrameCache frame = new FormFrameCache();
             MatrixCache map = FormFrameCache.collect(frame, form, entity, transition);
-            Vector3f center = this.getPoseCenter(map);
+            Vector3f center = this.getPoseCenter(map, part);
+
+            if (center == null && !part.isEmpty())
+            {
+                return null;
+            }
 
             if (center != null)
             {
-                Anchor v = FilmMatrices.getAnchor(entity, replay);
+                Anchor v = FilmMatrices.getAnchor(entity, this.anchorReplay);
                 Matrix4f defaultMatrix = FilmMatrices.getMatrixForRenderWithRotation(entity, x, y, z, transition);
                 Pair<Matrix4f, Float> totalMatrix = FilmMatrices.getTotalMatrix(this.controller.getEntities(), v, defaultMatrix, x, y, z, transition, 0, false, frame);
 
@@ -476,16 +670,19 @@ public class OrbitFilmCameraController extends OrbitViewportController
         return new Vector3d(x, y, z);
     }
 
-    private Vector3f getPoseCenter(MatrixCache map)
+    private Vector3f getPoseCenter(MatrixCache map, String part)
     {
+        String prefix = part + "/";
         Vector3f min = null;
         Vector3f max = null;
 
         for (Map.Entry<String, MatrixCacheEntry> entry : map.entrySet())
         {
             Matrix4f matrix = entry.getValue().matrix();
+            String key = entry.getKey();
 
-            if (matrix == null || entry.getKey().isEmpty())
+            /* A pole or a look target set out in front of a rig would pull the middle off the body. */
+            if (matrix == null || entry.getValue().offBody() || (part.isEmpty() ? key.isEmpty() : !key.startsWith(prefix)))
             {
                 continue;
             }
@@ -506,7 +703,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
 
         if (min == null)
         {
-            Matrix4f root = map.get("").matrix();
+            Matrix4f root = map.get(part).matrix();
 
             return root == null ? null : root.getTranslation(new Vector3f());
         }

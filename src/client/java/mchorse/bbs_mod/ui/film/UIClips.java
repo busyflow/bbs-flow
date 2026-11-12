@@ -30,7 +30,7 @@ import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.film.clips.renderer.IUIClipRenderer;
 import mchorse.bbs_mod.ui.film.clips.renderer.UIClipRenderers;
-import mchorse.bbs_mod.ui.film.markers.UIMarkerOverlayPanel;
+import mchorse.bbs_mod.ui.film.markers.UIMarkerPopup;
 import mchorse.bbs_mod.ui.film.markers.UIMarkersController;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
@@ -41,6 +41,7 @@ import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.framework.elements.utils.Batcher2D;
 import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCanvas;
 import mchorse.bbs_mod.ui.utils.Area;
+import mchorse.bbs_mod.ui.utils.DoubleClick;
 import mchorse.bbs_mod.ui.utils.IFileDropTarget;
 import mchorse.bbs_mod.ui.utils.Scroll;
 import mchorse.bbs_mod.ui.utils.UIUtils;
@@ -132,6 +133,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
     private boolean centerScrollOnRender;
 
     private UIClipRenderers renderers = new UIClipRenderers();
+    private final DoubleClick<Clip> doubleClick = new DoubleClick<>(true);
 
     private List<Clip> grabbedClips = Collections.emptyList();
     private List<Clip> otherClips = Collections.emptyList();
@@ -253,6 +255,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
             int tick = Math.max(0, this.delegate.getCursor() - clip.tick.get());
 
             clip.envelope.fadeIn.set((float) tick);
+            clip.envelope.updateEnabled();
             this.delegate.fillData();
         }).category(KEYS_CATEGORY).active(canUseKeybindsSelected);
         this.keys().register(Keys.FADE_OUT, () ->
@@ -261,6 +264,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
             int tick = Math.max(0, clip.tick.get() + clip.duration.get() - this.delegate.getCursor());
 
             clip.envelope.fadeOut.set((float) tick);
+            clip.envelope.updateEnabled();
             this.delegate.fillData();
         }).category(KEYS_CATEGORY).active(canUseKeybindsSelected);
     }
@@ -268,6 +272,11 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
     public ClipFactory getFactory()
     {
         return this.factory;
+    }
+
+    public IUIClipsDelegate getDelegate()
+    {
+        return this.delegate;
     }
 
     public String getClipDisplayName(Clip clip)
@@ -293,7 +302,8 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
                 add.action(Icons.UPLOAD, UIKeys.CAMERA_TIMELINE_CONTEXT_ADD_ON_TOP, this::showAddsOnTop);
             }
 
-            if (this.factory.getKeys().contains(Link.bbs("keyframe")))
+            /* A camera made from a replay's path - only clips that belong to a film have replays */
+            if (this.factory.getKeys().contains(Link.bbs("keyframe")) && this.delegate.getFilm() != null)
             {
                 add.action(Icons.EDITOR, UIKeys.CAMERA_TIMELINE_CONTEXT_FROM_PLAYER_RECORDING, () -> this.fromReplay(mouseX, mouseY));
             }
@@ -382,8 +392,9 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
         }
 
         UIColumnsContextMenu menu = new UIColumnsContextMenu(BBSSettings.editorClipPaletteIcons.get());
+        Map<Link, List<Link>> categories = this.factory.getTypesByCategory();
 
-        for (Map.Entry<Link, List<Link>> column : this.factory.getTypesByCategory().entrySet())
+        for (Map.Entry<Link, List<Link>> column : categories.entrySet())
         {
             List<ContextAction> actions = new ArrayList<>();
 
@@ -394,7 +405,8 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
                 actions.add(new ColorfulContextAction(data.icon, UIKeys.C_CLIP.get(type), () -> this.addClip(type, preview.x, preview.y, preview.z), data.color));
             }
 
-            menu.column(UIKeys.C_CLIP_CATEGORY.get(column.getKey()), actions);
+            /* A palette of one category (the sequence's) needs no heading */
+            menu.column(categories.size() == 1 ? null : UIKeys.C_CLIP_CATEGORY.get(column.getKey()), actions);
         }
 
         menu.getEvents().register(UIRemovedEvent.class, (e) -> this.addPreview = null);
@@ -1352,7 +1364,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
         {
             int tick = Math.max(0, this.fromGraphTick(mouseX));
 
-            menu.action(Icons.ADD, UIKeys.FILM_MARKERS_ADD, () -> this.editMarker(markers.addMarker(tick)));
+            menu.action(Icons.ADD, UIKeys.FILM_MARKERS_ADD, () -> this.editMarker(markers.addMarker(tick, UIKeys.FILM_MARKERS_NUMBER)));
         }
         else
         {
@@ -1393,7 +1405,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
 
         if (markers != null && marker != null)
         {
-            UIOverlay.addOverlay(this.getContext(), new UIMarkerOverlayPanel(markers, marker), 220, 190);
+            this.getContext().replaceContextMenu(new UIMarkerPopup(marker));
         }
     }
 
@@ -1495,6 +1507,13 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
             int layerIndex = this.fromLayerY(mouseY);
             Clip original = this.delegate.getClip();
             Clip clip = this.clips.getClipAt(tick, layerIndex);
+
+            if (clip != null && this.doubleClick.hit(clip) && !ctrl && !shift && !alt)
+            {
+                this.delegate.openClip(clip);
+
+                return true;
+            }
 
             if (clip != null)
             {
@@ -1916,8 +1935,6 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
             Vector2f fades = this.grabbedFades.get(i);
             int duration = this.grabbedData.get(i).z();
 
-            envelope.enabled.set(true);
-
             if (fadeIn)
             {
                 envelope.fadeIn.set(Math.max(0F, Math.min(fades.x + delta, duration - fades.y)));
@@ -1928,6 +1945,8 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
                 envelope.fadeIn.set(fades.x);
                 envelope.fadeOut.set(Math.max(0F, Math.min(fades.y - delta, duration - fades.x)));
             }
+
+            envelope.updateEnabled();
         }
     }
 

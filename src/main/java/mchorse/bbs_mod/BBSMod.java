@@ -57,7 +57,7 @@ import mchorse.bbs_mod.camera.clips.overwrite.SplineClip;
 import mchorse.bbs_mod.camera.clips.overwrite.TrackerClip;
 import mchorse.bbs_mod.entity.ActorEntity;
 import mchorse.bbs_mod.entity.GunProjectileEntity;
-import mchorse.bbs_mod.api.BBSAddonMod;
+import mchorse.bbs_mod.addons.Addons;
 import mchorse.bbs_mod.api.EventBus;
 import mchorse.bbs_mod.api.events.BBSReadyEvent;
 import mchorse.bbs_mod.api.events.RegisterActionClipsEvent;
@@ -438,12 +438,7 @@ public class BBSMod implements ModInitializer
 
         assetsFolder.mkdirs();
 
-        FabricLoader.getInstance()
-            .getEntrypointContainers("bbs-addon", BBSAddonMod.class)
-            .forEach((container) ->
-            {
-                events.register(container.getEntrypoint());
-            });
+        Addons.load("bbs-addon", events::register);
 
         actions = new ActionManager();
 
@@ -612,6 +607,7 @@ public class BBSMod implements ModInitializer
         ServerLifecycleEvents.SERVER_STARTED.register((event) -> worldFolder = event.getSavePath(WorldSavePath.ROOT).toFile());
         ServerPlayConnectionEvents.JOIN.register((a, b, c) -> ServerNetwork.sendHandshake(c, b));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> actions.stopFor(handler.getPlayer()));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ServerNetwork.restoreFollowMode(handler.getPlayer()));
 
         ActionHandler.registerHandlers(actions);
 
@@ -661,6 +657,7 @@ public class BBSMod implements ModInitializer
         registerer.accept(builder);
 
         BBSMod.settings.modules.put(settings.getId(), settings);
+        Addons.claimSettings(settings.getId());
         BBSMod.settings.load(settings, settings.file);
 
         return settings;

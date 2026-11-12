@@ -30,7 +30,7 @@ public class TrackStyle
     private static final Map<String, IKey> LABELS = new HashMap<>();
 
     /** The overlays a form can stack: the first is named plainly, the ones the settings add get a number. */
-    private static final String[] OVERLAYS = {"pose_overlay", "transform_overlay"};
+    private static final String[] OVERLAYS = {"pose_overlay", "transform_overlay", "shape_keys_overlay"};
 
     public static void registerLabel(String property, IKey label)
     {
@@ -44,7 +44,7 @@ public class TrackStyle
         {
             case PROPERTY -> label(id.subject());
             case MATERIAL_PROP -> materialLabel(id.material(), label(id.property()));
-            case BONE_CONSTRAINT, IK_TARGET, POLE_TARGET, PHYSICS_TARGET -> kindLabel(id.kind()).format(id.subject());
+            case IK_TARGET, POLE_TARGET, PHYSICS_TARGET -> kindLabel(id.kind()).format(id.subject());
             case IK_CONTROLS, PHYSICS_CONTROLS, WIND_CONTROLS -> kindLabel(id.kind());
             default -> IKey.constant(id.label());
         };
@@ -155,6 +155,7 @@ public class TrackStyle
         COLORS.put("culling", 0x8899bb);
         putColors(0xd9b23f, "smoothness", "metallic", "sss", "pixel_emission", "relief");
         COLORS.put("shape_keys", Colors.PINK);
+        COLORS.put("shape_keys_overlay", 0xff9ad5);
         COLORS.put("model", MODEL_TRACK);
     }
 
@@ -369,6 +370,7 @@ public class TrackStyle
 
         if (topLevel.startsWith("pose_overlay")) return ICONS.get("pose");
         if (topLevel.startsWith("transform_overlay")) return ICONS.get("transform");
+        if (topLevel.startsWith("shape_keys_overlay")) return ICONS.get("shape_keys");
 
         return ICONS.getOrDefault(topLevel, Icons.NONE);
     }
@@ -379,6 +381,7 @@ public class TrackStyle
 
         if (topLevel.startsWith("pose_overlay")) return COLORS.get("pose_overlay");
         if (topLevel.startsWith("transform_overlay")) return COLORS.get("transform_overlay");
+        if (topLevel.startsWith("shape_keys_overlay")) return COLORS.get("shape_keys_overlay");
         if (COLORS.containsKey(topLevel)) return COLORS.get(topLevel);
 
         return Colors.BLUE;

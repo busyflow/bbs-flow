@@ -42,6 +42,7 @@ public class BBSSettings {
 	public static ValueStringKeys disabledSheets;
 	public static ValueTrackStyles trackStyles;
 	public static ValueStringKeys disabledMorphFormCategories;
+	public static ValueStringKeys doneData;
 	public static ValueLanguage language;
 	public static ValueInt primaryColor;
 	public static ValueInt stencilHighlightColor;
@@ -83,6 +84,7 @@ public class BBSSettings {
 	public static ValueFloat snapScale;
 	public static ValueInt gizmoHoverTolerance;
 	public static ValueFloat gizmoOpacity;
+	public static ValueInt gizmoAntialiasing;
 	public static ValueBoolean uniformScale;
 	public static ValueBoolean clickSound;
 	public static ValueBoolean gizmos;
@@ -95,6 +97,7 @@ public class BBSSettings {
 	public static ValueOrder scaleHotkeyOrder;
 	public static ValueOrder rotateHotkeyOrder;
 	public static ValueFloat trackballSensitivity;
+	public static ValueFloat arcballSize;
 
 	public static ValueBoolean enableCursorRendering;
 	public static ValueBoolean enableMouseButtonRendering;
@@ -155,6 +158,7 @@ public class BBSSettings {
 	public static ValueInt editorGuidesColor;
 	public static ValueBoolean editorRuleOfThirds;
 	public static ValueBoolean editorCenterLines;
+	public static ValueBoolean editorSelectionOutline;
 	public static ValueBoolean editorCrosshair;
 	public static ValueBoolean editorSeconds;
 	public static ValueBoolean editorTimelineGrid;
@@ -170,31 +174,41 @@ public class BBSSettings {
 	public static ValueMotionPath editorMotionPath;
 	public static ValueBoolean editorOrbitTeleportOnSwitch;
 	public static ValueBoolean editorOrbitAttached;
+	public static ValueBoolean editorOrbitTurnsWithAnchor;
+	public static ValueBoolean editorOrbitWallCut;
+	public static ValueFloat editorOrbitWallCutDepth;
 	public static ValueFloat editorCameraSmoothness;
 	public static ValueInt editorCameraMode;
 	public static ValueBoolean editorPlayerFollowsCamera;
+	public static ValueBoolean editorPlayerFollowsSpectator;
 	public static ValueEditorLayout editorLayoutSettings;
 	public static ValueOnionSkin editorOnionSkin;
 	/** The rig's debug overlay: switched by the rig tab and F5, no row in the settings. */
 	public static ValueBoolean debugOverlay;
-	public static ValueFloat debugOpacity;
-	/** One scale for every marker and line of the rig's debug overlay. */
-	public static ValueFloat debugSize;
+	/** How solid the editors' markup draws, in every editor. */
+	public static ValueFloat markupOpacity;
+	/** One scale for every handle of the editors' markup, in every editor. */
+	public static ValueFloat markupHandleSize;
 	public static ValueBoolean profilerOverlay;
 	/** Emergency switch for the per-frame pose caches; invisible, on by default. */
 	public static ValueBoolean framePoseCache;
 	/** Skip rendering replays whose surroundings are entirely off screen. */
 	public static ValueBoolean frustumCulling;
+	/** Draw the models' welded bands; off, welded models render as plain cubes. */
+	public static ValueBoolean welds;
 	public static ValueBoolean editorSnapToMarkers;
 	/** Snapping to the film's own markers &mdash; unlike {@link #editorSnapToMarkers}, which is the ruler's notches. */
 	public static ValueBoolean editorSnapToFilmMarkers;
 	public static ValueBoolean editorClipPreview;
 	public static ValueBoolean editorRewind;
 	public static ValueBoolean editorStopPlaybackOnScrub;
+	/** Whether the film timelines scroll along with the playhead during playback. */
+	public static ValueBoolean editorFollowCursor;
 	public static ValueBoolean editorSnapToTicks;
 	public static ValueBoolean timelineAllBodyParts;
 	/** Whether a section heading sums up its tracks' keys as marks that edit their whole column. */
 	public static ValueBoolean timelineSectionSummary;
+	public static ValueBoolean timelineBoneHoldKeys;
 	public static ValueBoolean editorRestartOnSeek;
 	public static ValueBoolean editorHorizontalClipEditor;
 	public static ValueBoolean editorMinutesBackup;
@@ -210,6 +224,7 @@ public class BBSSettings {
 	public static ValueInt editorPreviewCustomWidth;
 	public static ValueInt editorPreviewCustomHeight;
 	public static ValueFloat editorPreviewResolutionScale;
+	public static ValueFloat editorPreviewExportBandsOpacity;
 	public static ValueBoolean editorClipAutoName;
 	public static ValueBoolean editorClipPaletteIcons;
 	public static ValueBoolean editorPreviewIconsAutoHide;
@@ -234,6 +249,7 @@ public class BBSSettings {
 	public static ValueBoolean recordingOverlays;
 	public static ValueInt recordingPoseOverlays;
 	public static ValueInt recordingTransformOverlays;
+	public static ValueInt recordingShapeKeyOverlays;
 	public static ValueBoolean recordingCameraPreview;
 	public static ValueBoolean recordingTeleport;
 	public static ValueBoolean unlimitedReplayRenderDistance;
@@ -764,6 +780,10 @@ public class BBSSettings {
 		builder.register(trackStyles);
 		disabledMorphFormCategories = new ValueStringKeys("disabled_morph_form_categories");
 		builder.register(disabledMorphFormCategories);
+		/* Films, models and the rest the user marked done in their data managers */
+		doneData = new ValueStringKeys("done_data");
+		doneData.invisible();
+		builder.register(doneData);
 
 		builder.category("personalization", Icons.COLOR);
 		primaryColor = builder.getInt("primary_color", DEFAULT_PRIMARY_COLOR).color();
@@ -819,6 +839,7 @@ public class BBSSettings {
 		snapScale = builder.getFloat("snap_scale", 0.1F, 0.001F, 10F);
 		gizmoHoverTolerance = builder.getInt("gizmo_hover_tolerance", 4, 0, 40).slider();
 		gizmoOpacity = builder.getFloat("gizmo_opacity", 1F, 0.05F, 1F).slider();
+		gizmoAntialiasing = builder.getInt("gizmo_antialiasing", 2, 0, 2);
 		/* The frame every transform editor opens in, remembered from the last
 		 * session; picked from the gizmo's own space picker, so it has no row here.
 		 * The default is PARENT's ordinal - see TransformSpace, whose constants may
@@ -838,6 +859,7 @@ public class BBSSettings {
 		rotateHotkeyOrder = new ValueOrder("rotate_hotkey_order", "view", "sphere", "x", "y", "z");
 		builder.register(rotateHotkeyOrder);
 		trackballSensitivity = builder.getFloat("trackball_sensitivity", 1F, 0.05F, 2F).slider();
+		arcballSize = builder.getFloat("arcball_size", 0.3F, 0.1F, 0.5F).slider();
 
 		builder.category("camera", Icons.CAMERA);
 		editorCameraSpeed = builder.getFloat("speed", 1F, 0.1F, 100F);
@@ -846,6 +868,7 @@ public class BBSSettings {
 		editorFlightFreeLook = builder.getBoolean("flight_free_look", false);
 		editorCameraSmoothness = builder.getFloat("camera_smoothness", 0.1F, 0F, 0.95F).slider();
 		editorPlayerFollowsCamera = builder.getBoolean("player_follows_camera", false);
+		editorPlayerFollowsSpectator = builder.getBoolean("player_follows_spectator", false);
 		editorOrbitMovementRequiresFlight = builder.getBoolean("orbit_movement_requires_flight", true);
 		editorOrbitCenterMarker = builder.getBoolean("orbit_center_marker", false);
 		editorOrbitGizmo = builder.getBoolean("orbit_gizmo", true);
@@ -854,6 +877,12 @@ public class BBSSettings {
 		editorOrbitTeleportOnSwitch = builder.getBoolean("orbit_teleport_on_switch", true);
 		editorOrbitAttached = builder.getBoolean("orbit_attached", true);
 		editorOrbitAttached.invisible();
+		editorOrbitTurnsWithAnchor = builder.getBoolean("orbit_turns_with_anchor", false);
+		editorOrbitTurnsWithAnchor.invisible();
+		editorOrbitWallCut = builder.getBoolean("orbit_wall_cut", false);
+		editorOrbitWallCut.invisible();
+		editorOrbitWallCutDepth = builder.getFloat("orbit_wall_cut_depth", 0.3F, 0F, 32F);
+		editorOrbitWallCutDepth.invisible();
 		editorCameraMode = builder.getInt("camera_mode", 0, 0, 5);
 		editorCameraMode.invisible();
 
@@ -866,6 +895,7 @@ public class BBSSettings {
 		editorPreviewCustomWidth = builder.getInt("preview_custom_width", 1280, 2, 16384);
 		editorPreviewCustomHeight = builder.getInt("preview_custom_height", 720, 2, 16384);
 		editorPreviewResolutionScale = builder.getFloat("preview_resolution_scale", 2F, 1F, 3F).slider();
+		editorPreviewExportBandsOpacity = builder.getFloat("preview_export_bands_opacity", 0.5F, 0F, 1F).slider();
 		editorClipPreview = builder.getBoolean("clip_preview", true);
 		editorPreviewIconsAutoHide = builder.getBoolean("preview_icons_auto_hide", false);
 		previewIconOnionSkin = builder.getBoolean("preview_icon_onion_skin", true);
@@ -882,14 +912,14 @@ public class BBSSettings {
 		previewIconExport = builder.getBoolean("preview_icon_export", true);
 
 		editorPreviewSelectionHud = builder.getBoolean("preview_selection_hud", true);
+		editorSelectionOutline = builder.getBoolean("selection_outline", true);
 		builder.register(editorOnionSkin = new ValueOnionSkin("onion_skin"));
 		builder.register(editorMotionPath = new ValueMotionPath("motion_path"));
-		/* The rig's debug overlay: its switch lives on the rig tab (and F5), its look is fixed
-		 * but for how solid and how big it draws */
+		/* The rig's debug overlay: its switch lives on the rig tab and F5 */
 		debugOverlay = builder.getBoolean("debug_overlay", false);
 		debugOverlay.invisible();
-		debugOpacity = builder.getFloat("debug_opacity", 0.5F, 0.05F, 1F).slider();
-		debugSize = builder.getFloat("debug_size", 1F, 0.25F, 4F).slider();
+		markupOpacity = builder.getFloat("markup_opacity", 0.67F, 0.2F, 1F).slider();
+		markupHandleSize = builder.getFloat("markup_handle_size", 1F, 0.5F, 3F).slider();
 
 		/* Everything that trades work for frames: what the editor renders at all, at what
 		 * resolution and how often, what it computes in parallel, plus the counters that
@@ -901,6 +931,7 @@ public class BBSSettings {
 		particlesDepthSorting = builder.getBoolean("particles_depth_sorting", false);
 		multiskinMultiThreaded = builder.getBoolean("multiskin_multithreaded", true);
 		frustumCulling = builder.getBoolean("frustum_culling", true);
+		welds = builder.getBoolean("welds", true);
 		profilerOverlay = builder.getBoolean("profiler_overlay", false);
 		framePoseCache = builder.getBoolean("frame_pose_cache", true);
 		framePoseCache.invisible();
@@ -934,9 +965,11 @@ public class BBSSettings {
 		editorSnapToFilmMarkers = builder.getBoolean("snap_to_film_markers", true);
 		editorRewind = builder.getBoolean("rewind", true);
 		editorStopPlaybackOnScrub = builder.getBoolean("stop_playback_on_scrub", false);
+		editorFollowCursor = builder.getBoolean("follow_cursor", false);
 		editorSnapToTicks = builder.getBoolean("snap_to_ticks", true);
 		timelineAllBodyParts = builder.getBoolean("all_body_parts", false);
 		timelineSectionSummary = builder.getBoolean("section_summary", true);
+		timelineBoneHoldKeys = builder.getBoolean("bone_hold_keys", true);
 		editorRestartOnSeek = builder.getBoolean("restart_on_seek", false);
 		editorHorizontalClipEditor = builder.getBoolean("horizontal_clip_editor", false);
 
@@ -957,6 +990,7 @@ public class BBSSettings {
 		recordingOverlays = builder.getBoolean("overlays", true);
 		recordingPoseOverlays = builder.getInt("pose_overlays", 0, 0, 42);
 		recordingTransformOverlays = builder.getInt("transform_overlays", 0, 0, 42);
+		recordingShapeKeyOverlays = builder.getInt("shape_key_overlays", 0, 0, 42);
 		recordingCameraPreview = builder.getBoolean("camera_preview", true);
 		recordingTeleport = builder.getBoolean("teleport", true);
 		unlimitedReplayRenderDistance = builder.getBoolean("unlimited_replay_render_distance", false);

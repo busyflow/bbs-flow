@@ -59,7 +59,7 @@ public enum FormTrackGroup
 
         switch (track.kind())
         {
-            case BONE, BONE_CONSTRAINT:
+            case BONE:
                 return POSE;
             case MATERIAL_TEXTURE, MATERIAL_PROP:
                 return LOOK;
@@ -77,7 +77,7 @@ public enum FormTrackGroup
         }
 
         /* What moves the model: its pose and everything that plays or bends it. */
-        if (name.equals(FormProperties.POSE_PROPERTY) || name.startsWith("pose_overlay") || name.equals("shape_keys")
+        if (name.equals(FormProperties.POSE_PROPERTY) || name.startsWith("pose_overlay") || name.startsWith("shape_keys")
             || name.equals("actions") || name.startsWith("cem_"))
         {
             return POSE;

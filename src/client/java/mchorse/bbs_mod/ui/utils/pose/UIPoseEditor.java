@@ -322,6 +322,27 @@ public class UIPoseEditor extends UIElement
         {
             roles.mark(bone, 0, BoneRole.PINNED);
         }
+
+        IBoneSelectionHost host = this.selectionAnchor().getAncestor(IBoneSelectionHost.class);
+
+        if (host != null)
+        {
+            for (String bone : this.groups.list.getList())
+            {
+                BoneRole role = host.markBone(this.bonePath(bone));
+
+                if (role != null)
+                {
+                    roles.mark(bone, 0, role);
+                }
+            }
+        }
+    }
+
+    /** A bone of this pose as the film addresses it; just its name for a pose of the root form. */
+    public String bonePath(String bone)
+    {
+        return bone;
     }
 
     /**

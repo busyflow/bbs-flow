@@ -1,7 +1,6 @@
 package mchorse.bbs_mod.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.blocks.entities.ModelBlockEntity;
@@ -21,6 +20,7 @@ import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.dashboard.UIDashboard;
 import mchorse.bbs_mod.ui.film.FrameOverlays;
 import mchorse.bbs_mod.ui.film.UIFilmPanel;
+import mchorse.bbs_mod.ui.sequence.UISequencePanel;
 import mchorse.bbs_mod.ui.framework.UIBaseMenu;
 import mchorse.bbs_mod.ui.framework.UIScreen;
 import mchorse.bbs_mod.ui.framework.elements.utils.Batcher2D;
@@ -45,16 +45,17 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.Window;
 import net.minecraft.client.util.math.MatrixStack;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL30;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
 
-import java.io.File;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -72,6 +73,9 @@ public class BBSRendering
     public static final Set<ModelBlockEntity> capturedModelBlocks = new HashSet<>();
 
     public static boolean canRender;
+
+    /** The render finishes its video frame - the last of its held renders (RenderTickCounterMixin) */
+    public static boolean canRecord;
 
     public static boolean renderingWorld;
     public static int lastAction;
@@ -91,44 +95,26 @@ public class BBSRendering
      * another controller takes over. */
     private static float orthoDistance = -1F;
 
+    /* The orbit's wall cut (see TerrainCut): the point it is measured from, null when off.
+     * Re-armed every frame the same way as the ortho distance. */
+    private static Vector3d terrainCutCenter;
+    private static final Vector3d terrainCutPoint = new Vector3d();
+    private static float terrainCutDepth;
+
     private static boolean toggleFramebuffer;
     private static Framebuffer framebuffer;
     private static Framebuffer clientFramebuffer;
     private static Texture texture;
     private static mchorse.bbs_mod.graphics.Framebuffer /* NECESSARY */ exportFramebuffer;
 
+    /* The proportions of the export frame an editor preview marks with bands over a render that
+     * fills its whole block (see UIWorldPreview), 0 when it doesn't. Set by the preview every
+     * frame it is drawn, dropped together with the custom size. */
+    private static float exportFrameAspect;
+
     private static Runnable pendingExportResolutionAction;
     private static int pendingExportFrames;
     private static volatile boolean holdingExportFrame;
-
-    public static int getMotionBlur()
-    {
-        return getMotionBlur(BBSSettings.videoFrameRate.get(), getMotionBlurFactor());
-    }
-
-    public static int getMotionBlur(double fps, int target)
-    {
-        int i = 0;
-
-        while (fps < target)
-        {
-            fps *= 2;
-
-            i++;
-        }
-
-        return i;
-    }
-
-    public static int getMotionBlurFactor()
-    {
-        return getMotionBlurFactor(BBSSettings.videoMotionBlur.get());
-    }
-
-    public static int getMotionBlurFactor(int integer)
-    {
-        return integer == 0 ? 0 : (int) Math.pow(2, 6 + integer);
-    }
 
     public static int getVideoWidth()
     {
@@ -138,56 +124,6 @@ public class BBSRendering
     public static int getVideoHeight()
     {
         return height == 0 ? BBSSettings.videoHeight.get() : height;
-    }
-
-    public static int getVideoFrameRate()
-    {
-        int frameRate = BBSSettings.videoFrameRate.get();
-
-        return frameRate * (1 << getMotionBlur(frameRate, getMotionBlurFactor()));
-    }
-
-    /**
-     * How many of a video frame's motion blur sub-frames go into it. With no shutter, all of them -
-     * the blur spans the whole frame, as if the shutter were fully open (360 degrees), the way it
-     * always worked; otherwise the share of the frame the shutter keeps open (180 = the film look).
-     */
-    public static int getMotionBlurExposedFrames()
-    {
-        int subframes = 1 << getMotionBlur();
-        int shutter = BBSSettings.videoShutter.get();
-
-        return shutter <= 0 ? subframes : Math.max(1, Math.min(subframes, Math.round(subframes * shutter / 360F)));
-    }
-
-    /**
-     * The part of a video frame's time that passes at its given held render. Each frame is
-     * rendered "held frames" times; with no shutter they all show one moment, so the first moves
-     * time a whole frame on and the rest none. The shutter (degrees, as on a film camera) spreads
-     * them over that part of the frame instead - each repeat moves shutter/held of it, the first
-     * the rest - and a shader that accumulates the repeats averages them into motion blur.
-     */
-    public static float getHeldFrameShare(int heldFrame)
-    {
-        int held = BBSSettings.videoHeldFrames.get();
-        float step = held > 1 ? BBSSettings.videoShutter.get() / 360F / held : 0F;
-
-        return heldFrame == 0 ? 1F - step * (held - 1) : step;
-    }
-
-    public static File getVideoFolder()
-    {
-        File movies = new File(BBSMod.getSettingsFolder().getParentFile(), "movies");
-        File exportPath = new File(BBSSettings.videoExportPath.get());
-
-        if (exportPath.isDirectory())
-        {
-            movies = exportPath;
-        }
-
-        movies.mkdirs();
-
-        return movies;
     }
 
     public static boolean canReplaceFramebuffer()
@@ -218,6 +154,7 @@ public class BBSRendering
             pendingExportResolutionAction = null;
             pendingExportFrames = 0;
             holdingExportFrame = false;
+            exportFrameAspect = 0F;
         }
 
         int newWidth = !customSize ? 0 : w;
@@ -244,6 +181,53 @@ public class BBSRendering
         {
             resizeExtraFramebuffers();
         }
+    }
+
+    public static void setExportFrameAspect(float aspect)
+    {
+        exportFrameAspect = aspect;
+    }
+
+    /**
+     * How much taller the render is than the export frame marked inside it. The game spreads
+     * its vertical field of view over the render's whole height, while the video spreads it
+     * over the frame's: with bands above and below the frame, the camera has to be widened by
+     * this much for the frame to show what the video will. Bands at the sides don't need it,
+     * as the frame is as tall as the render, so this is 1 then.
+     */
+    public static float getExportFrameFovScale()
+    {
+        if (exportFrameAspect <= 0F || !customSize || holdingExportFrame)
+        {
+            return 1F;
+        }
+
+        float w = getVideoWidth();
+        float h = getVideoHeight();
+        float frameH = w / exportFrameAspect;
+
+        /* Sides rounded to even pixels make a frame of the render's own proportions a pixel
+         * or two off; that is no band. */
+        return h - frameH <= 2F ? 1F : h / frameH;
+    }
+
+    /**
+     * The given vertical field of view (degrees) widened for the export frame's bands, see
+     * {@link #getExportFrameFovScale()}.
+     */
+    public static double widenFovForExportFrame(double fov)
+    {
+        float scale = getExportFrameFovScale();
+
+        if (scale <= 1F)
+        {
+            return fov;
+        }
+
+        double half = Math.toRadians(fov) / 2D;
+        double widened = Math.toDegrees(Math.atan(Math.tan(half) * scale) * 2D);
+
+        return Math.min(widened, 170D);
     }
 
     public static Texture getTexture()
@@ -380,7 +364,7 @@ public class BBSRendering
                  * blit our framebuffer to the full window or the preview would stretch to full screen. */
                 UIBaseMenu currentMenu = UIScreen.getCurrentMenu();
                 boolean filmPanelShowing = currentMenu instanceof UIDashboard dashboard
-                    && dashboard.getPanels().panel instanceof UIFilmPanel;
+                    && (dashboard.getPanels().panel instanceof UIFilmPanel || dashboard.getPanels().panel instanceof UISequencePanel);
                 if (!filmPanelShowing)
                 {
                     framebuffer.draw(drawW, drawH);
@@ -411,6 +395,13 @@ public class BBSRendering
         }
 
         orthoDistance = -1F;
+
+        if (terrainCutCenter != null)
+        {
+            /* Same as ortho: the culling the cut turned off comes back unless re-armed. */
+            MinecraftClient.getInstance().chunkCullingEnabled = true;
+            terrainCutCenter = null;
+        }
 
         MinecraftClient mc = MinecraftClient.getInstance();
 
@@ -472,6 +463,10 @@ public class BBSRendering
             {
                 FrameOverlays.render(currentMenu.context.batcher.getContext().getMatrices(), currentMenu.context.batcher, panel.getRunner().getContext());
             }
+            else if (dashboard.getPanels().panel instanceof UISequencePanel panel)
+            {
+                panel.renderFrameOverlays(currentMenu.context.batcher.getContext().getMatrices(), currentMenu.context.batcher);
+            }
         }
 
         renderingWorld = false;
@@ -517,6 +512,17 @@ public class BBSRendering
         GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevRead);
         GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDraw);
 
+        /* Only now does the export texture hold this render - world, shaders and HUD. Taken at
+         * the world render instead, it would still hold the render before: the first frame of the
+         * video would be the one before the recording, and every other frame a frame late. */
+        if (canRecord)
+        {
+            canRecord = false;
+
+            BBSModClient.getMinecraftSoundCapture().captureFrame();
+            BBSModClient.getVideoRecorder().recordFrame();
+        }
+
         renderRecordingOverlay();
 
         toggleFramebuffer(false);
@@ -537,11 +543,11 @@ public class BBSRendering
         holdingExportFrame = false;
     }
 
-    /** Render one frozen scene repeatedly at export resolution before capturing it. */
-    public static void scheduleAfterHeldExportFrame(Runnable action)
+    /** Render one frozen scene the given number of times at export resolution before capturing it. */
+    public static void scheduleAfterHeldExportFrame(int renders, Runnable action)
     {
         pendingExportResolutionAction = action;
-        pendingExportFrames = BBSSettings.videoHeldFrames.get();
+        pendingExportFrames = renders;
         holdingExportFrame = true;
     }
 
@@ -716,6 +722,31 @@ public class BBSRendering
         }
     }
 
+    /**
+     * Arm the orbit's wall cut for the current frame: world blocks nearer the camera than
+     * the plane through {@code center}, moved {@code depth} blocks towards the camera, are
+     * not drawn (see {@link TerrainCut}). Reset at the beginning of every world render.
+     */
+    public static void setTerrainCut(Vector3d center, float depth)
+    {
+        terrainCutCenter = terrainCutPoint.set(center);
+        terrainCutDepth = depth;
+
+        /* With the wall gone the camera sees what the wall hid, but the chunk occlusion
+         * culling still judges from the camera's side of the wall and drops those sections. */
+        MinecraftClient.getInstance().chunkCullingEnabled = false;
+    }
+
+    public static Vector3d getTerrainCutCenter()
+    {
+        return terrainCutCenter;
+    }
+
+    public static float getTerrainCutDepth()
+    {
+        return terrainCutDepth;
+    }
+
     public static boolean isOrthoActive()
     {
         return orthoDistance > 0F;
@@ -808,6 +839,57 @@ public class BBSRendering
         }
 
         return IrisUtils.isShadowPass();
+    }
+
+    /**
+     * Mark what is drawn next as a name tag for the shader pack (its {@code minecraft:name_tag}
+     * entity id), the way Iris marks vanilla labels: Complementary and others light name tags
+     * on their own. Returns the previous entity id, to be handed back to
+     * {@link #endIrisNameTag(int)}.
+     */
+    public static int beginIrisNameTag()
+    {
+        if (!iris)
+        {
+            return IrisUtils.NO_ENTITY;
+        }
+
+        return IrisUtils.beginNameTag();
+    }
+
+    public static void endIrisNameTag(int last)
+    {
+        if (!iris)
+        {
+            return;
+        }
+
+        IrisUtils.endNameTag(last);
+    }
+
+    /**
+     * Open one of Iris' draw groups on its batched entity buffers, like the one it opens around
+     * every vanilla entity: the layers drawn inside keep their order when the batch is flushed.
+     * Returns whether a group was opened, to be handed back to {@link #endIrisGroup}.
+     */
+    public static boolean startIrisGroup(VertexConsumerProvider consumers)
+    {
+        if (!iris)
+        {
+            return false;
+        }
+
+        return IrisUtils.startGroup(consumers);
+    }
+
+    public static void endIrisGroup(VertexConsumerProvider consumers, boolean started)
+    {
+        if (!iris || !started)
+        {
+            return;
+        }
+
+        IrisUtils.endGroup(consumers);
     }
 
     /**

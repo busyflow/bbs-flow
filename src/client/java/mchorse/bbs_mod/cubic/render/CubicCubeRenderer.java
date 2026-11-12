@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.cubic.render;
 
+import mchorse.bbs_mod.api.client.render.DeformedMesh;
+import mchorse.bbs_mod.api.client.render.ModelMeshReplacement;
 import mchorse.bbs_mod.cubic.data.model.Model;
 import mchorse.bbs_mod.cubic.data.model.ModelCube;
 import mchorse.bbs_mod.cubic.data.model.ModelData;
@@ -21,6 +23,7 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 
 public class CubicCubeRenderer implements ICubicRenderer
@@ -57,11 +60,26 @@ public class CubicCubeRenderer implements ICubicRenderer
     protected Vector3f normal = new Vector3f();
     protected Vector4f vertex = new Vector4f();
 
+    /* Bones kept inside the bone the model is worn on: their vertices go from the stack's frame into the
+     * carrier's, are pressed into its box, and come back. */
+    private Set<String> carrierBones;
+    private Matrix4f toCarrier;
+    private Matrix4f fromCarrier;
+    private CarrierClip carrier;
+
     private ModelVertex modelVertex = new ModelVertex();
     private ShapeKeys shapeKeys;
 
     /* Quads the welded band draws in their place (see WeldMesh) — left out here; null when none. */
     private WeldMesh band;
+
+    /* An addon's replacement of some cubes on this draw (see ModelMeshEvents): the cubes it hides are
+     * left out; its meshes are written here only on the plain CPU path, in the walk's starting frame. */
+    protected ModelMeshReplacement meshes;
+    private Matrix4f meshPosition;
+    private Matrix3f meshNormal;
+    private final Vector4f meshVertex = new Vector4f();
+    private final Vector3f meshNormalVector = new Vector3f();
 
     public static void moveToPivot(MatrixStack stack, Vector3f pivot)
     {
@@ -133,10 +151,56 @@ public class CubicCubeRenderer implements ICubicRenderer
         this.a = a;
     }
 
+    /** @param toCarrier the stack's frame (as this renderer is handed it) into the carrier bone's frame */
+    public void setCarrierClip(Set<String> bones, CarrierClip carrier, Matrix4f toCarrier)
+    {
+        boolean on = bones != null && !bones.isEmpty() && carrier != null && toCarrier != null;
+
+        this.carrierBones = on ? bones : null;
+        this.carrier = on ? carrier : null;
+        this.toCarrier = on ? toCarrier : null;
+        this.fromCarrier = on ? new Matrix4f(toCarrier).invert() : null;
+    }
+
     /** Leave out the quads this welded band draws instead. */
     public void setBand(WeldMesh band)
     {
         this.band = band;
+    }
+
+    /** Leave out the cubes an addon draws itself on this draw; null for none. */
+    public void setMeshes(ModelMeshReplacement meshes)
+    {
+        this.meshes = meshes;
+    }
+
+    /**
+     * Whether an addon draws any of the bone's cubes itself on this draw. A welded band is drawn over the
+     * bone's cubes, so a bone given away is given away with its band.
+     */
+    protected boolean hidesBone(ModelGroup group)
+    {
+        if (this.meshes == null)
+        {
+            return false;
+        }
+
+        for (ModelCube cube : group.cubes)
+        {
+            if (this.meshes.hides(group, cube))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** Write the replacement's meshes into the buffer too, from the frame the walk starts in. */
+    public void emitMeshes(Matrix4f position, Matrix3f normal)
+    {
+        this.meshPosition = position;
+        this.meshNormal = normal;
     }
 
     @Override
@@ -157,12 +221,20 @@ public class CubicCubeRenderer implements ICubicRenderer
             this.renderMesh(builder, stack, model, group, mesh);
         }
 
+        if (this.meshes != null && this.meshPosition != null)
+        {
+            for (DeformedMesh mesh : this.meshes.meshes(group))
+            {
+                this.renderDeformed(builder, group, mesh);
+            }
+        }
+
         return false;
     }
 
     protected void renderCube(BufferBuilder builder, MatrixStack stack, ModelGroup group, ModelCube cube)
     {
-        if (!this.materialVisibility.test(cube.material))
+        if (!this.materialVisibility.test(cube.material) || (this.meshes != null && this.meshes.hides(group, cube)))
         {
             return;
         }
@@ -294,6 +366,15 @@ public class CubicCubeRenderer implements ICubicRenderer
         this.vertex.set(vertex.vertex.x, vertex.vertex.y, vertex.vertex.z, 1);
         stack.peek().getPositionMatrix().transform(this.vertex);
 
+        if (this.carrierBones != null && this.carrierBones.contains(group.id))
+        {
+            this.toCarrier.transform(this.vertex);
+            this.vertex.x = Math.max(this.carrier.min().x, Math.min(this.carrier.max().x, this.vertex.x));
+            this.vertex.y = Math.max(this.carrier.min().y, Math.min(this.carrier.max().y, this.vertex.y));
+            this.vertex.z = Math.max(this.carrier.min().z, Math.min(this.carrier.max().z, this.vertex.z));
+            this.fromCarrier.transform(this.vertex);
+        }
+
         this.emit(builder, group, this.vertex.x, this.vertex.y, this.vertex.z, vertex.uv.x, vertex.uv.y, normal);
     }
 
@@ -320,6 +401,32 @@ public class CubicCubeRenderer implements ICubicRenderer
         builder.normal(normal.x, normal.y, normal.z).next();
     }
 
+    /** Write an addon's mesh, whose points are in the walk's starting frame, coloured and lit like the bone it is drawn with. */
+    private void renderDeformed(BufferBuilder builder, ModelGroup group, DeformedMesh mesh)
+    {
+        if (!this.materialVisibility.test(mesh.material))
+        {
+            return;
+        }
+
+        float[] positions = mesh.positions();
+        float[] normals = mesh.normals();
+        float[] texCoords = mesh.texCoords();
+        int[] indices = mesh.indices();
+
+        for (int i = 0, c = indices.length - indices.length % 3; i < c; i++)
+        {
+            int point = indices[i];
+
+            this.meshVertex.set(positions[point * 3], positions[point * 3 + 1], positions[point * 3 + 2], 1F);
+            this.meshPosition.transform(this.meshVertex);
+            this.meshNormalVector.set(normals[point * 3], normals[point * 3 + 1], normals[point * 3 + 2]);
+            this.meshNormal.transform(this.meshNormalVector);
+
+            this.emit(builder, group, this.meshVertex.x, this.meshVertex.y, this.meshVertex.z, texCoords[point * 2], texCoords[point * 2 + 1], this.meshNormalVector);
+        }
+    }
+
     /**
      * Write a posed welded band (see {@link WeldMesh#deform}) — its points are in the frame the walk started
      * in, the model's root — for the bones and materials that show, coloured and lit like the rest of the
@@ -329,7 +436,7 @@ public class CubicCubeRenderer implements ICubicRenderer
     {
         for (WeldMesh.Quad quad : band.quads)
         {
-            if (!quad.group.isVisible() || !this.materialVisibility.test(quad.material))
+            if (!quad.group.isVisible() || !this.materialVisibility.test(quad.material) || this.hidesBone(quad.group))
             {
                 continue;
             }

@@ -41,12 +41,15 @@ import mchorse.bbs_mod.ui.dashboard.panels.IFlightSupported;
 import mchorse.bbs_mod.ui.dashboard.panels.UIDataDashboardPanel;
 import mchorse.bbs_mod.ui.dashboard.panels.overlay.UICRUDOverlayPanel;
 import mchorse.bbs_mod.ui.dashboard.utils.IUIOrbitKeysHandler;
+import mchorse.bbs_mod.ui.sequence.SequenceSound;
 import mchorse.bbs_mod.ui.film.audio.UIAudioRecorder;
 import mchorse.bbs_mod.ui.film.controller.UIFilmController;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditor;
 import mchorse.bbs_mod.ui.film.utils.UIFilmUndoHandler;
 import mchorse.bbs_mod.ui.film.utils.undo.UIUndoHistoryOverlay;
 import mchorse.bbs_mod.ui.framework.UIContext;
+import mchorse.bbs_mod.ui.framework.elements.context.UINumberPopup;
+import mchorse.bbs_mod.ui.framework.elements.context.UIPromptPopup;
 import mchorse.bbs_mod.ui.framework.elements.utils.ScrollMemory;
 import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCanvas;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIUndoKeys;
@@ -56,9 +59,8 @@ import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
 import mchorse.bbs_mod.ui.framework.elements.layout.ILayoutSource;
 import mchorse.bbs_mod.ui.framework.elements.layout.UIDockLayout;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIMessageOverlayPanel;
-import mchorse.bbs_mod.ui.framework.elements.overlay.UINumberOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
-import mchorse.bbs_mod.ui.framework.elements.overlay.UIPromptOverlayPanel;
+import mchorse.bbs_mod.ui.framework.elements.utils.UITimelineCanvas;
 import mchorse.bbs_mod.ui.utils.Area;
 import mchorse.bbs_mod.ui.utils.Scale;
 import mchorse.bbs_mod.ui.utils.UIUtils;
@@ -68,6 +70,7 @@ import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.presets.UICopyPasteController;
 import mchorse.bbs_mod.utils.CollectionUtils;
 import mchorse.bbs_mod.utils.IOUtils;
+import mchorse.bbs_mod.utils.CameraFollow;
 import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.PlayerUtils;
 import mchorse.bbs_mod.utils.Timer;
@@ -97,11 +100,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
-public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSupported, IUIOrbitKeysHandler, ICursor
+public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSupported, IUIOrbitKeysHandler, IUIClipsOwner
 {
-    private static final int PREVIEW_MODE_EXPORT = 0;
-    private static final int PREVIEW_MODE_CUSTOM = 1;
-    private static final int PREVIEW_MODE_AUTO = 2;
 
     private RunnerCameraController runner;
     private boolean lastRunning;
@@ -143,6 +143,9 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     private UIFilmUndoHandler undoHandler;
 
     public final Matrix4f lastView = new Matrix4f();
+    /* The camera exactly as the world was last drawn with (see getDrawnCamera) */
+    private final Camera drawnCamera = new Camera();
+    private boolean hasDrawnCamera;
     public final Matrix4f lastProjection = new Matrix4f();
 
     private Timer flightEditTime = new Timer(100);
@@ -158,6 +161,8 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     private double timelineXMax = Double.NaN;
     /* The timelines' own views (min and max tick) while a video export lays its range over them */
     private final List<Vector2d> exportTimelineViews = new ArrayList<>();
+    /* Where the timelines followed the playhead last frame, to tell a jump back (a loop) from the view scrolled ahead */
+    private float followedCursor;
     /* Vertical timeline scrolls per film id, so switching film tabs restores where each one was left */
     private final ScrollMemory<String> cameraScrolls = new ScrollMemory<>();
     private final ScrollMemory<String> actionScrolls = new ScrollMemory<>();
@@ -165,6 +170,9 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     private final ScrollMemory<String> poseScrolls = new ScrollMemory<>();
 
     private FilmQueueExporter queueExporter;
+
+    /** The sound of the sequence the open film was opened from, or null */
+    private SequenceSound sequenceSound;
 
     /* Docking: panel ids arranged by the dock layout */
     public static final String PANEL_MAIN_ID = "main";
@@ -410,7 +418,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             .gate(this::hasFilmInCurrentTab)
             .ensure(this::ensureFilmLayoutPanels)
             .onChanged(this::onDockLayoutChanged)
-            .onLayoutSettled(this::applyPreviewSizeToBBS);
+            .onLayoutSettled(() -> this.preview.applySize());
         this.poseTimeline = new UIElement()
         {
             @Override
@@ -517,7 +525,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         IValueListener refreshPreviewOnVideoResolution = (v, f) ->
         {
-            if (this.isVisible()) this.applyPreviewSizeToBBS();
+            if (this.isVisible()) this.preview.applySize();
         };
         BBSSettings.videoWidth.postCallback(refreshPreviewOnVideoResolution);
         BBSSettings.videoHeight.postCallback(refreshPreviewOnVideoResolution);
@@ -1179,7 +1187,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         {
             this.flushUndo();
 
-            UIOverlay.addOverlay(this.getContext(), new UIUndoHistoryOverlay(UIKeys.FILM_HISTORY_TITLE, this.getUndoHandler().getUndoManager(), this::getData, null), 200, 0.6F);
+            UIOverlay.addOverlay(this.getContext(), new UIUndoHistoryOverlay(UIKeys.FILM_HISTORY_TITLE, this.getUndoHandler().getUndoManager(), this::getData, null));
         });
 
         menu.action(Icons.ARROW_RIGHT, UIKeys.FILM_MOVE_TITLE, () ->
@@ -1214,45 +1222,35 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
             panel.difference(this::getMoveToPlayerOffset);
 
-            UIOverlay.addOverlay(this.getContext(), panel, 240, 140);
+            UIOverlay.addOverlay(this.getContext(), panel);
         });
 
         menu.action(Icons.TIME, UIKeys.FILM_INSERT_SPACE_TITLE, () ->
         {
-            UINumberOverlayPanel panel = new UINumberOverlayPanel(UIKeys.FILM_INSERT_SPACE_TITLE, UIKeys.FILM_INSERT_SPACE_DESCRIPTION, (d) ->
+            UINumberPopup panel = new UINumberPopup(UIKeys.FILM_INSERT_SPACE_TITLE, UIKeys.FILM_INSERT_SPACE_DESCRIPTION, (d) ->
             {
-                if (d.intValue() <= 0)
-                {
-                    return;
-                }
+                int tick = this.getCursor();
+                int ticks = d.intValue();
 
-                for (Replay replay : this.data.replays.getList())
+                if (ticks > 0)
                 {
-                    for (KeyframeChannel<?> channel : replay.keyframes.getChannels())
-                    {
-                        channel.insertSpace(this.getCursor(), d.intValue());
-                    }
-
-                    for (KeyframeChannel channel : replay.properties.tracks.values())
-                    {
-                        channel.insertSpace(this.getCursor(), d.intValue());
-                    }
+                    BaseValue.edit(this.data, (film) -> film.insertSpace(tick, ticks));
                 }
             });
 
             panel.value.limit(1).integer().setValue(1D);
 
-            UIOverlay.addOverlay(this.getContext(), panel);
+            this.getContext().replaceContextMenu(panel);
         });
 
         menu.action(Icons.GEAR, UIKeys.FILM_PLAYER_SETTINGS, () ->
         {
-            UIOverlay.addOverlay(this.getContext(), new UIFilmPlayerSettingsOverlayPanel(this.getData(), this.getCursor()), 280, 0.4F);
+            UIOverlay.addOverlay(this.getContext(), new UIFilmPlayerSettingsOverlayPanel(this.getData(), this.getCursor()));
         });
 
         menu.action(Icons.HELP, L10n.lang("bbs.ui.film.details.button"), () ->
         {
-            UIOverlay.addOverlay(this.getContext(), new UIFilmDetailsOverlayPanel(this.getData()), 300, 290);
+            UIOverlay.addOverlay(this.getContext(), new UIFilmDetailsOverlayPanel(this.getData()));
         });
     }
 
@@ -1348,7 +1346,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         if (!this.recorder.isExporting() && !this.dock.isAnySplitterDragging()
             && this.preview.area.w >= 2 && this.preview.area.h >= 2)
         {
-            this.applyPreviewSizeToBBS();
+            this.preview.applySize();
         }
     }
 
@@ -1454,12 +1452,12 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         int previewMode = BBSSettings.editorPreviewSizeMode.get();
 
-        if (previewMode == PREVIEW_MODE_EXPORT)
+        if (previewMode == 1)
         {
             w = Math.max(2, BBSSettings.videoWidth.get());
             h = Math.max(2, BBSSettings.videoHeight.get());
         }
-        else if (previewMode == PREVIEW_MODE_CUSTOM)
+        else if (previewMode == 2)
         {
             w = Math.max(2, BBSSettings.editorPreviewCustomWidth.get());
             h = Math.max(2, BBSSettings.editorPreviewCustomHeight.get());
@@ -1498,7 +1496,6 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             BBSRendering.setCustomSize(true, w, h);
         }
     }
-
     public void pickClip(Clip clip, UIClipsPanel panel)
     {
         if (panel == this.cameraEditor)
@@ -1665,7 +1662,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         }
 
         this.applyTimelineViewport(element);
-        this.applyPreviewSizeToBBS();
+        this.preview.applySize();
 
         this.resize();
 
@@ -1859,16 +1856,17 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         this.duplicateFilm = new UIIcon(Icons.SCENE, (b) ->
         {
-            UIPromptOverlayPanel panel = new UIPromptOverlayPanel(
+            UIPromptPopup panel = new UIPromptPopup(
                 UIKeys.GENERAL_DUPE,
                 UIKeys.PANELS_MODALS_DUPE,
                 (str) -> this.dupeData(crudPanel.namesList.getPath(str).toString())
             );
 
+            panel.verb(UIKeys.GENERAL_DUPE);
             panel.text.setText(crudPanel.namesList.getCurrentFirst().getLast());
             panel.text.filename();
 
-            UIOverlay.addOverlay(this.getContext(), panel);
+            this.getContext().replaceContextMenu(panel);
         });
 
         crudPanel.icons.add(this.duplicateFilm);
@@ -1937,7 +1935,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         {
             if (marker.tick.get() >= tick)
             {
-                FilmMarker copy = data.markers.addMarker(marker.tick.get() - tick);
+                FilmMarker copy = data.markers.addMarker(marker.tick.get() - tick, IKey.constant(marker.title.get()));
                 copy.title.set(marker.title.get());
                 copy.color.set(marker.color.get());
             }
@@ -2233,6 +2231,8 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
      */
     private void leaveScreen()
     {
+        this.setSequenceSound(null);
+
         if (this.queueExporter != null)
         {
             this.queueExporter.cancel();
@@ -2277,6 +2277,11 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
     private void leaveEditing()
     {
+        if (this.sequenceSound != null)
+        {
+            this.sequenceSound.stop();
+        }
+
         BBSRendering.setCustomSize(false);
         MorphRenderer.hidePlayer = false;
 
@@ -2285,6 +2290,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         this.disableContext();
         this.secretPlay.removeFromParent();
+        CameraFollow.stop();
 
         this.notifyServer(ActionState.STOP);
     }
@@ -2566,7 +2572,11 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         if (this.playerToCamera && this.data != null && !this.controller.isControlling())
         {
-            this.teleportToCamera();
+            CameraFollow.follow(this.getCamera());
+        }
+        else
+        {
+            CameraFollow.stop();
         }
 
         super.update();
@@ -2663,6 +2673,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         }
 
         this.updateLogic(context);
+        this.followCursor(context);
 
         this.area.render(context.batcher, BBSSettings.baseSurface());
 
@@ -2773,6 +2784,18 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         this.controller.startRenderFrame(tickDelta);
     }
 
+    /**
+     * The camera the world on screen was drawn with: its projection, rotation and position as of
+     * the last world pass. Overlays drawn over the picture in the interface pass (the motion path,
+     * the camera's frustum, the markup) project through this one, not {@link #getCamera}: the
+     * live camera's smoothing moves on in the interface pass, after the world was drawn, so an
+     * overlay following it would run a frame ahead of the picture while the camera moves.
+     */
+    public Camera getDrawnCamera()
+    {
+        return this.hasDrawnCamera ? this.drawnCamera : this.getCamera();
+    }
+
     @Override
     public void renderInWorld(WorldRenderContext context)
     {
@@ -2782,9 +2805,52 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         {
             this.lastProjection.set(RenderSystem.getProjectionMatrix());
             this.lastView.set(context.matrixStack().peek().getPositionMatrix());
+
+            Vec3d eye = context.camera().getPos();
+
+            this.drawnCamera.copy(this.getCamera());
+            this.drawnCamera.projection.set(this.lastProjection);
+            this.drawnCamera.view.set(this.lastView);
+            this.drawnCamera.position.set(eye.x, eye.y, eye.z);
+            this.hasDrawnCamera = true;
         }
 
         this.controller.renderFrame(context);
+    }
+
+    /* The sound of a sequence */
+
+    /**
+     * Bring the sound of a sequence along (see {@link SequenceSound}), or take it away with null.
+     */
+    public void setSequenceSound(SequenceSound sound)
+    {
+        if (this.sequenceSound != null)
+        {
+            this.sequenceSound.stop();
+        }
+
+        this.sequenceSound = sound;
+    }
+
+    /**
+     * Play the sequence's sound on the film's tick, while the film it was brought for is open.
+     */
+    public void applySequenceSound(int ticks, float transition, boolean playing)
+    {
+        if (this.sequenceSound == null)
+        {
+            return;
+        }
+
+        if (this.data != null && this.data.getId().equals(this.sequenceSound.filmId))
+        {
+            this.sequenceSound.apply(ticks, transition, playing);
+        }
+        else
+        {
+            this.sequenceSound.stop();
+        }
     }
 
     /* IUICameraWorkDelegate implementation */
@@ -2802,6 +2868,21 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         ClientNetwork.sendActionState(id, state, tick);
     }
 
+    /* IUIClipsOwner implementation */
+
+    @Override
+    public Film getFilm()
+    {
+        return this.data;
+    }
+
+    @Override
+    public void markLastUndoNoMerging()
+    {
+        this.undoHandler.getUndoManager().markLastUndoNoMerging();
+    }
+
+    @Override
     public Camera getCamera()
     {
         return this.camera;
@@ -2870,7 +2951,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
         if (marker == null)
         {
-            this.data.markers.addMarker(tick);
+            this.data.markers.addMarker(tick, UIKeys.FILM_MARKERS_NUMBER);
         }
         else
         {
@@ -2949,54 +3030,45 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         /* While exporting, the timelines show the whole exported range instead */
         if (this.runner.isRunning() && !this.recorder.isExporting())
         {
-            for (Scale axis : this.getTimelineAxes())
+            for (UITimelineCanvas timeline : this.getTimelines())
             {
-                axis.shiftIntoMiddle(this.getCursor());
+                timeline.getXAxis().shiftIntoMiddle(this.getCursor());
             }
         }
     }
 
     /**
-     * The time axes that show the playhead: the camera clips and the replays' active timeline.
+     * With "Follow the cursor" on, slide the timelines along with the playing playhead every
+     * frame, holding it at three quarters of their width. A timeline being middle-dragged is
+     * left to the user; an export lays its own range over them instead.
      */
-    private Scale[] getTimelineAxes()
+    private void followCursor(UIContext context)
     {
-        List<Scale> axes = new ArrayList<>();
-
-        if (this.cameraEditor != null && this.cameraEditor.clips != null)
+        if (!BBSSettings.editorFollowCursor.get() || !this.isRunning() || this.recorder.isExporting())
         {
-            axes.add(this.cameraEditor.clips.getXAxis());
+            return;
         }
 
-        if (this.replayEditor != null)
+        float cursor = this.getCursor(context.getTransition());
+        boolean jumped = cursor < this.followedCursor;
+
+        this.followedCursor = cursor;
+
+        for (UITimelineCanvas timeline : this.getTimelines())
         {
-            UITimelineCanvas replayTimeline = this.replayEditor.getActiveTimeline();
-
-            if (replayTimeline != null && replayTimeline.getXAxis() != null)
+            if (!timeline.isNavigating())
             {
-                axes.add(replayTimeline.getXAxis());
-            }
-
-            if (this.isSeparateFormTimeline() && this.replayEditor.getPoseKeyframeEditor() != null)
-            {
-                axes.add(this.replayEditor.getPoseKeyframeEditor().view.getXAxis());
+                timeline.getXAxis().follow(cursor, 0.75D, jumped);
             }
         }
+    }
 
-        for (UIElement panel : this.panels)
-        {
-            if (panel != this.cameraEditor && panel != this.replayEditor)
-            {
-                UITimelineCanvas timeline = this.getActiveTimeline(panel);
-
-                if (timeline != null && timeline.getXAxis() != null && !axes.contains(timeline.getXAxis()))
-                {
-                    axes.add(timeline.getXAxis());
-                }
-            }
-        }
-
-        return axes.toArray(new Scale[0]);
+    /**
+     * The timelines that show the playhead: the camera clips and the replays' active timeline.
+     */
+    private UITimelineCanvas[] getTimelines()
+    {
+        return new UITimelineCanvas[] {this.cameraEditor.clips, this.replayEditor.getActiveTimeline()};
     }
 
     /**
@@ -3013,8 +3085,10 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             return;
         }
 
-        for (Scale axis : this.getTimelineAxes())
+        for (UITimelineCanvas timeline : this.getTimelines())
         {
+            Scale axis = timeline.getXAxis();
+
             this.exportTimelineViews.add(new Vector2d(axis.getMinValue(), axis.getMaxValue()));
             axis.view(start, end);
         }
@@ -3022,15 +3096,15 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
     public void restoreTimelineViews()
     {
-        Scale[] axes = this.getTimelineAxes();
+        UITimelineCanvas[] timelines = this.getTimelines();
 
-        for (int i = 0; i < Math.min(axes.length, this.exportTimelineViews.size()); i++)
+        for (int i = 0; i < Math.min(timelines.length, this.exportTimelineViews.size()); i++)
         {
             Vector2d view = this.exportTimelineViews.get(i);
 
             if (view.x < view.y)
             {
-                axes[i].view(view.x, view.y);
+                timelines[i].getXAxis().view(view.x, view.y);
             }
         }
 
@@ -3073,13 +3147,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
     public void teleportToCamera()
     {
-        Camera camera = this.getCamera();
-        Vector3d cameraPos = camera.position;
-        double x = cameraPos.x;
-        double y = cameraPos.y;
-        double z = cameraPos.z;
-
-        PlayerUtils.teleport(x, y, z, MathUtils.toDeg(camera.rotation.y) - 180F, MathUtils.toDeg(camera.rotation.x));
+        CameraFollow.teleportToCamera(this.getCamera());
     }
 
     public void setPlayerToCamera(boolean value)
@@ -3122,8 +3190,21 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     {
         super.applyUndoData(data);
 
-        this.showPanel(data.getInt("panel"));
-        this.setCursor(data.getFloat("tick"));
+        /* Only when it is another editor or another tick: showing the same panel again closed the
+         * clips' embedded view and the flight, and seeking to the same tick still told the server. */
+        int panel = data.getInt("panel");
+        float tick = data.getFloat("tick");
+
+        if (panel != this.getPanelIndex())
+        {
+            this.showPanel(panel);
+        }
+
+        if (tick != this.getCursor(0F))
+        {
+            this.setCursor(tick);
+        }
+
         this.controller.createEntities();
     }
 

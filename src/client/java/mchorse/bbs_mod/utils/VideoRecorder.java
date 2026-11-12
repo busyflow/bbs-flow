@@ -2,7 +2,6 @@ package mchorse.bbs_mod.utils;
 
 import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.BBSSettings;
-import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.sound.PositionedSoundInstance;
@@ -30,21 +29,15 @@ import java.util.concurrent.TimeUnit;
 
 public class VideoRecorder
 {
-    /** Vanilla sounds, one of which is picked at random when an export is done */
-    private static final List<SoundEvent> FINISH_SOUNDS = List.of(
-        SoundEvents.BLOCK_NOTE_BLOCK_PLING.value(),
-        SoundEvents.UI_CARTOGRAPHY_TABLE_TAKE_RESULT,
-        SoundEvents.UI_LOOM_TAKE_RESULT,
-        SoundEvents.UI_STONECUTTER_TAKE_RESULT,
-        SoundEvents.BLOCK_BELL_USE,
-        SoundEvents.UI_TOAST_CHALLENGE_COMPLETE,
-        SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP,
-        SoundEvents.ENTITY_ITEM_PICKUP
-    );
+    /** Vanilla sound played when an export is done */
+    private static final SoundEvent FINISH_SOUND = SoundEvents.ENTITY_EXPERIENCE_ORB_PICKUP;
 
     private Process process;
     private WritableByteChannel channel;
     private boolean recording;
+
+    /** The export settings of the recording under way, null when nothing records */
+    private VideoExportSettings settings;
 
     private ByteBuffer buffer;
     private int textureId = -1;
@@ -58,6 +51,16 @@ public class VideoRecorder
     public boolean isRecording()
     {
         return this.recording;
+    }
+
+    /**
+     * The export settings the recording under way was started with, or null when nothing
+     * records. Everything that keeps step with the recording frame by frame (the world's and
+     * the shaders' clocks, held renders, motion blur) goes by these.
+     */
+    public VideoExportSettings getSettings()
+    {
+        return this.settings;
     }
 
     public int getTextureId()
@@ -74,9 +77,9 @@ public class VideoRecorder
     private int pboIndex;
 
     /**
-     * Start recording the video using ffmpeg
+     * Start recording the video using ffmpeg, with the given export settings
      */
-    public void startRecording(String movieName, File audioFile, int textureId, int width, int height)
+    public void startRecording(VideoExportSettings settings, String movieName, File audioFile, int textureId, int width, int height)
     {
         if (this.recording)
         {
@@ -97,7 +100,7 @@ public class VideoRecorder
 
         try
         {
-            File movies = BBSRendering.getVideoFolder();
+            File movies = settings.getFolder();
 
             movies.mkdirs();
 
@@ -108,15 +111,13 @@ public class VideoRecorder
                 movieName = StringUtils.createTimestampFilename();
             }
 
-            String params = audioFile == null
-                ? BBSSettings.videoArguments.get()
-                : BBSSettings.videoArgumentsAudio.get();
+            String params = settings.getArguments(audioFile != null);
             StringBuilder filters = new StringBuilder("vflip");
-            float frameRate = (float) BBSRendering.getVideoFrameRate();
+            float frameRate = (float) settings.getCaptureFrameRate();
 
-            int motionBlur = BBSRendering.getMotionBlur();
+            int motionBlur = settings.getMotionBlur();
             int subframes = 1 << motionBlur;
-            int exposed = BBSRendering.getMotionBlurExposedFrames();
+            int exposed = settings.getMotionBlurExposedFrames();
 
             if (exposed < subframes)
             {
@@ -226,6 +227,7 @@ public class VideoRecorder
             }
 
             this.channel = Channels.newChannel(os);
+            this.settings = settings;
             this.recording = true;
 
             FlawlessFrames.setActive(true);
@@ -250,7 +252,7 @@ public class VideoRecorder
 
     /**
      * Stop recording. With {@code finishEffects} false the completion sound and the
-     * folder opening are skipped - the caller runs {@link #playFinishEffects()} itself
+     * folder opening are skipped - the caller runs {@link #playFinishEffects(File)} itself
      * once the file is actually final (audio post pass).
      */
     public void stopRecording(boolean finishEffects)
@@ -262,6 +264,12 @@ public class VideoRecorder
 
         if (this.pbos != null)
         {
+            /* A frame read into a pixel buffer is written on the next frame's read - the last one is still waiting */
+            if (this.counter > 0)
+            {
+                this.writePBO(this.pbos[(this.pboIndex + this.pbos.length - 1) % this.pbos.length]);
+            }
+
             for (int pbo : this.pbos)
             {
                 GL30.glDeleteBuffers(pbo);
@@ -307,33 +315,33 @@ public class VideoRecorder
             ex.printStackTrace();
         }
 
+        VideoExportSettings settings = this.settings;
+
         this.recording = false;
+        this.settings = null;
 
         FlawlessFrames.setActive(false);
 
         if (finishEffects)
         {
-            this.playFinishEffects();
+            this.playFinishEffects(settings.getFolder());
         }
 
         this.serverTicks = this.lastServerTicks = 0;
     }
 
     /**
-     * The end-of-export feedback (completion sound, opening the movies folder).
+     * The end-of-export feedback (completion sound, opening the folder the video went to).
      */
-    public void playFinishEffects()
+    public void playFinishEffects(File folder)
     {
         if (BBSSettings.videoPlaySoundAfterExport.get())
         {
-            SoundEvent sound = FINISH_SOUNDS.get((int) (Math.random() * FINISH_SOUNDS.size()));
-
-            MinecraftClient.getInstance().getSoundManager().play(PositionedSoundInstance.master(sound, 1F, 1F));
+            MinecraftClient.getInstance().getSoundManager().play(PositionedSoundInstance.master(FINISH_SOUND, 1F, 1F));
         }
 
         if (BBSSettings.videoOpenFolderAfterExport.get())
         {
-            File folder = BBSRendering.getVideoFolder();
             MinecraftClient.getInstance().execute(() -> UIUtils.openFolder(folder));
         }
     }
@@ -377,19 +385,37 @@ public class VideoRecorder
             GL30.glBindTexture(GL30.GL_TEXTURE_2D, this.textureId);
             GL30.glGetTexImage(GL30.GL_TEXTURE_2D, 0, GL30.GL_BGR, GL30.GL_UNSIGNED_BYTE, 0);
 
-            GL30.glBindBuffer(GL30.GL_PIXEL_PACK_BUFFER, this.pbos[nextPbo]);
+            GL30.glBindBuffer(GL30.GL_PIXEL_PACK_BUFFER, 0);
+
+            if (this.counter != 0)
+            {
+                this.writePBO(this.pbos[nextPbo]);
+            }
+
+            this.pboIndex = nextPbo;
+        }
+        catch (Exception e)
+        {
+            e.printStackTrace();
+        }
+    }
+
+    /** Write the frame read into the given pixel buffer to ffmpeg */
+    private void writePBO(int pbo)
+    {
+        try
+        {
+            GL30.glBindBuffer(GL30.GL_PIXEL_PACK_BUFFER, pbo);
 
             ByteBuffer mappedBuffer = GL30.glMapBuffer(GL30.GL_PIXEL_PACK_BUFFER, GL30.GL_READ_ONLY);
 
-            if (mappedBuffer != null && this.counter != 0)
+            if (mappedBuffer != null)
             {
                 this.channel.write(mappedBuffer);
             }
 
             GL30.glUnmapBuffer(GL30.GL_PIXEL_PACK_BUFFER);
             GL30.glBindBuffer(GL30.GL_PIXEL_PACK_BUFFER, 0);
-
-            this.pboIndex = nextPbo;
         }
         catch (Exception e)
         {
@@ -419,22 +445,5 @@ public class VideoRecorder
         {
             e.printStackTrace();
         }
-    }
-
-    /**
-     * Toggle recording of the video
-     */
-    public void toggleRecording(int textureId, int textureWidth, int textureHeight)
-    {
-        if (this.recording)
-        {
-            this.stopRecording();
-        }
-        else
-        {
-            this.startRecording(StringUtils.createTimestampFilename(), null, textureId, textureWidth, textureHeight);
-        }
-
-        UIUtils.playClick();
     }
 }

@@ -23,12 +23,16 @@ public final class ShapeControllerCheck
     private static void near(float a, float b, String why) { check(Math.abs(a - b) < 0.0001F, why + ": " + a + " != " + b); }
     private static ShapeController controller()
     {
+        return controller("head", "l");
+    }
+    private static ShapeController controller(String bone, String side)
+    {
         ShapeController c = new ShapeController("0");
-        c.bone.set("head"); c.name.set("upper_l"); c.position.get().set(2, 4, 4.1F);
+        c.bone.set(bone); c.name.set("upper_" + side); c.position.get().set(2, 4, 4.1F);
         for (int i = 0; i < 2; i++)
         {
             var binding = new ShapeController.Binding("" + i);
-            binding.shape.set(i == 0 ? "upper_l_inner" : "upper_l_outer");
+            binding.shape.set(i == 0 ? "upper_" + side + "_inner" : "upper_" + side + "_outer");
             binding.tilt.set(i == 0 ? 1F : -1F);
             c.bindings.add(binding);
         }
@@ -69,6 +73,11 @@ public final class ShapeControllerCheck
         undo.undo(config); check(config.shapeControllers.getAllTyped().size() == 1, "Delete undo restores controller");
         undo.redo(config); check(config.shapeControllers.getAllTyped().isEmpty(), "Delete redo removes controller");
         previewUndo(c);
+        shift();
+        limits();
+        overlay();
+        carrier();
+        mirror();
         modelDiscovery();
 
         if (Boolean.getBoolean("bbs.check.shapeUI")) withUi(c);
@@ -116,6 +125,127 @@ public final class ShapeControllerCheck
         }
     }
 
+    /** Gaze: one controller, height and shift on two shapes per eye, both eyes together. */
+    private static void shift()
+    {
+        ShapeController gaze = new ShapeController("0");
+        String[][] shapes = {{"pupil_l_y", "1", "0"}, {"pupil_r_y", "1", "0"}, {"pupil_l_x", "0", "1"}, {"pupil_r_x", "0", "1"}};
+        for (int i = 0; i < shapes.length; i++)
+        {
+            var binding = new ShapeController.Binding("" + i);
+            binding.shape.set(shapes[i][0]);
+            binding.height.set(Float.parseFloat(shapes[i][1]));
+            binding.shift.set(Float.parseFloat(shapes[i][2]));
+            gaze.bindings.add(binding);
+        }
+        check(gaze.hasAxis(ShapeController.HEIGHT) && gaze.hasAxis(ShapeController.SHIFT) && !gaze.hasAxis(ShapeController.TILT), "Gaze has height and shift only");
+        ShapeKeys keys = new ShapeKeys();
+        gaze.set(keys, ShapeController.SHIFT, -0.75F);
+        gaze.set(keys, ShapeController.HEIGHT, 0.5F);
+        near(keys.shapeKeys.get("pupil_l_x"), -0.75F, "Shift drives the left pupil sideways");
+        near(keys.shapeKeys.get("pupil_r_x"), -0.75F, "Shift drives the right pupil the same way");
+        near(keys.shapeKeys.get("pupil_r_y"), 0.5F, "Height drives the pupils up");
+        float[] read = gaze.read(keys);
+        near(read[ShapeController.SHIFT], -0.75F, "Shift reads back");
+        near(read[ShapeController.HEIGHT], 0.5F, "Height reads back beside shift");
+        near(read[ShapeController.TILT], 0F, "Unbound tilt stays zero");
+        gaze.set(keys, ShapeController.SHIFT, 0F);
+        near(gaze.read(keys)[ShapeController.HEIGHT], 0.5F, "Shift edit keeps height");
+
+        ShapeController all = controller();
+        var side = new ShapeController.Binding("2"); side.shape.set("upper_l_side"); side.shift.set(1F); all.bindings.add(side);
+        ShapeKeys three = new ShapeKeys();
+        all.set(three, ShapeController.HEIGHT, 0.3F); all.set(three, ShapeController.TILT, -0.2F); all.set(three, ShapeController.SHIFT, 0.6F);
+        float[] axes = all.read(three);
+        near(axes[ShapeController.HEIGHT], 0.3F, "Three axes: height independent");
+        near(axes[ShapeController.TILT], -0.2F, "Three axes: tilt independent");
+        near(axes[ShapeController.SHIFT], 0.6F, "Three axes: shift independent");
+    }
+
+    /** Limits clamp only what is drawn: the animated keys and their controller stay as they are. */
+    private static void limits()
+    {
+        ModelConfig config = new ModelConfig("");
+        check(!config.toData().asMap().has("shape_limits"), "No limits stay absent from the file");
+        var limit = new mchorse.bbs_mod.cubic.model.config.ShapeLimit("0");
+        limit.shape.set("pupil_l_x"); limit.min.set(0F); limit.max.set(1F);
+        config.shapeLimits.add(limit);
+        ShapeKeys keys = new ShapeKeys();
+        keys.shapeKeys.put("pupil_l_x", 0.5F); keys.shapeKeys.put("pupil_r_x", -0.8F);
+        check(config.shapeLimits.apply(keys) == keys, "Keys in range are drawn as they are, without a copy");
+        keys.shapeKeys.put("pupil_l_x", -0.6F);
+        ShapeKeys drawn = config.shapeLimits.apply(keys);
+        near(drawn.shapeKeys.get("pupil_l_x"), 0F, "Below the range draws at the lowest value");
+        near(drawn.shapeKeys.get("pupil_r_x"), -0.8F, "Unlimited shapes draw as animated");
+        near(keys.shapeKeys.get("pupil_l_x"), -0.6F, "Animated value is untouched");
+        keys.shapeKeys.put("pupil_l_x", 3F);
+        near(config.shapeLimits.apply(keys).shapeKeys.get("pupil_l_x"), 1F, "Above the range draws at the highest value");
+        limit.min.set(1F); limit.max.set(0F);
+        near(config.shapeLimits.apply(keys).shapeKeys.get("pupil_l_x"), 1F, "Swapped bounds still form the range");
+        limit.beyond.set(0.5F);
+        near(config.shapeLimits.apply(keys).shapeKeys.get("pupil_l_x"), 2F, "Past the range goes on at half speed");
+        keys.shapeKeys.put("pupil_l_x", -0.6F);
+        near(config.shapeLimits.apply(keys).shapeKeys.get("pupil_l_x"), -0.3F, "Below the range too");
+        var data = config.toData();
+        ModelConfig restored = new ModelConfig(""); restored.fromData(data);
+        check(restored.toData().equals(data) && restored.shapeLimits.getAllTyped().size() == 1, "Limits survive save and load");
+        restored.fromData(new MapType());
+        check(restored.shapeLimits.getAllTyped().isEmpty(), "Reloading a config without limits clears stale ones");
+    }
+
+    /** The overlay track adds to the shape keys like the pose overlay adds to the pose. */
+    private static void overlay()
+    {
+        ModelForm form = new ModelForm();
+        check(form.get("shape_keys_overlay") == form.shapeKeysOverlay, "Shape keys overlay is a form property");
+        var renderer = new mchorse.bbs_mod.forms.renderers.ModelFormRenderer(form);
+        check(renderer.getShapeKeys() == form.shapeKeys.get(), "No overlay draws the base keys without a copy");
+        form.shapeKeys.get().shapeKeys.put("pupil_l_x", 0.25F);
+        form.shapeKeysOverlay.get().shapeKeys.put("pupil_l_x", 0.5F);
+        form.shapeKeysOverlay.get().shapeKeys.put("smile", 1F);
+        ShapeKeys drawn = renderer.getShapeKeys();
+        near(drawn.shapeKeys.get("pupil_l_x"), 0.75F, "Overlay adds to the base value");
+        near(drawn.shapeKeys.get("smile"), 1F, "Overlay-only shape is drawn");
+        near(form.shapeKeys.get().shapeKeys.get("pupil_l_x"), 0.25F, "Base keys stay as animated");
+        check(!form.shapeKeys.get().shapeKeys.containsKey("smile"), "Overlay never writes into the base");
+    }
+
+    /** A head: its plain cube is the box, its inflated skin layer isn't; the box is in the captured frame. */
+    private static void carrier()
+    {
+        var model = new mchorse.bbs_mod.cubic.data.model.Model(null);
+        var head = new mchorse.bbs_mod.cubic.data.model.ModelGroup("Head");
+        head.initial.translate.set(0, 24, 0);
+        var cube = new mchorse.bbs_mod.cubic.data.model.ModelCube();
+        cube.origin.set(-4, 24, -4); cube.size.set(8, 8, 8);
+        var layer = new mchorse.bbs_mod.cubic.data.model.ModelCube();
+        layer.origin.set(-4, 24, -4); layer.size.set(8, 8, 8); layer.inflate = 0.5F;
+        head.cubes.add(cube); head.cubes.add(layer);
+        model.topGroups.add(head);
+        model.initialize();
+        var clip = mchorse.bbs_mod.cubic.render.CarrierClip.of(model, "Head", new org.joml.Matrix4f(), new org.joml.Matrix4f());
+        check(clip != null, "A bone with a plain cube gives a box");
+        near(clip.min().y * 16, 0.005F, "Box starts at the head's bottom, a hair inside");
+        near(clip.max().y * 16, 7.995F, "Box ends at the head's top, not the inflated layer's");
+        near(clip.min().x * 16, -3.995F, "Box spans the head's width");
+        check(mchorse.bbs_mod.cubic.render.CarrierClip.of(model, "Body", new org.joml.Matrix4f(), new org.joml.Matrix4f()) == null, "No bone, no box");
+        ModelConfig config = new ModelConfig("");
+        check(!config.toData().asMap().has("inside_carrier"), "No marked bones stay absent from the file");
+        config.carrierBones.get().add("eyelid_lb");
+        ModelConfig restored = new ModelConfig(""); restored.fromData(config.toData());
+        check(restored.carrierBones.get().contains("eyelid_lb"), "Marked bones survive save and load");
+    }
+
+    private static void mirror()
+    {
+        ShapeController left = controller("eyelid_lt", "l"), right = controller("eyelid_rt", "r"), lone = controller("pupil", "p");
+        List<ShapeController> all = List.of(left, right, lone);
+        java.util.Map<String, String> pairs = java.util.Map.of("eyelid_rt", "eyelid_lt");
+        check(left.mirror(all, pairs) == right && right.mirror(all, pairs) == left, "Mirror pair is read from either side");
+        check(lone.mirror(all, pairs) == null, "Unpaired bone has no mirror controller");
+        check(left.mirror(List.of(left), pairs) == null, "Paired bone without a controller has no mirror");
+    }
+
     private static void previewUndo(ShapeController c)
     {
         ModelForm preview = new ModelForm();
@@ -159,10 +289,12 @@ public final class ShapeControllerCheck
         timeline.addSheet(sheet); sheet.selection.add(0);
         UITrackValue<ShapeKeys> track = new UITrackValue<>(sheet, timeline);
         UIShapeControllers controls = new UIShapeControllers(track::edit);
-        controls.fill(List.of(), new ShapeKeys());
+        ModelConfig config = new ModelConfig("");
+        config.shapeControllers.add(c);
+        controls.fill(null, new ShapeKeys());
         check(controls.selected() == null, "Dashboard warmup without a model has no selected controller");
         check(!controls.height.isEnabled() && !controls.tilt.isEnabled(), "Empty controls disable both axes");
-        controls.fill(List.of(c), track.getValue());
+        controls.fill(config, track.getValue());
         timeline.beginValueGesture(); controls.setAxis(1, 0.15F); timeline.endValueGesture();
         check(channel.getKeyframes().size() == 3, "Controller autokeys existing shape track");
         near(c.read(channel.get(1).getValue())[1], 0.15F, "Inserted key has requested tilt");
@@ -177,9 +309,9 @@ public final class ShapeControllerCheck
                 "Both axes share a row without overlap " + width);
         }
         check(controls.height.tooltipImmediate && controls.tilt.tooltipImmediate, "Axis names have immediate tooltips");
-        controls.fill(List.of(), new ShapeKeys());
+        controls.fill(null, new ShapeKeys());
         check(controls.selected() == null, "Closing a populated model clears selection");
-        controls.fill(List.of(c), track.getValue());
+        controls.fill(config, track.getValue());
         check(controls.selected() == c, "Reopening a model selects its first controller");
         controls.select(null);
         check(controls.selected() == null && !controls.height.isEnabled(), "Explicit deselection supports immutable controller lists");
@@ -199,19 +331,19 @@ public final class ShapeControllerCheck
         var model = new mchorse.bbs_mod.cubic.model.loaders.CubicModelLoader().load("eyes/1px_polygon", manager, link, provider.getLinksFromPath(link), config);
         check(model != null, "Actual polygon rig loads");
         var shapes = model.model.getShapeKeys();
-        check(shapes.size() == 12 && shapes.stream().allMatch(s -> s.matches("(upper|lower|brow)_[lr]_(inner|outer)")), "Loader exposes twelve English shape names");
-        check(model.config.shapeControllers.getAllTyped().size() == 6, "Installed config loads six controls");
+        check(shapes.size() == 18 && shapes.stream().allMatch(s -> s.matches("(upper|lower|brow)_[lr]_(inner|outer)|pupil_[lr]_(x|y|size)")),
+            "Loader exposes twelve lid and brow shapes and six pupil shapes");
+        check(model.config.shapeControllers.getAllTyped().size() == 9, "Installed config loads nine controls");
         var matrices = new mchorse.bbs_mod.forms.renderers.utils.MatrixCache();
         model.model.resetPose();
         model.captureMatrices(matrices);
         for (var c : model.config.shapeControllers.getAllTyped())
         {
             check(c.bindings.getAllTyped().stream().allMatch(b -> shapes.contains(b.shape.get())), "All control targets exist");
-            var position = matrices.get(c.bone.get()).matrix().transformPosition(new org.joml.Vector3f(c.position.get()).div(16));
-            near(position.x * 16, c.name.get().endsWith("_l") ? -2 : 2, "Authored controller matches eye X");
-            near(position.y * 16, c.name.get().startsWith("brow_") ? 4.25F : c.name.get().startsWith("upper_") ? 4.6F : 2.4F, "Controller matches its geometry after rest pose initialization");
-            near(position.z * 16, -4.15F, "Controller lies just in front of eyelids");
+            check(matrices.get(c.bone.get()) != null, "Controller bone exists: " + c.bone.get());
         }
+        for (var limit : model.config.shapeLimits.getAllTyped())
+            check(shapes.contains(limit.shape.get()), "Limited shape exists: " + limit.shape.get());
         var cubic = (mchorse.bbs_mod.cubic.data.model.Model) model.model;
         for (String side : List.of("l", "r"))
         {
@@ -225,7 +357,9 @@ public final class ShapeControllerCheck
                 var target = mesh.data.get(shape);
                 check(target != null && target.vertices.size() == mesh.baseData.vertices.size(), "Brow shape topology matches base");
                 boolean own = shape.startsWith("brow_" + side + "_");
-                float endX = side.equals("l") ? (shape.endsWith("inner") ? -1F : -3F) : (shape.endsWith("inner") ? 1F : 3F);
+                float inner = Float.MAX_VALUE, outer = 0;
+                for (var rest : mesh.baseData.vertices) { inner = Math.min(inner, Math.abs(rest.x)); outer = Math.max(outer, Math.abs(rest.x)); }
+                float endX = (side.equals("l") ? -1 : 1) * (shape.endsWith("inner") ? inner : outer);
                 for (int i = 0; i < target.vertices.size(); i++)
                 {
                     var rest = mesh.baseData.vertices.get(i);
@@ -234,6 +368,36 @@ public final class ShapeControllerCheck
                     near(changed.z, rest.z, "Brow depth stays fixed");
                     near(changed.y - rest.y, own && Math.abs(rest.x - endX) < 0.0001F ? 1F : 0F, "Only the selected brow endpoint moves");
                     check(target.uvs.get(i).equals(mesh.baseData.uvs.get(i)), "Brow UVs stay unchanged");
+                }
+            }
+        }
+        for (String side : List.of("l", "r"))
+        {
+            var pupil = cubic.getGroup("pupil_" + side);
+            check(pupil.cubes.isEmpty() && pupil.meshes.size() == 1, "Pupil cube is replaced by its mesh");
+            var mesh = pupil.meshes.get(0);
+            check(mesh.baseData.vertices.size() == 12, "Pupil has front and back triangles");
+            float cx = 0, cy = 0;
+            for (var v : mesh.baseData.vertices) { cx += v.x / 12; cy += v.y / 12; }
+            near(Math.abs(cx), Math.abs(pupil.initial.translate.x), "Pupil mesh is centred on its bone");
+            /* The gaze handle travels along the bone frame's X, which is turned around Y from the model's. */
+            var frame = matrices.get("anchor").matrix();
+            float handleX = frame.transformDirection(new org.joml.Vector3f(1, 0, 0)).x;
+            float handleY = frame.transformDirection(new org.joml.Vector3f(0, 1, 0)).y;
+            for (String axis : List.of("x", "y", "size"))
+            {
+                var target = mesh.data.get("pupil_" + side + "_" + axis);
+                check(target != null && target.vertices.size() == 12, "Pupil " + axis + " shape topology matches base");
+                for (int i = 0; i < 12; i++)
+                {
+                    var rest = mesh.baseData.vertices.get(i);
+                    var changed = target.vertices.get(i);
+                    float dx = axis.equals("x") ? handleX : axis.equals("size") ? rest.x - cx : 0;
+                    float dy = axis.equals("y") ? handleY : axis.equals("size") ? rest.y - cy : 0;
+                    near(changed.x - rest.x, dx, "Pupil " + axis + " moves X with its handle");
+                    near(changed.y - rest.y, dy, "Pupil " + axis + " moves Y with its handle");
+                    near(changed.z, rest.z, "Pupil depth stays fixed");
+                    check(target.uvs.get(i).equals(mesh.baseData.uvs.get(i)), "Pupil UVs stay unchanged");
                 }
             }
         }

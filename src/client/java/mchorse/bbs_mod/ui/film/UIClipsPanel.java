@@ -33,10 +33,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+/**
+ * A clips timeline with the picked clip's panel beside it (and, {@link #withKeys optionally}, its
+ * keys under it). Everything beyond the clips themselves - time, playback, undo, the camera and
+ * the film - comes from the editor it lives in, its {@link IUIClipsOwner owner}.
+ */
 public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, ITimelineProvider
 {
     public UIClips clips;
-    public UIFilmPanel filmPanel;
+    public final IUIClipsOwner owner;
 
     private UIClip panel;
     private boolean hasClips;
@@ -62,9 +67,9 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
     private int syncedTick;
     private double syncedOrigin;
 
-    public UIClipsPanel(UIFilmPanel panel, ClipFactory factory)
+    public UIClipsPanel(IUIClipsOwner owner, ClipFactory factory)
     {
-        this.filmPanel = panel;
+        this.owner = owner;
         this.clips = new UIClips(this, factory);
 
         this.add(this.clips.full(this));
@@ -354,7 +359,7 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
     {
         if (this.panel != null)
         {
-            Map<Clip, Position> snapshots = this.filmPanel.getRunner().getContext().getSnapshots();
+            Map<Clip, Position> snapshots = this.owner.getRunner().getContext().getSnapshots();
             Position newPosition = new Position();
             Position snapshot = snapshots.get(this.panel.clip);
 
@@ -394,13 +399,13 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
     @Override
     public Film getFilm()
     {
-        return this.filmPanel.getData();
+        return this.owner.getFilm();
     }
 
     @Override
     public Camera getCamera()
     {
-        return this.filmPanel.getCamera();
+        return this.owner.getCamera();
     }
 
     @Override
@@ -465,7 +470,7 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
             this.panel.setVisible(this.propertiesVisible);
             this.panel.restoreScroll();
 
-            if (this.filmPanel.isFlying())
+            if (this.owner.isFlying())
             {
                 this.setCursor(clip.tick.get());
             }
@@ -479,7 +484,13 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
         this.resize();
         this.resizeTarget();
 
-        this.filmPanel.pickClip(clip, this);
+        this.owner.pickClip(clip, this);
+    }
+
+    @Override
+    public void openClip(Clip clip)
+    {
+        this.owner.openClip(clip);
     }
 
     private void resizeTarget()
@@ -493,117 +504,120 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
     @Override
     public void setFlight(boolean flight)
     {
-        this.filmPanel.setFlight(flight);
+        this.owner.setFlight(flight);
     }
 
     @Override
     public boolean isFlying()
     {
-        return this.filmPanel.isFlying();
+        return this.owner.isFlying();
     }
 
     @Override
     public int getCursor()
     {
-        return this.filmPanel.getCursor();
+        return this.owner.getCursor();
     }
 
     @Override
     public void setCursor(int tick)
     {
-        this.filmPanel.setCursor(tick);
+        this.owner.setCursor(tick);
     }
 
     @Override
     public float getCursor(float transition)
     {
-        return this.filmPanel.getCursor(transition);
+        return this.owner.getCursor(transition);
     }
 
     @Override
     public void setCursor(float tick)
     {
-        this.filmPanel.setCursor(tick);
+        this.owner.setCursor(tick);
     }
 
     @Override
     public boolean isRunning()
     {
-        return this.filmPanel.isRunning();
+        return this.owner.isRunning();
     }
 
     @Override
     public void togglePlayback()
     {
-        this.filmPanel.togglePlayback();
+        this.owner.togglePlayback();
     }
 
     @Override
     public boolean canUseKeybinds()
     {
-        if (!this.isVisible() || !this.filmPanel.canUseKeybinds())
+        if (!this.isVisible() || !this.owner.canUseKeybinds())
         {
             return false;
         }
 
-        UIContext context = this.getContext();
-
-        if (context != null)
+        if (this.owner instanceof UIFilmPanel filmPanel)
         {
-            if (this.clips != null && this.clips.area.isInside(context))
+            UIContext context = this.getContext();
+
+            if (context != null)
             {
-                return true;
+                if (this.clips != null && this.clips.area.isInside(context))
+                {
+                    return true;
+                }
+
+                if (this.isMouseOverOtherClips(filmPanel, context))
+                {
+                    return false;
+                }
             }
 
-            if (this.isMouseOverOtherClips(context))
+            if (filmPanel.isSeparateCameraTimeline())
             {
-                return false;
-            }
-        }
-
-        if (this.filmPanel.isSeparateCameraTimeline())
-        {
-            if (this == this.filmPanel.cameraEditor)
-            {
-                return this.filmPanel.getSelectedMainEditorPanel() == this;
-            }
-            else
-            {
-                return this.filmPanel.getSelectedMainEditorPanel() != this.filmPanel.cameraEditor;
+                if (this == filmPanel.cameraEditor)
+                {
+                    return filmPanel.getSelectedMainEditorPanel() == this;
+                }
+                else
+                {
+                    return filmPanel.getSelectedMainEditorPanel() != filmPanel.cameraEditor;
+                }
             }
         }
 
         return true;
     }
 
-    private boolean isMouseOverOtherClips(UIContext context)
+    private boolean isMouseOverOtherClips(UIFilmPanel filmPanel, UIContext context)
     {
-        if (this.filmPanel == null || context == null)
+        if (filmPanel == null || context == null)
         {
             return false;
         }
 
-        if (this.filmPanel.cameraEditor != null && this.filmPanel.cameraEditor != this
-            && this.filmPanel.cameraEditor.isVisible()
-            && this.filmPanel.cameraEditor.clips != null
-            && this.filmPanel.cameraEditor.clips.area.isInside(context))
+        if (filmPanel.cameraEditor != null && filmPanel.cameraEditor != this
+            && filmPanel.cameraEditor.isVisible()
+            && filmPanel.cameraEditor.clips != null
+            && filmPanel.cameraEditor.clips.area.isInside(context))
         {
             return true;
         }
 
-        if (this.filmPanel.actionEditor != null && this.filmPanel.actionEditor != this
-            && this.filmPanel.actionEditor.isVisible()
-            && this.filmPanel.actionEditor.clips != null
-            && this.filmPanel.actionEditor.clips.area.isInside(context))
+        if (filmPanel.actionEditor != null && filmPanel.actionEditor != this
+            && filmPanel.actionEditor.isVisible()
+            && filmPanel.actionEditor.clips != null
+            && filmPanel.actionEditor.clips.area.isInside(context))
         {
             return true;
         }
 
-        for (UIElement panel : this.filmPanel.getPanels())
+        for (UIElement panel : filmPanel.getPanels())
         {
             if (panel != this && panel.isVisible())
             {
-                UITimelineCanvas canvas = this.filmPanel.getActiveTimeline(panel);
+                UITimelineCanvas canvas = filmPanel.getActiveTimeline(panel);
 
                 if (canvas instanceof UIClips otherClips && otherClips.area.isInside(context))
                 {
@@ -638,11 +652,11 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
             context.closeContextMenu();
         }
 
-        if (element != null && this == this.filmPanel.cameraEditor && this.filmPanel.getController() != null)
+        if (element != null && this.owner instanceof UIFilmPanel fp && this == fp.cameraEditor && fp.getController() != null)
         {
-            if (this.filmPanel.getController().getPovMode() == mchorse.bbs_mod.ui.film.controller.UIFilmController.CAMERA_MODE_FREE)
+            if (fp.getController().getPovMode() == mchorse.bbs_mod.ui.film.controller.UIFilmController.CAMERA_MODE_FREE)
             {
-                this.filmPanel.getController().setPov(mchorse.bbs_mod.ui.film.controller.UIFilmController.CAMERA_MODE_CAMERA);
+                fp.getController().setPov(mchorse.bbs_mod.ui.film.controller.UIFilmController.CAMERA_MODE_CAMERA);
             }
         }
 
@@ -666,7 +680,7 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
     @Override
     public void markLastUndoNoMerging()
     {
-        this.filmPanel.getUndoHandler().getUndoManager().markLastUndoNoMerging();
+        this.owner.markLastUndoNoMerging();
     }
 
     @Override
@@ -724,12 +738,12 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
     {
         super.applyUndoData(data);
 
+        /* The selection comes back, the view doesn't: zoom and scroll stay where the user left them. */
         List<Integer> selection = DataStorageUtils.intListFromData(data.getList("selection"));
+        int count = this.clips.getClips() == null ? 0 : this.clips.getClips().get().size();
 
-        this.clips.getXAxis().view(data.getDouble("x_min"), data.getDouble("x_max"));
-        this.clips.vertical.setScroll(data.getDouble("scroll"));
-        this.clips.vertical.updateTarget();
-
+        /* Undo may have taken the picked clip away along with the list it was in */
+        selection.removeIf((index) -> index < 0 || index >= count);
         this.clips.setSelection(selection);
         this.pickClip(selection.isEmpty() ? null : this.clips.getClips().get(selection.get(selection.size() - 1)));
     }
@@ -740,9 +754,6 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
         super.collectUndoData(data);
 
         data.put("selection", DataStorageUtils.intListToData(this.clips.getSelection()));
-        data.putDouble("x_min", this.clips.getXAxis().getMinValue());
-        data.putDouble("x_max", this.clips.getXAxis().getMaxValue());
-        data.putDouble("scroll", this.clips.vertical.getScroll());
     }
 
     @Override

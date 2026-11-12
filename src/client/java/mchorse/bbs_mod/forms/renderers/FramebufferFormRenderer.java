@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.VertexSorter;
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.client.BBSRendering;
+import mchorse.bbs_mod.cubic.rig.RigMarkup;
 import mchorse.bbs_mod.forms.FormRenderLast;
 import mchorse.bbs_mod.forms.FormTranslucentQueue;
 import mchorse.bbs_mod.forms.FormUtilsClient;
@@ -125,15 +126,24 @@ public class FramebufferFormRenderer extends FormRenderer<FramebufferForm>
         renderDepth += 1;
         FramebufferDebug.beginRender(this.form, context, framebuffer);
 
+        boolean deferred = false;
+
         try
         {
-            this.renderFramebuffer(context, framebuffer);
+            deferred = this.renderFramebuffer(context, framebuffer, () -> pool.release(framebuffer));
         }
         finally
         {
             renderDepth -= 1;
             FramebufferDebug.endRender();
-            pool.release(framebuffer);
+
+            /* A quad deferred into the translucent queue reads this buffer at the flush, so the
+             * queued command hands it back to the pool once it has drawn - until then the next
+             * form of the same size gets a buffer of its own instead of overwriting this one. */
+            if (!deferred)
+            {
+                pool.release(framebuffer);
+            }
 
             if (outermost)
             {
@@ -164,7 +174,11 @@ public class FramebufferFormRenderer extends FormRenderer<FramebufferForm>
         FramebufferDebug.readViewport("part end " + name);
     }
 
-    private void renderFramebuffer(FormRenderingContext context, Framebuffer framebuffer)
+    /**
+     * Returns whether the quad went into the translucent queue - then the queued command owns
+     * the framebuffer and runs {@code release} after the flush.
+     */
+    private boolean renderFramebuffer(FormRenderingContext context, Framebuffer framebuffer, Runnable release)
     {
         int x;
         int y;
@@ -238,9 +252,12 @@ public class FramebufferFormRenderer extends FormRenderer<FramebufferForm>
         /* The nested forms render under an ortho projection into this framebuffer — deferring
          * their translucent pixels into the world's queue would replay them with the wrong
          * projection, so they render single-pass as before. Render-last is off here for the
-         * same reason: a part postponed out of this buffer would come back in the world. */
+         * same reason: a part postponed out of this buffer would come back in the world. The
+         * rig's markup is not captured in here either: its handles would land on the screen at
+         * the buffer's coordinates. */
         boolean queueWasActive = FormTranslucentQueue.suspend();
         boolean renderLastWasActive = FormRenderLast.suspend();
+        RigMarkup.Capture markup = RigMarkup.suspend();
 
         /* Full bright on the way in: the quad that draws the finished picture applies the
          * caller's lightmap once, so letting it shade the parts inside the buffer too would
@@ -278,6 +295,7 @@ public class FramebufferFormRenderer extends FormRenderer<FramebufferForm>
 
             FormTranslucentQueue.restore(queueWasActive);
             FormRenderLast.restore(renderLastWasActive);
+            RigMarkup.restore(markup);
         }
 
         FramebufferDebug.readBuffer("after parts", framebuffer);
@@ -324,12 +342,14 @@ public class FramebufferFormRenderer extends FormRenderer<FramebufferForm>
 
         FramebufferDebug.state("before quad", context);
 
-        this.renderModel(framebuffer.getMainTexture(), format, shader, context.stack, context.overlay, context.light, context.color, context.getTransition(), !context.isPicking());
+        boolean deferred = this.renderModel(framebuffer.getMainTexture(), format, shader, context.stack, context.overlay, context.light, context.color, context.getTransition(), !context.isPicking(), release);
 
         FramebufferDebug.state("after quad", context);
+
+        return deferred;
     }
 
-    private void renderModel(Texture texture, VertexFormat format, Supplier<ShaderProgram> shader, MatrixStack matrices, int overlay, int light, int overlayColor, float transition, boolean defer)
+    private boolean renderModel(Texture texture, VertexFormat format, Supplier<ShaderProgram> shader, MatrixStack matrices, int overlay, int light, int overlayColor, float transition, boolean defer, Runnable release)
     {
         float w = texture.width;
         float h = texture.height;
@@ -364,11 +384,12 @@ public class FramebufferFormRenderer extends FormRenderer<FramebufferForm>
 
         FramebufferDebug.quad("quad corners", matrices, quad);
 
-        this.renderQuad(format, texture, shader, matrices, overlay, light, overlayColor, transition, defer);
+        return this.renderQuad(format, texture, shader, matrices, overlay, light, overlayColor, transition, defer, release);
     }
 
-    private void renderQuad(VertexFormat format, Texture texture, Supplier<ShaderProgram> shader, MatrixStack matrices, int overlay, int light, int overlayColor, float transition, boolean defer)
+    private boolean renderQuad(VertexFormat format, Texture texture, Supplier<ShaderProgram> shader, MatrixStack matrices, int overlay, int light, int overlayColor, float transition, boolean defer, Runnable release)
     {
+        boolean deferred = false;
         BufferBuilder builder = Tessellator.getInstance().getBuffer();
         Color color = Color.white();
         Matrix4f matrix = matrices.peek().getPositionMatrix();
@@ -412,10 +433,10 @@ public class FramebufferFormRenderer extends FormRenderer<FramebufferForm>
         if (defer && FormTranslucentQueue.isActive())
         {
             /* The framebuffer's content is transparent-background by nature, so the whole quad
-             * defers into the sorted translucent pass. The command binds the framebuffer's live
-             * texture at flush — and the pool hands the same buffer to the next form of the
-             * same size, so several deferred quads would all show the last-rendered content;
-             * a known trade-off of the pooled framebuffer scheme. */
+             * defers into the sorted translucent pass. The command binds the framebuffer's
+             * texture at the flush, so it keeps the buffer out of the pool until then: handed
+             * back right after the draw, the buffer went to the next form of the same size, and
+             * every deferred quad showed whatever form had rendered last. */
             ShaderProgram finalShader = RenderSystem.getShader();
             VertexBuffer buffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
 
@@ -445,9 +466,21 @@ public class FramebufferFormRenderer extends FormRenderer<FramebufferForm>
                 VertexBuffer.unbind();
             }
 
+            /* release() runs on every way out of the queue - after the flush draws it, and when
+             * a frame's leftovers are dropped - so the buffer always goes back. */
             FormTranslucentQueue.add(new FormTranslucentQueue.VertexBufferCommand(
                 buffer, () -> finalShader, texture, modelView, null, origin, planeNormal, true, null, null
-            ));
+            )
+            {
+                @Override
+                public void release()
+                {
+                    super.release();
+                    release.run();
+                }
+            });
+
+            deferred = true;
         }
         else
         {
@@ -456,6 +489,8 @@ public class FramebufferFormRenderer extends FormRenderer<FramebufferForm>
 
         gameRenderer.getLightmapTextureManager().disable();
         gameRenderer.getOverlayTexture().teardownOverlayColor();
+
+        return deferred;
     }
 
     private VertexConsumer fill(VertexFormat format, VertexConsumer consumer, Matrix4f matrix, float x, float y, Color color, float u, float v, int overlay, int light, Matrix3f normal, float nz)

@@ -34,9 +34,8 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.IUIKeyframeG
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.KeyframeType;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeDopeSheet;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeGraph;
-import mchorse.bbs_mod.ui.framework.elements.input.keyframes.overlays.UIKeyframeStyleOverlayPanel;
-import mchorse.bbs_mod.ui.framework.elements.input.keyframes.overlays.UITrackStyleOverlayPanel;
-import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.overlays.UIKeyframeStylePopup;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.overlays.UITrackStylePopup;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIDraggable;
 import mchorse.bbs_mod.ui.utils.Area;
 import mchorse.bbs_mod.ui.utils.DoubleClick;
@@ -86,6 +85,9 @@ public class UIKeyframes extends UITimelineCanvas
     private final DoubleClick<Keyframe> keyframeDoubleClick = new DoubleClick<>(true);
     private boolean controlFirst;
     private Pair<Keyframe, KeyframeType> draggingData;
+    /** Keys under a plain click on an already selected keyframe: if the mouse is released without
+     * dragging, the selection narrows down to them (a drag still moves the whole selection). */
+    private List<Keyframe> narrowSelectionTo;
     private boolean scaling;
     private float scalingAnchor;
     private final Map<Keyframe, Keyframe> transformKeys = new IdentityHashMap<>();
@@ -335,10 +337,8 @@ public class UIKeyframes extends UITimelineCanvas
 
             if (hovered != null)
             {
-                menu.action(Icons.BUCKET, UIKeys.KEYFRAMES_CONTEXT_TRACK_STYLE, () -> UIOverlay.addOverlay(
-                    this.getContext(),
-                    new UITrackStyleOverlayPanel(hovered, this::refreshTrackStyles),
-                    220, 160
+                menu.action(Icons.BUCKET, UIKeys.KEYFRAMES_CONTEXT_TRACK_STYLE, () -> this.getContext().replaceContextMenu(
+                    new UITrackStylePopup(hovered, this::refreshTrackStyles)
                 ));
             }
 
@@ -469,7 +469,7 @@ public class UIKeyframes extends UITimelineCanvas
             return;
         }
 
-        UIOverlay.addOverlay(this.getContext(), new UIKeyframeStyleOverlayPanel(selected.getStyle(), (style) ->
+        this.getContext().replaceContextMenu(new UIKeyframeStylePopup(selected.getStyle(), (style) ->
         {
             for (UIKeyframeSheet sheet : this.getOperationSheets())
             {
@@ -478,7 +478,7 @@ public class UIKeyframes extends UITimelineCanvas
                     keyframe.setStyle(style);
                 }
             }
-        }), 220, 200);
+        }));
     }
 
     private void toggleEnabled()
@@ -1541,7 +1541,10 @@ public class UIKeyframes extends UITimelineCanvas
 
         if (!keyframes.isEmpty())
         {
-            this.currentGraph.removeKeyframes(keyframes);
+            if (!this.currentGraph.completeColumn(context.mouseX, context.mouseY))
+            {
+                this.currentGraph.removeKeyframes(keyframes);
+            }
         }
         else
         {
@@ -1622,6 +1625,11 @@ public class UIKeyframes extends UITimelineCanvas
             {
                 this.currentGraph.clearSelection();
             }
+            else if (!shift && pair.b == KeyframeType.REGULAR)
+            {
+                /* Already selected: keep the selection for a drag, narrow it on a plain click (see subMouseReleased) */
+                this.narrowSelectionTo = clicked;
+            }
 
             for (Keyframe keyframe : clicked)
             {
@@ -1630,11 +1638,8 @@ public class UIKeyframes extends UITimelineCanvas
 
             this.pickKeyframe(found);
         }
-        else if (!this.marquee.isPressed())
-        {
-            this.currentGraph.clearSelection();
-            this.pickKeyframe(null);
-        }
+        /* Empty space: a plain click clears the selection on release, a drag moves the view and keeps it;
+         * Shift + click (without dragging a band) clears it too, see subMouseReleased. */
 
         /* Only the keyframe itself: a handle or a Shift click (adding to the selection) isn't a jump. */
         boolean jumpable = found != null && !shift && pair.b == KeyframeType.REGULAR;
@@ -1697,15 +1702,46 @@ public class UIKeyframes extends UITimelineCanvas
         if (this.marquee.isPressed())
         {
             this.marquee.update(context.mouseX, context.mouseY);
-            this.currentGraph.selectInArea(this.getGrabbingArea(context));
+
+            if (this.marquee.isActive())
+            {
+                this.currentGraph.selectInArea(this.getGrabbingArea(context));
+            }
+            else
+            {
+                /* Shift + click on empty space without a band: clear the selection */
+                this.currentGraph.clearSelection();
+                this.pickKeyframe(null);
+            }
         }
 
-        if (this.dragging > 0)
+        if (this.dragging > 0 && this.draggingData != null)
         {
             this.submitKeyframes(true);
             this.currentGraph.pickSelected();
         }
+        else if (this.dragging == 0 && this.narrowSelectionTo != null && context.mouseButton == 0)
+        {
+            /* A plain click (no drag) on a selected keyframe leaves only it selected */
+            Keyframe picked = this.currentGraph.getSelected();
 
+            this.currentGraph.clearSelection();
+
+            for (Keyframe keyframe : this.narrowSelectionTo)
+            {
+                this.currentGraph.getSheet(keyframe).selection.add(keyframe);
+            }
+
+            this.pickKeyframe(picked != null && this.narrowSelectionTo.contains(picked) ? picked : this.narrowSelectionTo.get(0));
+        }
+        else if (this.dragging == 0 && this.draggingData == null && context.mouseButton == 0)
+        {
+            /* A plain click (no drag) on empty space clears the selection; a drag only moved the view */
+            this.currentGraph.clearSelection();
+            this.pickKeyframe(null);
+        }
+
+        this.narrowSelectionTo = null;
         this.navigating = false;
         this.marquee.reset();
         this.dragging = -1;
@@ -1895,7 +1931,9 @@ public class UIKeyframes extends UITimelineCanvas
         }
         else if (this.dragging == 1)
         {
-            if (this.currentGraph.getSelected() != null)
+            /* Only a drag that started on a keyframe moves keys; from empty space it moves the view
+             * and keeps the selection (only a plain click on empty space clears it). */
+            if (this.draggingData != null && this.currentGraph.getSelected() != null)
             {
                 this.currentGraph.dragKeyframes(context, this.draggingData, this.initialX, this.initialY, this.originalT, this.originalV);
             }
@@ -1965,17 +2003,7 @@ public class UIKeyframes extends UITimelineCanvas
         state.extra.putBool("graph", this.isEditing());
         this.dopeSheet.saveState(state.extra);
         this.curveGraph.saveState(state.extra);
-        MapType selection = new MapType();
-        for (UIKeyframeSheet sheet : this.getSheets())
-            selection.put(sheet.id, DataStorageUtils.intListToData(sheet.selection.getIndices()));
-        state.extra.put("key_selection", selection);
-
-        UIKeyframeSheet pickedSheet = this.dopeSheet.getSheet(this.pickedKeyframe);
-        if (pickedSheet != null)
-        {
-            state.extra.putString("picked_track", pickedSheet.id);
-            state.extra.putInt("picked_key", pickedSheet.channel.indexOf(this.pickedKeyframe));
-        }
+        this.cacheSelection(state.extra);
 
         return state;
     }
@@ -1986,15 +2014,6 @@ public class UIKeyframes extends UITimelineCanvas
         this.currentGraph = state.extra.getBool("graph") ? this.curveGraph : this.dopeSheet;
         this.dopeSheet.restoreState(state.extra);
         this.curveGraph.restoreState(state.extra);
-        this.pickedKeyframe = null;
-        List<UIKeyframeSheet> properties = this.getSheets();
-
-        MapType selections = state.extra.getMap("key_selection");
-        for (UIKeyframeSheet sheet : properties)
-        {
-            sheet.selection.clear();
-            if (selections.has(sheet.id)) sheet.selection.addAll(DataStorageUtils.intListFromData(selections.get(sheet.id)));
-        }
 
         this.graphTracks.clear();
         for (BaseType id : state.extra.getList("graph_tracks"))
@@ -2002,10 +2021,44 @@ public class UIKeyframes extends UITimelineCanvas
             UIKeyframeSheet sheet = this.dopeSheet.getSheet(id.asString());
             if (sheet != null) this.graphTracks.add(sheet);
         }
-        UIKeyframeSheet picked = this.dopeSheet.getSheet(state.extra.getString("picked_track"));
-        this.pickedKeyframe = picked == null ? null : picked.channel.get(state.extra.getInt("picked_key"));
-        this.currentGraph.pickSelected();
+
+        this.applySelection(state.extra);
         this.resize();
+    }
+
+    /**
+     * Which keys are picked, without the view around them &mdash; what Ctrl+Z puts back. Keys are
+     * kept by index: undo rebuilds a channel's keyframes from data, so the picked objects are gone.
+     */
+    public void cacheSelection(MapType data)
+    {
+        MapType selection = new MapType();
+        for (UIKeyframeSheet sheet : this.getSheets())
+            selection.put(sheet.id, DataStorageUtils.intListToData(sheet.selection.getIndices()));
+        data.put("key_selection", selection);
+
+        UIKeyframeSheet pickedSheet = this.dopeSheet.getSheet(this.pickedKeyframe);
+        if (pickedSheet != null)
+        {
+            data.putString("picked_track", pickedSheet.id);
+            data.putInt("picked_key", pickedSheet.channel.indexOf(this.pickedKeyframe));
+        }
+    }
+
+    public void applySelection(MapType data)
+    {
+        this.pickedKeyframe = null;
+
+        MapType selections = data.getMap("key_selection");
+        for (UIKeyframeSheet sheet : this.getSheets())
+        {
+            sheet.selection.clear();
+            if (selections.has(sheet.id)) sheet.selection.addAll(DataStorageUtils.intListFromData(selections.get(sheet.id)));
+        }
+
+        UIKeyframeSheet picked = this.dopeSheet.getSheet(data.getString("picked_track"));
+        this.pickedKeyframe = picked == null ? null : picked.channel.get(data.getInt("picked_key"));
+        this.currentGraph.pickSelected();
     }
 
     /** Restore picks only for channels retained by the same editor/actor. */

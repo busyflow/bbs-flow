@@ -250,8 +250,12 @@ public class FilmEntityRenderer
         }
 
         boolean chunkLoaded = entity.getWorld() != null && entity.getWorld().isChunkLoaded(pos);
+        /* With a shader pack, the films are drawn again in Iris' shadow pass, but into the main
+         * entity buffers: the shadow and the name tag batched there would be flushed in the main
+         * pass with vertices posed for the sun, as a skewed ghost floating next to the replay. */
+        boolean shadowPass = BBSRendering.isIrisShadowPass();
 
-        if (!relative && context.map == null && opacity > 0F && context.shadowRadius > 0F && form.visible.get() && (!BBSSettings.unlimitedReplayRenderDistance.get() || chunkLoaded))
+        if (!relative && !shadowPass && context.map == null && opacity > 0F && context.shadowRadius > 0F && form.visible.get() && (!BBSSettings.unlimitedReplayRenderDistance.get() || chunkLoaded))
         {
             /* No shadow while the form is hidden (form.visible, keyframable) — the form renders
              * nothing then, so its shadow must vanish too.
@@ -266,7 +270,7 @@ public class FilmEntityRenderer
 
             FormRenderer renderer = FormUtilsClient.getRenderer(FormUtils.getRoot(form));
 
-            if (renderer != null && !BBSRendering.isIrisShadowPass() && context.replay != null && context.replay.shadowFollow.get())
+            if (renderer != null && context.replay != null && context.replay.shadowFollow.get())
             {
                 Vector3f displacement = renderer.getShadowDisplacement(entity, transition);
 
@@ -296,14 +300,14 @@ public class FilmEntityRenderer
             stack.pop();
         }
 
-        if (!relative && !context.nameTag.isEmpty() && context.map == null && form.visible.get())
+        if (!relative && !shadowPass && !context.nameTag.isEmpty() && context.map == null && form.visible.get())
         {
             /* Hide the name tag along with the form (form.visible, animatable via keyframes): when the
              * form renders nothing, its name tag must vanish too - same reasoning as the shadow above. */
             stack.push();
             stack.translate(position.x - cx, position.y - cy, position.z - cz);
 
-            renderNameTag(entity, Text.literal(StringUtils.processColoredText(context.nameTag)), stack, context.consumers, light, context.nameTagHeight);
+            renderNameTag(entity, Text.literal(StringUtils.processColoredText(context.nameTag)), stack, context.consumers, getNameTagLight(entity, position), context.nameTagHeight);
 
             stack.pop();
         }
@@ -487,6 +491,17 @@ public class FilmEntityRenderer
         stack.pop();
     }
 
+    /** Light for the name tag the way vanilla lights an entity: sampled at eye height, and full
+     *  block light while burning. */
+    private static int getNameTagLight(IEntity entity, Vector3d position)
+    {
+        BlockPos pos = BlockPos.ofFloored(position.x, position.y + entity.getEyeHeight(), position.z);
+        int sky = entity.getWorld().getLightLevel(LightType.SKY, pos);
+        int torch = entity.isBurning() ? 15 : entity.getWorld().getLightLevel(LightType.BLOCK, pos);
+
+        return LightmapTextureManager.pack(torch, sky);
+    }
+
     static void renderNameTag(IEntity entity, Text text, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light, float heightOffset)
     {
         boolean sneaking = !entity.isSneaking();
@@ -503,6 +518,11 @@ public class FilmEntityRenderer
         float opacity = MinecraftClient.getInstance().options.getTextBackgroundOpacity(0.25F);
         int background = (int) (opacity * 255F) << 24;
         float h = (float) (-textRenderer.getWidth(text) / 2);
+        /* Iris batches the entity buffers and orders their layers only by what it saw drawn
+         * inside a group, which it opens around every vanilla entity. Outside one, the see-through
+         * pass (with the dark background) may land on top of the plain text and grey it out. */
+        boolean group = BBSRendering.startIrisGroup(vertexConsumers);
+        int lastEntity = BBSRendering.beginIrisNameTag();
 
         textRenderer.draw(text, h, 0, 0x20ffffff, false, matrix4f, vertexConsumers, sneaking ? TextRenderer.TextLayerType.SEE_THROUGH : TextRenderer.TextLayerType.NORMAL, background, light);
 
@@ -511,6 +531,8 @@ public class FilmEntityRenderer
             textRenderer.draw(text, h, 0, -1, false, matrix4f, vertexConsumers, TextRenderer.TextLayerType.NORMAL, 0, light);
         }
 
+        BBSRendering.endIrisNameTag(lastEntity);
+        BBSRendering.endIrisGroup(vertexConsumers, group);
         matrices.pop();
     }
 

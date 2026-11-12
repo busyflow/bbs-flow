@@ -3,7 +3,6 @@ package mchorse.bbs_mod.ui.forms.editors.panels;
 import mchorse.bbs_mod.film.replays.tracks.TrackCatalog;
 import mchorse.bbs_mod.film.replays.tracks.TrackDescriptor;
 import mchorse.bbs_mod.forms.forms.Form;
-import mchorse.bbs_mod.forms.forms.ModelForm;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.film.replays.overlays.UIKeyframeSheetFilterOverlayPanel;
@@ -38,7 +37,6 @@ public class UIGeneralFormPanel extends UIFormPanel
     public UIToggle visible;
     public UIToggle pickable;
     public UIButton filterTracks;
-    public UIToggle boneTracks;
     
     public UITextbox trackName;
     public UITextbox name;
@@ -73,15 +71,6 @@ public class UIGeneralFormPanel extends UIFormPanel
         this.pickable.tooltip(UIKeys.FORMS_EDITORS_GENERAL_PICKABLE_TOOLTIP);
         this.filterTracks = new UIButton(UIKeys.FORMS_EDITORS_GENERAL_FILTER_TRACKS, (b) -> this.openTrackFilter());
         this.filterTracks.tooltip(UIKeys.FORMS_EDITORS_GENERAL_FILTER_TRACKS_TOOLTIP);
-        this.boneTracks = new UIToggle(UIKeys.FORMS_EDITORS_GENERAL_BONE_TRACKS, (b) ->
-        {
-            if (this.form instanceof ModelForm m) m.boneTracks.set(b.getValue());
-        });
-        this.boneTracks.tooltip(UIKeys.FORMS_EDITORS_GENERAL_BONE_TRACKS_TOOLTIP);
-        UIValues.resettable(this.boneTracks, () -> this.form instanceof ModelForm m ? m.boneTracks : null, () ->
-        {
-            if (this.form instanceof ModelForm m) this.boneTracks.setValue(m.boneTracks.get());
-        });
         this.trackName = UIValues.textbox(120, () -> this.form.trackName);
         this.trackName.tooltip(UIKeys.FORMS_EDITORS_GENERAL_TRACK_NAME_TOOLTIP);
         this.name = UIValues.textbox(120, () -> this.form.name);
@@ -152,7 +141,7 @@ public class UIGeneralFormPanel extends UIFormPanel
 
         UISection tracks = new UISection(UIKeys.FORMS_EDITORS_GENERAL_SECTION_TRACKS);
 
-        tracks.fields.add(this.filterTracks, this.boneTracks, this.trackName);
+        tracks.fields.add(this.filterTracks, this.trackName);
 
         UISection transform = new UISection(UIKeys.FORMS_EDITORS_GENERAL_SECTION_TRANSFORM);
 
@@ -194,16 +183,6 @@ public class UIGeneralFormPanel extends UIFormPanel
         /* Everything built through UIValues reads its own property — only the controls that
          * aren't bound to one are filled here. */
         this.hotkey.setKeyCombo(new KeyCombo(IKey.EMPTY, form.hotkey.get()));
-
-        if (form instanceof ModelForm m)
-        {
-            this.boneTracks.setValue(m.boneTracks.get());
-            this.boneTracks.setVisible(true);
-        }
-        else
-        {
-            this.boneTracks.setVisible(false);
-        }
 
         this.hitboxSneakMultiplier.setValue(form.hitboxSneakMultiplier.get());
         this.hitboxEyeHeight.setValue(form.hitboxEyeHeight.get());
@@ -260,7 +239,7 @@ public class UIGeneralFormPanel extends UIFormPanel
 
         UIKeyframeSheetFilterOverlayPanel panel = new UIKeyframeSheetFilterOverlayPanel(disabled, keys, keyToColor, keyToTitle);
 
-        UIOverlay.addOverlay(this.getContext(), panel, 240, 0.9F);
+        UIOverlay.addOverlay(this.getContext(), panel);
 
         panel.onClose(e -> this.form.disabledTracks.set(disabled));
     }

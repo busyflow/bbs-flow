@@ -15,6 +15,7 @@ import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.settings.ui.UISettingsOverlayPanel;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
+import mchorse.bbs_mod.ui.addons.UIAddonsOverlayPanel;
 import mchorse.bbs_mod.ui.dashboard.panels.IFlightSupported;
 import mchorse.bbs_mod.ui.dashboard.panels.UIDashboardPanel;
 import mchorse.bbs_mod.ui.dashboard.panels.UIDashboardPanels;
@@ -22,6 +23,7 @@ import mchorse.bbs_mod.ui.dashboard.textures.UITextureManagerPanel;
 import mchorse.bbs_mod.ui.dashboard.utils.UIOrbitCamera;
 import mchorse.bbs_mod.ui.dashboard.utils.UIOrbitCameraKeys;
 import mchorse.bbs_mod.ui.film.UIFilmPanel;
+import mchorse.bbs_mod.ui.film.UIWorldPreview;
 import mchorse.bbs_mod.ui.framework.UIBaseMenu;
 import mchorse.bbs_mod.ui.framework.UIRenderingContext;
 import mchorse.bbs_mod.ui.framework.elements.IUIElement;
@@ -33,6 +35,7 @@ import mchorse.bbs_mod.ui.model_editor.UIModelEditorPanel;
 import mchorse.bbs_mod.ui.morphing.UIMorphingPanel;
 import mchorse.bbs_mod.ui.onboarding.Onboarding;
 import mchorse.bbs_mod.ui.particles.UIParticleSchemePanel;
+import mchorse.bbs_mod.ui.sequence.UISequencePanel;
 import mchorse.bbs_mod.ui.selectors.UISelectorsOverlayPanel;
 import mchorse.bbs_mod.ui.utility.UIUtilityOverlayPanel;
 import mchorse.bbs_mod.ui.utility.audio.UIAudioEditorPanel;
@@ -41,6 +44,7 @@ import mchorse.bbs_mod.ui.utils.UIChalkboard;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.MathUtils;
+import mchorse.bbs_mod.utils.VideoExportSettings;
 import mchorse.bbs_mod.utils.colors.Colors;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.client.MinecraftClient;
@@ -70,6 +74,7 @@ public class UIDashboard extends UIBaseMenu
 
     public UIIcon settings;
     public UIIcon selectors;
+    public UIIcon addons;
 
     /* Camera data */
     public final UIOrbitCamera orbitUI = new UIOrbitCamera();
@@ -111,7 +116,11 @@ public class UIDashboard extends UIBaseMenu
         this.settings = new UIIcon(Icons.SETTINGS, (b) -> this.openSettings());
         this.selectors = new UIIcon(Icons.PROPERTIES, (b) ->
         {
-            UIOverlay.addOverlay(this.context, new UISelectorsOverlayPanel(), 430, 300);
+            UIOverlay.addOverlay(this.context, new UISelectorsOverlayPanel());
+        });
+        this.addons = new UIIcon(Icons.ADDONS, (b) ->
+        {
+            UIOverlay.addOverlay(this.context, new UIAddonsOverlayPanel());
         });
         this.chalkboard = new UIChalkboard();
         this.chalkboard.full(this.getRoot());
@@ -119,6 +128,7 @@ public class UIDashboard extends UIBaseMenu
         /* Pinned through the bar, not into it: the bar is what knows which way its icons point */
         this.panels.pin(this.settings, UIKeys.CONFIG_TITLE);
         this.panels.pin(this.selectors, UIKeys.SELECTORS_TITLE);
+        this.panels.pin(this.addons, UIKeys.ADDONS_TITLE);
         this.getRoot().prepend(this.orbitUI);
         this.getRoot().add(this.orbitKeysUI);
         this.getRoot().add(this.chalkboard);
@@ -136,7 +146,7 @@ public class UIDashboard extends UIBaseMenu
 
                 if (!this.main.isVisible() && this.panels.panel instanceof UIFilmPanel)
                 {
-                    UIFilmPanel.applyExportSizeToBBS();
+                    UIWorldPreview.applyExportSize(VideoExportSettings.global());
                 }
             }
         }).category(category);
@@ -177,7 +187,14 @@ public class UIDashboard extends UIBaseMenu
 
     public void openSettings()
     {
-        UIOverlay.addOverlay(this.context, this.settingsPanel, 430, 400);
+        UIOverlay.addOverlay(this.context, this.settingsPanel);
+    }
+
+    /** Opens the settings on the given module, an addon's own for example. */
+    public void openSettings(String module)
+    {
+        this.settingsPanel.selectModule(module);
+        this.openSettings();
     }
 
     public void copyCurrentEntityCamera()
@@ -288,6 +305,7 @@ public class UIDashboard extends UIBaseMenu
     {
         this.buildStep("morphing", () -> this.panels.registerPanel(new UIMorphingPanel(this), UIKeys.MORPHING_TITLE, Icons.MORPH));
         this.buildStep("film", () -> this.panels.registerPanel(new UIFilmPanel(this), UIKeys.FILM_TITLE, Icons.FILM));
+        this.buildStep("sequence", () -> this.panels.registerPanel(new UISequencePanel(this), UIKeys.SEQUENCE_TITLE, Icons.SCENE));
         this.buildStep("model blocks", () -> this.panels.registerPanel(new UIModelBlockPanel(this), UIKeys.MODEL_BLOCKS_TITLE, Icons.BLOCK));
         this.buildStep("particles", () -> this.panels.registerPanel(new UIParticleSchemePanel(this), UIKeys.PANELS_PARTICLES, Icons.PARTICLE));
         this.buildStep("model editor", () -> this.panels.registerPanel(new UIModelEditorPanel(this), UIKeys.MODEL_EDITOR_TITLE, Icons.POSE));

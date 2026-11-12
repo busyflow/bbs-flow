@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.network;
 
+import java.util.HashMap;
+import net.minecraft.world.GameMode;
 import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.actions.ActionManager;
 import mchorse.bbs_mod.actions.ActionPlayer;
@@ -78,6 +80,7 @@ public class ServerNetwork
     public static final Identifier CLIENT_REQUEST_FILM_RESYNC = new Identifier(BBSMod.MOD_ID, "c18");
     public static final Identifier CLIENT_STRUCTURE_SAVED = new Identifier(BBSMod.MOD_ID, "c19");
     public static final Identifier CLIENT_STRUCTURE_CUT = new Identifier(BBSMod.MOD_ID, "c20");
+    public static final Identifier CLIENT_STRUCTURE_RESTORED = new Identifier(BBSMod.MOD_ID, "c21");
 
     public static final Identifier SERVER_MODEL_BLOCK_FORM_PACKET = new Identifier(BBSMod.MOD_ID, "s1");
     public static final Identifier SERVER_MODEL_BLOCK_TRANSFORMS_PACKET = new Identifier(BBSMod.MOD_ID, "s2");
@@ -96,6 +99,11 @@ public class ServerNetwork
     public static final Identifier SERVER_SAVE_STRUCTURE = new Identifier(BBSMod.MOD_ID, "s15");
     public static final Identifier SERVER_CUT_STRUCTURE = new Identifier(BBSMod.MOD_ID, "s16");
     public static final Identifier SERVER_CONVERT_MODEL_BLOCK = new Identifier(BBSMod.MOD_ID, "s17");
+    public static final Identifier SERVER_PLAYER_FOLLOW_SPECTATOR = new Identifier(BBSMod.MOD_ID, "s18");
+    public static final Identifier SERVER_RESTORE_STRUCTURE = new Identifier(BBSMod.MOD_ID, "s19");
+
+    /** The game mode each player had before following the camera as a spectator */
+    private static final Map<UUID, GameMode> followModes = new HashMap<>();
 
     private static ServerPacketCrusher crusher = new ServerPacketCrusher();
 
@@ -123,6 +131,8 @@ public class ServerNetwork
         ServerPlayNetworking.registerGlobalReceiver(SERVER_SAVE_STRUCTURE, (server, player, handler, buf, responder) -> handleSaveStructure(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_CUT_STRUCTURE, (server, player, handler, buf, responder) -> handleCutStructure(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_CONVERT_MODEL_BLOCK, (server, player, handler, buf, responder) -> handleConvertModelBlock(server, player, buf));
+        ServerPlayNetworking.registerGlobalReceiver(SERVER_PLAYER_FOLLOW_SPECTATOR, (server, player, handler, buf, responder) -> handleFollowSpectator(server, player, buf));
+        ServerPlayNetworking.registerGlobalReceiver(SERVER_RESTORE_STRUCTURE, (server, player, handler, buf, responder) -> handleRestoreStructure(server, player, buf));
     }
 
     /* Handlers */
@@ -164,6 +174,38 @@ public class ServerNetwork
             reply.writeString(name);
 
             ServerPlayNetworking.send(player, CLIENT_STRUCTURE_CUT, reply);
+        });
+    }
+
+    /**
+     * The cut the other way round: a structure form's file put back into the world as blocks, at
+     * the spot the form stands. The pivot arrives as the form's position and anchor; where its
+     * footprint lands is worked out here, from the file's own size.
+     */
+    private static void handleRestoreStructure(MinecraftServer server, ServerPlayerEntity player, PacketByteBuf buf)
+    {
+        String id = buf.readString();
+        double x = buf.readDouble();
+        double y = buf.readDouble();
+        double z = buf.readDouble();
+        float originX = buf.readFloat();
+        float originY = buf.readFloat();
+        float originZ = buf.readFloat();
+
+        if (!PermissionUtils.arePanelsAllowed(server, player))
+        {
+            return;
+        }
+
+        server.execute(() ->
+        {
+            boolean placed = StructureSaver.place(player.getServerWorld(), id, x, y, z, originX, originY, originZ);
+            PacketByteBuf reply = PacketByteBufs.create();
+
+            reply.writeBoolean(placed);
+            reply.writeString(id);
+
+            ServerPlayNetworking.send(player, CLIENT_STRUCTURE_RESTORED, reply);
         });
     }
 
@@ -394,7 +436,7 @@ public class ServerNetwork
 
                 if (film != null)
                 {
-                    BBSMod.getActions().startRecording(film, player, 0, countdown, replayId);
+                    BBSMod.getActions().startRecording(film, player, tick, countdown, replayId);
                 }
             }
             else
@@ -489,6 +531,12 @@ public class ServerNetwork
             }
             else if (state == ActionState.RESTART)
             {
+                /* Takes down a copy of the film playing in this player's world. Sent ahead of the
+                 * cast below, because a client forgets a stopped film's actors: sent after, it wiped
+                 * the map it had just been given and nothing told it again, so a sequence, which
+                 * reads that map, left every actor's shell to draw itself over the film's body. */
+                sendStopFilm(player, filmId);
+
                 ActionPlayer actionPlayer = actions.getPlayer(filmId);
 
                 /* The same editor asking for the same film from the top only wants it rewound.
@@ -527,8 +575,6 @@ public class ServerNetwork
 
                     actionPlayer.goTo(0, tick);
                 }
-
-                sendStopFilm(player, filmId);
             }
             else if (state == ActionState.STOP)
             {
@@ -586,6 +632,48 @@ public class ServerNetwork
             player.setBodyYaw(bodyYaw);
             player.setPitch(pitch);
         });
+    }
+
+    /**
+     * The player follows the film's camera as a spectator, or stops. The mode is changed on the
+     * player directly, not by a command, so the chat says nothing; the old mode is remembered
+     * and given back.
+     */
+    private static void handleFollowSpectator(MinecraftServer server, ServerPlayerEntity player, PacketByteBuf buf)
+    {
+        boolean spectate = buf.readBoolean();
+
+        server.execute(() ->
+        {
+            if (spectate)
+            {
+                if (!PermissionUtils.arePanelsAllowed(server, player) || followModes.containsKey(player.getUuid()))
+                {
+                    return;
+                }
+
+                followModes.put(player.getUuid(), player.interactionManager.getGameMode());
+                player.changeGameMode(GameMode.SPECTATOR);
+            }
+            else
+            {
+                restoreFollowMode(player);
+            }
+        });
+    }
+
+    /**
+     * Give a player that followed the camera as a spectator its own game mode back (also when
+     * it leaves the game while following).
+     */
+    public static void restoreFollowMode(ServerPlayerEntity player)
+    {
+        GameMode mode = followModes.remove(player.getUuid());
+
+        if (mode != null)
+        {
+            player.changeGameMode(mode);
+        }
     }
 
     private static void handleAnimationStateTriggerPacket(MinecraftServer server, ServerPlayerEntity player, PacketByteBuf buf)

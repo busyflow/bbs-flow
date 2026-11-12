@@ -4,14 +4,17 @@ import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.cubic.data.model.Model;
 import mchorse.bbs_mod.cubic.data.model.ModelCube;
 import mchorse.bbs_mod.cubic.data.model.ModelGroup;
+import mchorse.bbs_mod.cubic.data.model.ModelMesh;
 import mchorse.bbs_mod.cubic.data.model.ModelQuad;
 import mchorse.bbs_mod.cubic.data.model.ModelVertex;
 import mchorse.bbs_mod.cubic.render.vao.WeldBandVAO;
 import mchorse.bbs_mod.cubic.weld.WeldBinding;
+import mchorse.bbs_mod.utils.joml.Matrices;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.util.math.MatrixStack;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -108,6 +111,7 @@ public class WeldMesh
     private final Vector3f[] rigid = vectors(4);
     private final Vector3f[] cornerNormals = vectors(4);
     private final Vector3f seamPosition = new Vector3f();
+    private final Vector3f restShift = new Vector3f();
     private final Vector3f tangentS = new Vector3f();
     private final Vector3f tangentT = new Vector3f();
     private final Vector3f normal = new Vector3f();
@@ -116,6 +120,33 @@ public class WeldMesh
     private final float[] sharedB = new float[(SUBDIVISIONS + 1) * 3];
 
     private WeldBandVAO vao;
+
+    /* Bones riding a curved weld above them (see #follow), resolved for the list they were asked for;
+     * their root-frame matrices are taken by the same walk that captures the seams. */
+    private Set<String> followBones = Set.of();
+    private final List<Follower> followers = new ArrayList<>();
+    private final Map<ModelGroup, Matrix4f> followMatrices = new IdentityHashMap<>();
+    private final Set<ModelGroup> followSeen = Collections.newSetFromMap(new IdentityHashMap<>());
+
+    /* Per-follow scratch. */
+    private final Vector3f followPoint = new Vector3f();
+    private final Vector3f followCurved = new Vector3f();
+    private final Vector3f followRigid = new Vector3f();
+    private final Vector3f followCentre = new Vector3f();
+    private final Vector3f followCurvedCentre = new Vector3f();
+    private final Vector3f followRigidCentre = new Vector3f();
+    private final Vector3f followAxis = new Vector3f();
+    private final Matrix4f followToCube = new Matrix4f();
+    private final Matrix3f followLinear = new Matrix3f();
+    private final Matrix3f followCube = new Matrix3f();
+    private final MatrixStack followStack = new MatrixStack();
+
+    /**
+     * A bone riding a curved weld of a bone above it: the layer whose band it sits on, which side of
+     * the seam that bone is, its welded cube, and points spanning its own geometry at rest (blocks).
+     */
+    private record Follower(ModelGroup group, WeldBinding.Layer layer, boolean source, Cube cube, Vector3f[] samples)
+    {}
 
     /** A welded cube and its root-frame matrices, refreshed by every walk. */
     private static class Cube
@@ -148,8 +179,18 @@ public class WeldMesh
         /* The falloff weight at every grid point: full at the seam, none a band away. */
         private float[] weights;
 
-        /* Per deform: whether the seam is built, and its displacement at each corner (zero off its plane). */
+        /* A curved seam on the same plane of the cube as an earlier one (a torso's bottom welded to both
+         * legs): the earlier takes the face, the way it takes the corners on the shear. */
+        private boolean shadowed;
+
+        /* A curved seam's source side, at rest: how far each corner on the plane goes to meet the target's
+         * face (zero elsewhere) — what the shear moves it by at rest, faded across the quad the same way. */
+        private final Vector3f[] restGap = vectors(4);
+
+        /* Per deform: whether the seam is built, whether it bends along its curve, and its displacement at
+         * each corner (zero off its plane, and unused by a curve). */
         private boolean active;
+        private boolean curve;
         private final Vector3f[] displacement = vectors(4);
 
         private Snap(SnapDef def)
@@ -419,6 +460,24 @@ public class WeldMesh
             }
 
             snap.weights = new float[quad.pointCount()];
+
+            if (snap.def.layer().curve)
+            {
+                for (int j = 0; j < k; j++)
+                {
+                    SnapDef earlier = snaps[j].def;
+
+                    snap.shadowed |= earlier.faceNormal().equals(snap.def.faceNormal()) && Math.abs(earlier.weldPlane() - snap.def.weldPlane()) < PLANE_EPS;
+                }
+
+                for (int i = 0; i < 4 && snap.def.source(); i++)
+                {
+                    if (snap.onPlane[i])
+                    {
+                        snap.def.layer().restGapAt(quad.corners[i], snap.restGap[i]);
+                    }
+                }
+            }
 
             for (int row = 0; row <= quad.nT; row++)
             {
@@ -704,11 +763,31 @@ public class WeldMesh
      */
     public void deform(Model model)
     {
+        this.capture(model);
+
+        for (Quad quad : this.quads)
+        {
+            this.deformQuad(quad);
+        }
+
+        for (SeamPair pair : this.seamPairs)
+        {
+            if (pair.target().layer().seamReady)
+            {
+                this.shareNormals(pair);
+            }
+        }
+    }
+
+    /** Walk the pose for the welded cubes' (and the followers') root-frame matrices, then capture and build every seam. */
+    private void capture(Model model)
+    {
         for (Cube cube : this.cubes.values())
         {
             cube.visible = false;
         }
 
+        this.followSeen.clear();
         CubicRenderer.processRenderModel(this.walker, null, this.stack, model);
 
         for (WeldBinding binding : this.bindings)
@@ -733,19 +812,286 @@ public class WeldMesh
                 layer.computeSeam();
             }
         }
+    }
 
-        for (Quad quad : this.quads)
+    /**
+     * Seat the listed bones on the curved welds they hang under, so what they carry stays on the bent
+     * surface (a chest on a torso whose upper cube the curve bends). Each bone, whole, takes the rigid
+     * motion that best follows the curve over its own geometry: the curve's turn at the middle of it, and
+     * the shift that puts its middle where the curve does. It is written into the bone's orient and offset
+     * like the rest of the constraint stack, so every reader of the pose follows it. A bone welded itself,
+     * one under another listed bone (it rides along with that one) or one with no curved weld above it
+     * stays as it is.
+     */
+    public void follow(Model model, Set<String> bones)
+    {
+        if (!bones.equals(this.followBones))
         {
-            this.deformQuad(quad);
+            this.followBones = new HashSet<>(bones);
+            this.resolveFollowers(model);
         }
 
-        for (SeamPair pair : this.seamPairs)
+        if (this.followers.isEmpty())
         {
-            if (pair.target().layer().seamReady)
+            return;
+        }
+
+        this.capture(model);
+
+        for (Follower follower : this.followers)
+        {
+            this.ride(follower);
+        }
+    }
+
+    private void resolveFollowers(Model model)
+    {
+        this.followers.clear();
+        this.followMatrices.clear();
+
+        for (String id : this.followBones)
+        {
+            ModelGroup group = model.getGroup(id);
+
+            if (group == null || this.weldedGroups.contains(group) || this.underFollower(group))
             {
-                this.shareNormals(pair);
+                continue;
+            }
+
+            WeldBinding.Layer layer = null;
+            boolean source = false;
+
+            for (ModelGroup above = group.parent; above != null && layer == null; above = above.parent)
+            {
+                for (WeldBinding binding : this.bindings)
+                {
+                    boolean target = binding.targetGroup == above;
+
+                    if (!target && binding.sourceGroup != above)
+                    {
+                        continue;
+                    }
+
+                    /* The bare cube's layer, not a skin layer's inflated copy. */
+                    for (WeldBinding.Layer candidate : binding.layers)
+                    {
+                        ModelCube cube = target ? candidate.targetCube : candidate.sourceCube;
+                        ModelCube best = layer == null ? null : (source ? layer.sourceCube : layer.targetCube);
+
+                        if (candidate.curve && (best == null || cube.inflate < best.inflate))
+                        {
+                            layer = candidate;
+                            source = !target;
+                        }
+                    }
+
+                    if (layer != null)
+                    {
+                        break;
+                    }
+                }
+            }
+
+            if (layer == null)
+            {
+                continue;
+            }
+
+            this.followers.add(new Follower(group, layer, source, this.cubes.get(source ? layer.sourceCube : layer.targetCube), samples(group)));
+            this.followMatrices.put(group, new Matrix4f());
+        }
+    }
+
+    /** Whether a bone above this one is listed too: it then rides along with that one. */
+    private boolean underFollower(ModelGroup group)
+    {
+        for (ModelGroup above = group.parent; above != null; above = above.parent)
+        {
+            if (this.followBones.contains(above.id))
+            {
+                return true;
             }
         }
+
+        return false;
+    }
+
+    /**
+     * The corners of the box the bone's own geometry stands in, at rest, in blocks — each cube and mesh
+     * turned about its own pivot the way the renderer turns it (mesh points are pixels, like the cubes);
+     * the bone's pivot alone when it has none.
+     */
+    private static Vector3f[] samples(ModelGroup group)
+    {
+        Vector3f min = new Vector3f(Float.POSITIVE_INFINITY);
+        Vector3f max = new Vector3f(Float.NEGATIVE_INFINITY);
+        Vector3f point = new Vector3f();
+
+        for (ModelCube cube : group.cubes)
+        {
+            Quaternionf rotation = Matrices.toLocalRotationZYXDegrees(cube.rotate);
+
+            for (int i = 0; i < 8; i++)
+            {
+                point.set(
+                    (i & 1) == 0 ? cube.origin.x - cube.inflate : cube.origin.x + cube.size.x + cube.inflate,
+                    (i & 2) == 0 ? cube.origin.y - cube.inflate : cube.origin.y + cube.size.y + cube.inflate,
+                    (i & 4) == 0 ? cube.origin.z - cube.inflate : cube.origin.z + cube.size.z + cube.inflate
+                ).sub(cube.pivot).rotate(rotation).add(cube.pivot);
+                min.min(point);
+                max.max(point);
+            }
+        }
+
+        for (ModelMesh mesh : group.meshes)
+        {
+            Quaternionf rotation = Matrices.toLocalRotationZYXDegrees(mesh.rotate);
+
+            for (Vector3f vertex : mesh.baseData.vertices)
+            {
+                point.set(vertex).sub(mesh.origin).rotate(rotation).add(mesh.origin);
+                min.min(point);
+                max.max(point);
+            }
+        }
+
+        if (min.x > max.x)
+        {
+            return new Vector3f[] {new Vector3f(group.initial.translate).div(16F)};
+        }
+
+        Vector3f[] samples = new Vector3f[8];
+
+        for (int i = 0; i < 8; i++)
+        {
+            samples[i] = new Vector3f(
+                (i & 1) == 0 ? min.x : max.x,
+                (i & 2) == 0 ? min.y : max.y,
+                (i & 4) == 0 ? min.z : max.z
+            ).div(16F);
+        }
+
+        return samples;
+    }
+
+    /**
+     * Move one bone onto its curve. Its points go into the welded cube's own space (the space the curve
+     * takes them in, with the bone's own pose), and the curve says where each lands; the bone then turns
+     * by the curve's turn at the points' middle (read off the curve itself, a step to either side) and
+     * shifts so the middles meet.
+     */
+    private void ride(Follower follower)
+    {
+        ModelGroup group = follower.group;
+
+        if (!follower.layer.curveReady || !follower.cube.visible || !this.followSeen.contains(group))
+        {
+            return;
+        }
+
+        Matrix4f bone = this.followMatrices.get(group);
+        Matrix4f toCube = this.followToCube.set(follower.cube.position).invert().mul(bone);
+        Vector3f[] samples = follower.samples;
+        Vector3f centre = this.followCentre.set(0F, 0F, 0F);
+        Vector3f curvedCentre = this.followCurvedCentre.set(0F, 0F, 0F);
+        Vector3f rigidCentre = this.followRigidCentre.set(0F, 0F, 0F);
+
+        for (Vector3f sample : samples)
+        {
+            toCube.transformPosition(sample, this.followPoint);
+            centre.add(this.followPoint);
+            curvedCentre.add(this.curveOf(follower, this.followPoint, this.followCurved));
+            rigidCentre.add(bone.transformPosition(sample, this.followRigid));
+        }
+
+        float share = 1F / samples.length;
+
+        centre.mul(share);
+        curvedCentre.mul(share);
+        rigidCentre.mul(share);
+
+        /* The curve's linear change at the middle, cube space to root, one column per axis; less the
+         * cube's own (what the rigid bone already has), its rotation is the turn the curve adds there. */
+        float step = 1F / 16F;
+        Matrix3f linear = this.followLinear;
+
+        for (int axis = 0; axis < 3; axis++)
+        {
+            this.followPoint.set(centre).setComponent(axis, centre.get(axis) + step);
+            this.curveOf(follower, this.followPoint, this.followCurved);
+            this.followPoint.set(centre).setComponent(axis, centre.get(axis) - step);
+            this.curveOf(follower, this.followPoint, this.followRigid);
+            linear.setColumn(axis, this.followAxis.set(this.followCurved).sub(this.followRigid).div(2F * step));
+        }
+
+        follower.cube.position.get3x3(this.followCube);
+        linear.mul(this.followCube.invert());
+
+        Quaternionf turn = linear.getNormalizedRotation(new Quaternionf());
+
+        /* The bone in root space once turned about its middle and shifted onto the curve's. */
+        Matrix4f riding = new Matrix4f()
+            .translation(curvedCentre)
+            .rotate(turn)
+            .translate(-rigidCentre.x, -rigidCentre.y, -rigidCentre.z)
+            .mul(bone);
+
+        /* Back into the bone's own transform: its frame under the parent is the walk's matrix less what the
+         * bone itself adds, and the bone's own steps on an empty stack give that again. */
+        this.followStack.loadIdentity();
+        this.walker.applyGroupTransformations(this.followStack, group);
+
+        Matrix4f local = new Matrix4f(this.followStack.peek().getPositionMatrix()).mul(new Matrix4f(bone).invert()).mul(riding);
+
+        writeLocal(group, local);
+    }
+
+    /** Where the curve puts a point of the follower's welded cube, given in that cube's space. */
+    private Vector3f curveOf(Follower follower, Vector3f local, Vector3f dest)
+    {
+        WeldBinding.Layer layer = follower.layer;
+        Vector3f normal = follower.source ? layer.sourceFaceNormal : layer.targetFaceNormal;
+        float plane = follower.source ? layer.sourceWeldPlane : layer.targetWeldPlane;
+
+        return layer.curvePoint(follower.source, local, Math.abs(local.dot(normal) - plane), this.restShift.set(0F, 0F, 0F), dest);
+    }
+
+    /**
+     * Write a bone's local matrix as the orient and offset the renderer applies in place of its rotation and
+     * before its translate: the offset puts the pivot where the matrix does, the rest is the rotation (with
+     * the bone's own scale taken out).
+     */
+    private static void writeLocal(ModelGroup group, Matrix4f local)
+    {
+        Vector3f scale = group.current.scale;
+
+        if (Math.abs(scale.x) < 1.0e-6F || Math.abs(scale.y) < 1.0e-6F || Math.abs(scale.z) < 1.0e-6F)
+        {
+            return;
+        }
+
+        Vector3f pivot = new Vector3f(group.initial.translate).div(16F);
+        Vector3f translate = group.current.translate;
+        Vector3f moved = new Vector3f(
+            -(translate.x - group.initial.translate.x) / 16F,
+            (translate.y - group.initial.translate.y) / 16F,
+            (translate.z - group.initial.translate.z) / 16F
+        );
+        Vector3f offset = local.transformPosition(new Vector3f(pivot)).sub(pivot).sub(moved);
+        Matrix3f linear = local.get3x3(new Matrix3f());
+
+        linear.m00 /= scale.x;
+        linear.m01 /= scale.x;
+        linear.m02 /= scale.x;
+        linear.m10 /= scale.y;
+        linear.m11 /= scale.y;
+        linear.m12 /= scale.y;
+        linear.m20 /= scale.z;
+        linear.m21 /= scale.z;
+        linear.m22 /= scale.z;
+
+        group.orient = linear.getNormalizedRotation(new Quaternionf());
+        group.offset = offset;
     }
 
     /**
@@ -770,6 +1116,7 @@ public class WeldMesh
         for (Snap snap : quad.snaps)
         {
             snap.active = snap.def.layer().seamReady;
+            snap.curve = snap.active && snap.def.layer().curveReady;
 
             for (Vector3f displacement : snap.displacement)
             {
@@ -777,17 +1124,20 @@ public class WeldMesh
             }
         }
 
-        /* The first seam lying on a corner claims it. */
+        /* The first seam lying on a corner claims it; a curve claims it too, and moves its points itself. */
         for (int i = 0; i < 4; i++)
         {
             for (Snap snap : quad.snaps)
             {
                 if (snap.active && snap.onPlane[i])
                 {
-                    WeldBinding.Layer layer = snap.def.layer();
-                    Vector3f seam = snap.def.source() ? layer.seamAtSource(quad.corners[i], this.seamPosition) : layer.seamAtTarget(quad.corners[i], this.seamPosition);
+                    if (!snap.curve)
+                    {
+                        WeldBinding.Layer layer = snap.def.layer();
+                        Vector3f seam = snap.def.source() ? layer.seamAtSource(quad.corners[i], this.seamPosition) : layer.seamAtTarget(quad.corners[i], this.seamPosition);
 
-                    snap.displacement[i].set(seam).sub(r[i]);
+                        snap.displacement[i].set(seam).sub(r[i]);
+                    }
 
                     break;
                 }
@@ -939,7 +1289,8 @@ public class WeldMesh
     /**
      * One grid point's position: bilinearly interpolate the rigid position across the four corners (s along
      * 0->1, t along 0->3), then add EACH seam's interpolated displacement scaled by that seam's OWN falloff
-     * weight at the point.
+     * weight at the point. A curved seam's displacement is where its curve puts the point, less the rigid
+     * position, anywhere within its band.
      */
     private void resolvePosition(Quad quad, int col, int row)
     {
@@ -949,12 +1300,44 @@ public class WeldMesh
         int local = row * (quad.nS + 1) + col;
         int p = (quad.offset + local) * 3;
 
-        float x = bilerp(r[0].x, r[1].x, r[2].x, r[3].x, s, t);
-        float y = bilerp(r[0].y, r[1].y, r[2].y, r[3].y, s, t);
-        float z = bilerp(r[0].z, r[1].z, r[2].z, r[3].z, s, t);
+        float rx = bilerp(r[0].x, r[1].x, r[2].x, r[3].x, s, t);
+        float ry = bilerp(r[0].y, r[1].y, r[2].y, r[3].y, s, t);
+        float rz = bilerp(r[0].z, r[1].z, r[2].z, r[3].z, s, t);
+        float x = rx;
+        float y = ry;
+        float z = rz;
 
         for (Snap snap : quad.snaps)
         {
+            if (snap.curve)
+            {
+                float distance = bilerp(snap.cornerDistance, s, t);
+
+                if (!snap.shadowed && distance < snap.def.band())
+                {
+                    Vector3f[] c = quad.corners;
+                    Vector3f[] g = snap.restGap;
+                    float w = snap.weights[local];
+                    Vector3f point = this.sample.set(
+                        bilerp(c[0].x, c[1].x, c[2].x, c[3].x, s, t),
+                        bilerp(c[0].y, c[1].y, c[2].y, c[3].y, s, t),
+                        bilerp(c[0].z, c[1].z, c[2].z, c[3].z, s, t)
+                    );
+                    Vector3f shift = this.restShift.set(
+                        w * bilerp(g[0].x, g[1].x, g[2].x, g[3].x, s, t),
+                        w * bilerp(g[0].y, g[1].y, g[2].y, g[3].y, s, t),
+                        w * bilerp(g[0].z, g[1].z, g[2].z, g[3].z, s, t)
+                    );
+
+                    snap.def.layer().curvePoint(snap.def.source(), point, distance, shift, this.seamPosition);
+                    x += this.seamPosition.x - rx;
+                    y += this.seamPosition.y - ry;
+                    z += this.seamPosition.z - rz;
+                }
+
+                continue;
+            }
+
             float w = snap.active ? snap.weights[local] : 0F;
 
             if (w > 0F)
@@ -1169,6 +1552,14 @@ public class WeldMesh
         @Override
         public boolean renderGroup(BufferBuilder builder, MatrixStack stack, ModelGroup group, Model model)
         {
+            Matrix4f follow = WeldMesh.this.followMatrices.get(group);
+
+            if (follow != null)
+            {
+                follow.set(stack.peek().getPositionMatrix());
+                WeldMesh.this.followSeen.add(group);
+            }
+
             List<Cube> cubes = WeldMesh.this.cubesByGroup.get(group);
 
             if (cubes == null)

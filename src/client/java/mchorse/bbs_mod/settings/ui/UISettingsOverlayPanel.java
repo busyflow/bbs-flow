@@ -17,10 +17,10 @@ import mchorse.bbs_mod.ui.framework.elements.UIScrollView;
 import mchorse.bbs_mod.ui.framework.elements.UISection;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIClickable;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
+import mchorse.bbs_mod.ui.framework.elements.context.UIPromptPopup;
 import mchorse.bbs_mod.ui.framework.elements.input.text.UITextbox;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
-import mchorse.bbs_mod.ui.framework.elements.overlay.UIPromptOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.utils.FontRenderer;
 import mchorse.bbs_mod.ui.framework.elements.utils.RowStyle;
 import mchorse.bbs_mod.ui.utils.Area;
@@ -31,6 +31,7 @@ import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.Direction;
 import mchorse.bbs_mod.utils.colors.Colors;
 
+import java.util.function.BiConsumer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -87,6 +88,7 @@ public class UISettingsOverlayPanel extends UIOverlayPanel
     public UISettingsOverlayPanel()
     {
         super(UIKeys.CONFIG_TITLE);
+        this.wh(430, 400);
 
         this.search = new UITextbox(100, (str) ->
         {
@@ -112,8 +114,8 @@ public class UISettingsOverlayPanel extends UIOverlayPanel
         {
             UIIcon icon = new UIIcon(settings.icon, (b) -> this.selectConfig(settings.getId(), b));
 
-            icon.tooltip(L10n.lang(UIValueFactory.getTitleKey(settings)), Direction.LEFT);
-            icon.highlight(() -> this.currentModule == icon, Direction.LEFT);
+            icon.tooltip(L10n.lang(UIValueFactory.getTitleKey(settings)));
+            icon.highlight(() -> this.currentModule == icon, Direction.BOTTOM);
             this.icons.add(icon);
             this.moduleButtons.put(settings.getId(), icon);
 
@@ -143,6 +145,17 @@ public class UISettingsOverlayPanel extends UIOverlayPanel
         this.search.setText("");
 
         this.buildSections();
+    }
+
+    /** Opens the given settings module, the way a click on its icon does. */
+    public void selectModule(String mod)
+    {
+        UIIcon button = this.moduleButtons.get(mod);
+
+        if (button != null)
+        {
+            this.selectConfig(mod, button);
+        }
     }
 
     public void showCategory(String mod, String categoryId)
@@ -257,11 +270,20 @@ public class UISettingsOverlayPanel extends UIOverlayPanel
 
     public void addVideoPresets(ContextMenuManager menu)
     {
-        menu.action(Icons.FILM, UIKeys.VIDEO_SETTINGS_PRESETS_720p, () -> this.applyVideoPreset(1280, 720));
-        menu.action(Icons.FILM, UIKeys.VIDEO_SETTINGS_PRESETS_1080P, () -> this.applyVideoPreset(1920, 1080));
-        menu.action(Icons.FILM, UIKeys.VIDEO_SETTINGS_PRESETS_SHORTS_1080P, () -> this.applyVideoPreset(1080, 1920));
-        menu.action(Icons.FILM, UIKeys.VIDEO_SETTINGS_PRESETS_1440P, () -> this.applyVideoPreset(2560, 1440));
-        menu.action(Icons.FILM, UIKeys.VIDEO_SETTINGS_PRESETS_4K, () -> this.applyVideoPreset(3840, 2160));
+        addVideoPresets(menu, this::applyVideoPreset);
+    }
+
+    /**
+     * The video resolution presets, for whatever export settings they go into (the global ones
+     * here, a sequence's own in its export window).
+     */
+    public static void addVideoPresets(ContextMenuManager menu, BiConsumer<Integer, Integer> apply)
+    {
+        menu.action(Icons.FILM, UIKeys.VIDEO_SETTINGS_PRESETS_720p, () -> apply.accept(1280, 720));
+        menu.action(Icons.FILM, UIKeys.VIDEO_SETTINGS_PRESETS_1080P, () -> apply.accept(1920, 1080));
+        menu.action(Icons.FILM, UIKeys.VIDEO_SETTINGS_PRESETS_SHORTS_1080P, () -> apply.accept(1080, 1920));
+        menu.action(Icons.FILM, UIKeys.VIDEO_SETTINGS_PRESETS_1440P, () -> apply.accept(2560, 1440));
+        menu.action(Icons.FILM, UIKeys.VIDEO_SETTINGS_PRESETS_4K, () -> apply.accept(3840, 2160));
     }
 
     /**
@@ -313,7 +335,7 @@ public class UISettingsOverlayPanel extends UIOverlayPanel
 
     private void promptSaveTheme()
     {
-        UIOverlay.addOverlay(this.getContext(), new UIPromptOverlayPanel(
+        UIPromptPopup prompt = new UIPromptPopup(
             UIKeys.CONFIG_PERSONALIZATION_PRESET_SAVE,
             UIKeys.CONFIG_PERSONALIZATION_PRESET_NAME,
             (input) ->
@@ -326,7 +348,10 @@ public class UISettingsOverlayPanel extends UIOverlayPanel
                         BBSSettings.primaryColor.get(), BBSSettings.secondaryColor.get(),
                         BBSSettings.textColor.get(), BBSSettings.interfaceContrast.get()));
                 }
-            }));
+            });
+
+        prompt.verb(UIKeys.GENERAL_SAVE);
+        this.getContext().replaceContextMenu(prompt);
     }
 
     private void openDeleteThemeMenu()
@@ -496,6 +521,10 @@ public class UISettingsOverlayPanel extends UIOverlayPanel
         {
             return BBSSettings.editorPreviewSizeMode.get() == 2;
         }
+        else if (value == BBSSettings.editorPreviewExportBandsOpacity)
+        {
+            return BBSSettings.editorPreviewSizeMode.get() != 0;
+        }
 
         return true;
     }
@@ -599,7 +628,7 @@ public class UISettingsOverlayPanel extends UIOverlayPanel
             else if (panel.settings.getId().equals("keybinds"))
             {
                 UIIcon presets = new UIIcon(Icons.KEY_CAP, (b) -> UIOverlay.addOverlay(
-                    b.getContext(), new UIKeybindPresetsOverlayPanel(panel.settings, panel::refresh), 320, 240));
+                    b.getContext(), new UIKeybindPresetsOverlayPanel(panel.settings, panel::refresh)));
 
                 presets.tooltip(L10n.lang("bbs.ui.config.keybind-presets.title"));
                 presets.wh(16, 16);

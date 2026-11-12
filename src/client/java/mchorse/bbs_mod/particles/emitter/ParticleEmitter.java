@@ -5,6 +5,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.camera.Camera;
+import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.graphics.texture.Texture;
 import mchorse.bbs_mod.math.IExpression;
 import mchorse.bbs_mod.math.Variable;
@@ -154,6 +155,30 @@ public class ParticleEmitter
         this.stop();
         this.start();
 
+        this.setupVariables();
+        this.setEmitterVariables(0);
+
+        for (IComponentEmitterInitialize component : this.scheme.emitterInitializes)
+        {
+            component.apply(this);
+        }
+    }
+
+    /**
+     * Put another version of the same effect under this emitter without starting it over: the age
+     * and the particles in flight stay, only the components and the expressions' variables change.
+     * {@link #setScheme} restarts, which is right for a new effect and wrong for an undo.
+     */
+    public void replaceScheme(ParticleScheme scheme)
+    {
+        this.scheme = scheme;
+
+        if (this.scheme.emitterInitializes == null)
+        {
+            this.scheme.setup();
+        }
+
+        this.lit = true;
         this.setupVariables();
         this.setEmitterVariables(0);
 
@@ -556,7 +581,9 @@ public class ParticleEmitter
             {
                 RenderSystem.enableBlend();
                 RenderSystem.blendFunc(GlStateManager.SrcFactor.SRC_ALPHA, GlStateManager.DstFactor.ONE);
-                RenderSystem.depthMask(false);
+                /* A deferred pack shades by depth: where there is none it paints the sky over
+                 * whatever was drawn, so the glow would vanish against the sky */
+                RenderSystem.depthMask(BBSRendering.isIrisWorldShadersEnabled());
             }
             else
             {

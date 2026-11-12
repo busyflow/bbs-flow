@@ -15,6 +15,7 @@ import mchorse.bbs_mod.cubic.model.config.WeldValue;
 import mchorse.bbs_mod.cubic.weld.ModelWeld;
 import mchorse.bbs_mod.cubic.weld.WeldBinding;
 import mchorse.bbs_mod.data.types.BaseType;
+import mchorse.bbs_mod.data.types.ListType;
 import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.settings.values.IValueListener;
@@ -40,6 +41,8 @@ import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.UITexturePicker;
 import mchorse.bbs_mod.ui.framework.elements.input.UITrackpad;
+import mchorse.bbs_mod.ui.framework.elements.input.list.UIEntryList;
+import mchorse.bbs_mod.ui.framework.elements.input.list.UIEntryListEditor;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UISearchList;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UIStringList;
 import mchorse.bbs_mod.ui.framework.elements.input.text.UITextbox;
@@ -54,17 +57,16 @@ import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.bones.UIBonePicker;
 import mchorse.bbs_mod.ui.utils.bones.BoneRole;
 import mchorse.bbs_mod.ui.utils.bones.BoneRoles;
-import mchorse.bbs_mod.ui.utils.context.ContextMenuManager;
 import mchorse.bbs_mod.ui.utils.context.MenuVerb;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.pose.UIPoseEditor;
-import mchorse.bbs_mod.ui.utils.presets.UICopyPasteController;
+import mchorse.bbs_mod.ui.utils.presets.UIDataContextMenu;
 import mchorse.bbs_mod.ui.utils.values.UIValues;
 import mchorse.bbs_mod.utils.Direction;
 import mchorse.bbs_mod.utils.colors.Colors;
+import mchorse.bbs_mod.utils.pose.ModelWeldsManager;
 import mchorse.bbs_mod.utils.pose.Pose;
-import mchorse.bbs_mod.utils.presets.PresetManager;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -179,13 +181,11 @@ public class UIModelConfigEditor extends UIElement
     private SlotBlock firstPerson;
     private UITabStrip itemsTabs;
     private UITabStrip fpTabs;
-    private UIIcon dupeItem;
-    private UIIcon removeItem;
+    private UIEntryListEditor<ArmorSlotValue> itemsEditor;
     private UIModelBoneList bones;
     private UISearchList<String> bonesSearch;
     private UIWeldList weldList;
-    private UIIcon dupeWeld;
-    private UIIcon removeWeld;
+    private UIEntryListEditor<WeldValue> weldEditor;
 
     /** The cube a list's row had the cursor on last frame, outlined in the preview. */
     private ModelNode listedCube;
@@ -208,8 +208,6 @@ public class UIModelConfigEditor extends UIElement
 
     /** Set while fill() refills everything, so the bodies don't each trigger a re-layout. */
     private boolean bulkFill;
-
-    private final EntryClipboard welds = new EntryClipboard(PresetManager.MODEL_WELDS, "_CopyModelWeld");
 
     public UIModelConfigEditor(UIModelEditorPanel panel)
     {
@@ -411,32 +409,21 @@ public class UIModelConfigEditor extends UIElement
         this.bonePanel = this.body();
         this.page(Tab.BONES).add(this.bonesSearch, this.bonePanel);
 
-        /* Welds: the add/duplicate/remove strip over the list, the replay list's idiom — now that a weld
-         * is picked rather than edited inline, the strip's verbs have something to act on. The add icon
-         * pastes a copied weld as a new one on right click. */
+        /* Welds: the shared add/duplicate/remove strip over the list for one weld; a right click on the
+         * list is about all of them at once, as the pose's is about the whole pose: copy, paste, reset
+         * and the model's weld presets. */
         this.weldList = new UIWeldList((list) -> this.fillWeld());
         this.weldList.broken((weld) -> this.diagnoseWeld(weld) != null);
         this.weldList.h(UIWeldList.ROW_HEIGHT * 4).expand();
-        this.weldList.context((menu) ->
-        {
-            WeldValue weld = this.weldList.getAtCursor(this.getContext());
-
-            if (weld != null)
-            {
-                this.weldList.setCurrent(weld);
-                this.fillWeld();
-                this.fillWeldMenu(menu, () -> this.presetData(weld), (data) -> this.applyWeld(weld, data), () -> this.duplicateWeld(weld), () -> this.removeWeld(weld));
-            }
-        });
-
-        UIIcon addWeld = new UIIcon(Icons.ADD, (b) -> this.addWeld());
-
-        addWeld.tooltip(UIKeys.MODEL_EDITOR_WELD_ADD);
-        addWeld.context((menu) -> this.fillWeldMenu(menu, null, this::pasteNewWeld, null, null));
-        this.dupeWeld = new UIIcon(Icons.DUPE, (b) -> this.duplicateWeld(this.weldList.getCurrentFirst()));
-        this.dupeWeld.tooltip(UIKeys.MODEL_EDITOR_WELD_DUPLICATE);
-        this.removeWeld = new UIIcon(Icons.REMOVE, (b) -> this.removeWeld(this.weldList.getCurrentFirst()));
-        this.removeWeld.tooltip(UIKeys.MODEL_EDITOR_WELD_REMOVE);
+        this.weldEditor = new UIEntryListEditor<>(this.weldList, this::addWeld, this::duplicateWeld, this::removeWeld)
+            .labels(UIKeys.MODEL_EDITOR_WELD_ADD, UIKeys.MODEL_EDITOR_WELD_DUPLICATE, UIKeys.MODEL_EDITOR_WELD_REMOVE);
+        this.weldList.context(() -> this.data == null ? null : new UIDataContextMenu(ModelWeldsManager.INSTANCE, this.instance().getPoseGroup(), this::weldsData, this::applyWelds)
+            .tooltips("_CopyModelWelds",
+                UIKeys.MODEL_EDITOR_WELDS_CONTEXT_COPY,
+                UIKeys.MODEL_EDITOR_WELDS_CONTEXT_PASTE,
+                UIKeys.MODEL_EDITOR_WELDS_CONTEXT_RESET,
+                UIKeys.MODEL_EDITOR_WELDS_CONTEXT_SAVE,
+                UIKeys.FORMS_EDITORS_MODEL_RIG_CONTEXT_NAME));
 
         /* Under it the picked weld, in the general page's folding sections: what's welded to what,
          * which cubes of it, how the joint bends. */
@@ -451,7 +438,7 @@ public class UIModelConfigEditor extends UIElement
         bones.fields.add(this.weldBones);
         pairs.fields.add(this.weldPairs);
         bend.fields.add(this.weldBend);
-        this.page(Tab.WELDS).add(UI.strip(addWeld, this.dupeWeld, this.removeWeld), this.weldList, this.weldIssue, bones, pairs, bend);
+        this.page(Tab.WELDS).add(this.weldEditor.strip, this.weldList, this.weldIssue, bones, pairs, bend);
 
         /* Armor: every piece the config can place, one row each, named by the piece. */
         this.armor = new SlotBlock((slot) -> ModelSlotKind.ARMOR, (slot) -> this.armorTypeLabel(this.armorTypeOf(slot)), () -> this.armorSlots());
@@ -465,35 +452,11 @@ public class UIModelConfigEditor extends UIElement
         });
 
         this.items = new SlotBlock((slot) -> this.itemsKind(), null, () -> this.itemsList().getAllTyped());
-        this.items.list.context((menu) ->
-        {
-            ArmorSlotValue slot = this.items.list.getAtCursor(this.getContext());
+        this.itemsEditor = new UIEntryListEditor<>(this.items.list, this::addItem, this::duplicateItem, this::removeItem)
+            .labels(UIKeys.MODEL_EDITOR_ITEM_ADD, UIKeys.MODEL_EDITOR_ITEM_DUPLICATE, UIKeys.MODEL_EDITOR_ITEM_REMOVE)
+            .clear(this::clearItems);
 
-            if (slot != null)
-            {
-                this.items.list.setCurrent(slot);
-                this.items.fill();
-                menu.action(Icons.DUPE, UIKeys.MODEL_EDITOR_ITEM_DUPLICATE, () -> this.duplicateItem(slot));
-                menu.icon(MenuVerb.REMOVE, () -> this.removeItem(slot)).label(UIKeys.MODEL_EDITOR_ITEM_REMOVE);
-            }
-        });
-
-        UIIcon addItem = new UIIcon(Icons.ADD, (b) -> this.addItem());
-
-        addItem.tooltip(UIKeys.MODEL_EDITOR_ITEM_ADD);
-        this.dupeItem = new UIIcon(Icons.DUPE, (b) -> this.duplicateItem(this.items.list.getCurrentFirst()));
-        this.dupeItem.tooltip(UIKeys.MODEL_EDITOR_ITEM_DUPLICATE);
-        this.removeItem = new UIIcon(Icons.REMOVE, (b) -> this.removeItem(this.items.list.getCurrentFirst()));
-        this.removeItem.tooltip(UIKeys.MODEL_EDITOR_ITEM_REMOVE);
-        this.items.onFill = () ->
-        {
-            boolean picked = this.items.list.getCurrentFirst() != null;
-
-            this.dupeItem.setEnabled(picked);
-            this.removeItem.setEnabled(picked);
-        };
-
-        this.page(Tab.ITEMS).add(this.itemsTabs, UI.strip(addItem, this.dupeItem, this.removeItem), this.items.list, this.items.panel);
+        this.page(Tab.ITEMS).add(this.itemsTabs, this.itemsEditor.strip, this.items.list, this.items.panel);
 
         /* First person: the hand picked by the same tab strip as the items, its one slot under it. */
         this.fpTabs = this.handTabs(() -> this.firstPerson.fill());
@@ -595,6 +558,9 @@ public class UIModelConfigEditor extends UIElement
 
     public void fill(ModelConfig config)
     {
+        /* Undo refills the same config: the picked pose bone stays picked */
+        boolean same = config != null && config == this.data;
+
         this.data = config;
         this.shapeControllers.fill(config == null ? null : this.instance());
 
@@ -619,7 +585,7 @@ public class UIModelConfigEditor extends UIElement
             this.fillFirstPerson();
             this.fillWelds();
             this.fillBones();
-            this.fillPoses();
+            this.fillPoses(!same);
         }
         finally
         {
@@ -856,9 +822,6 @@ public class UIModelConfigEditor extends UIElement
         /** The picked slot on the viewport gizmo; null with nothing picked. */
         public ModelSlotTarget target;
 
-        /** Runs after every fill, for whatever the host keeps in step with the pick (the items' verb strip). */
-        public Runnable onFill;
-
         private final Function<ArmorSlotValue, ModelSlotKind> kinds;
         private final Function<ArmorSlotValue, IKey> labels;
         private final Supplier<List<ArmorSlotValue>> source;
@@ -960,11 +923,6 @@ public class UIModelConfigEditor extends UIElement
                 transform
             );
             UIUtils.setEnabledDeep(this.panel, picked != null);
-
-            if (this.onFill != null)
-            {
-                this.onFill.run();
-            }
 
             UIModelConfigEditor.this.resizePage(UIModelConfigEditor.this.tabOf(this));
         }
@@ -1133,6 +1091,21 @@ public class UIModelConfigEditor extends UIElement
         this.fillItems();
     }
 
+    private void clearItems()
+    {
+        ModelConfig.ItemSlotList list = this.itemsList();
+
+        BaseValue.edit(list, (v) ->
+        {
+            list.getAllTyped().clear();
+            list.sync();
+        });
+
+        this.data.rebuild();
+        this.items.list.deselect();
+        this.fillItems();
+    }
+
     /** A value group as copyable data, or null if it doesn't serialise to a map (nothing to copy then). */
     private MapType presetData(BaseValue value)
     {
@@ -1203,11 +1176,16 @@ public class UIModelConfigEditor extends UIElement
 
     private void fillPoses()
     {
+        this.fillPoses(true);
+    }
+
+    private void fillPoses(boolean reset)
+    {
         ValuePose pose = this.shownPose();
 
         this.poseEditor.setValuePose(pose);
         this.poseEditor.setPose(pose.get(), this.instance().getPoseGroup());
-        this.poseEditor.fillGroups(this.instance().getModel(), this.instance().getFlippedParts(), true, this.instance().getDisabledBones());
+        this.poseEditor.fillGroups(this.instance().getModel(), this.instance().getFlippedParts(), reset, this.instance().getDisabledBones());
 
         this.resizePage(Tab.POSES);
     }
@@ -1299,9 +1277,47 @@ public class UIModelConfigEditor extends UIElement
             this.fillBone();
         });
 
+        UIToggle inside = new UIToggle(UIKeys.MODEL_EDITOR_BONE_INSIDE_CARRIER, picked != null && config.carrierBones.get().contains(bone), (t) ->
+        {
+            BaseValue.edit(config.carrierBones, (v) ->
+            {
+                if (t.getValue())
+                {
+                    config.carrierBones.get().add(bone);
+                }
+                else
+                {
+                    config.carrierBones.get().remove(bone);
+                }
+            });
+
+            this.fillBone();
+        });
+        inside.tooltip(UIKeys.MODEL_EDITOR_BONE_INSIDE_CARRIER_TOOLTIP);
+
+        UIToggle follow = new UIToggle(UIKeys.MODEL_EDITOR_BONE_FOLLOW_WELDS, picked != null && config.weldFollowers.get().contains(bone), (t) ->
+        {
+            BaseValue.edit(config.weldFollowers, (v) ->
+            {
+                if (t.getValue())
+                {
+                    config.weldFollowers.get().add(bone);
+                }
+                else
+                {
+                    config.weldFollowers.get().remove(bone);
+                }
+            });
+
+            this.fillBone();
+        });
+        follow.tooltip(UIKeys.MODEL_EDITOR_BONE_FOLLOW_WELDS_TOOLTIP);
+
         this.bonePanel.removeAll();
         this.bonePanel.add(
             visible,
+            inside,
+            follow,
             UI.labelRow(UIKeys.MODEL_EDITOR_BONE_MIRROR, this.bonePicker(() -> picked == null ? "" : this.mirrorOf(bone), (other) -> this.setMirror(bone, other), this::fillBone)),
             UI.labelRow(UIKeys.MODEL_EDITOR_BONE_PICKING, this.bonePicker(() -> picked == null ? "" : config.pickingOverrides.get().getOrDefault(bone, ""), (other) -> this.setPickingOverride(bone, other), this::fillBone))
         );
@@ -1472,9 +1488,6 @@ public class UIModelConfigEditor extends UIElement
         WeldValue weld = picked == null ? new WeldValue("") : picked;
         WeldBinding.Issue issue = picked == null ? null : this.diagnoseWeld(picked);
 
-        this.dupeWeld.setEnabled(picked != null);
-        this.removeWeld.setEnabled(picked != null);
-
         /* Bone/face changes can make the weld resolvable or not, so they refill the list and the panel to
          * update the name and the issue line; the trackpads can't, so they only re-resolve (a refill
          * mid-drag would orphan them). */
@@ -1495,17 +1508,32 @@ public class UIModelConfigEditor extends UIElement
             UI.row(this.bonePicker(weld.targetBone::get, (bone) -> this.setWeldBone(weld, false, bone), this::refreshWelds), this.facePicker(weld.targetFace, this::refreshWelds))
         );
         this.fillPairs(weld);
+
+        /* What a curve doesn't use stays in place, greyed out, so the section doesn't jump when it's switched. */
+        UIElement angle = UI.labelRow(UIKeys.MODEL_EDITOR_WELD_MAX_ANGLE, this.weldAngle(weld));
+        UIElement share = UI.labelRow(UIKeys.MODEL_EDITOR_WELD_PARENT_SHARE, this.weldShare(weld));
+        UIElement twist = this.weldTwist(weld);
+
         this.weldBend.add(
-            UI.labelRow(UIKeys.MODEL_EDITOR_WELD_MAX_ANGLE, this.weldAngle(weld)),
+            angle,
             UI.labelRow(UIKeys.MODEL_EDITOR_WELD_SEAM_FALLOFF, this.weldFalloff(weld)),
-            UI.labelRow(UIKeys.MODEL_EDITOR_WELD_PARENT_SHARE, this.weldShare(weld)),
-            this.weldTwist(weld),
-            this.weldSmooth(weld)
+            share,
+            twist,
+            this.weldSmooth(weld),
+            this.weldCurve(weld)
         );
 
         for (UIElement body : new UIElement[] {this.weldBones, this.weldPairs, this.weldBend})
         {
             UIUtils.setEnabledDeep(body, picked != null);
+        }
+
+        if (picked != null && weld.curve.get())
+        {
+            for (UIElement unused : new UIElement[] {angle, share, twist})
+            {
+                UIUtils.setEnabledDeep(unused, false);
+            }
         }
 
         this.resizePage(Tab.WELDS);
@@ -1906,17 +1934,23 @@ public class UIModelConfigEditor extends UIElement
         return this.toggle(UIKeys.MODEL_EDITOR_WELD_SMOOTH, () -> weld.smooth, this::invalidateWelds);
     }
 
+    /** Switching it changes which of the section's fields apply, so the section is filled again. */
+    private UIToggle weldCurve(WeldValue weld)
+    {
+        UIToggle toggle = this.toggle(UIKeys.MODEL_EDITOR_WELD_CURVE, () -> weld.curve, () ->
+        {
+            this.invalidateWelds();
+            this.fillWeld();
+        });
+
+        toggle.tooltip(UIKeys.MODEL_EDITOR_WELD_CURVE_TOOLTIP);
+
+        return toggle;
+    }
+
     private void addWeld()
     {
         this.insertWeld(new WeldValue(""), -1);
-    }
-
-    private void pasteNewWeld(MapType data)
-    {
-        WeldValue weld = new WeldValue("");
-
-        weld.fromData(data);
-        this.insertWeld(weld, -1);
     }
 
     private void duplicateWeld(WeldValue weld)
@@ -1976,11 +2010,34 @@ public class UIModelConfigEditor extends UIElement
         this.fillWelds();
     }
 
-    private void applyWeld(WeldValue weld, MapType data)
+    /** Every weld of the model, for the clipboard and the presets. */
+    private MapType weldsData()
     {
-        BaseValue.edit(weld, (v) -> weld.fromData(data));
+        MapType data = new MapType();
+
+        data.put("welds", this.data.welds.toData());
+
+        return data;
+    }
+
+    /** Put a copied or saved set of welds in place of the model's; an empty one (the menu's reset) removes them all. */
+    private void applyWelds(MapType data)
+    {
+        ModelConfig config = this.data;
+
+        if (config == null)
+        {
+            return;
+        }
+
+        BaseValue.edit(config.welds, (v) ->
+        {
+            config.welds.fromData(data.has("welds") ? data.get("welds") : new ListType());
+            config.welds.sync();
+        });
 
         this.modelPanel.refresh();
+        this.weldList.deselect();
         this.fillWelds();
     }
 
@@ -2022,31 +2079,6 @@ public class UIModelConfigEditor extends UIElement
             case SOURCE_PAIR: return UIKeys.MODEL_EDITOR_WELD_ISSUE_SOURCE_PAIR;
             case TARGET_PAIR: return UIKeys.MODEL_EDITOR_WELD_ISSUE_TARGET_PAIR;
             default: return UIKeys.MODEL_EDITOR_WELD_ISSUE_TARGET_CUBES;
-        }
-    }
-
-    /**
-     * A weld's context menu: the copy/paste/presets icon row on top, then the text actions — the same
-     * shape the replay and clip lists use. {@code source} being null means the menu hangs off the "add"
-     * button (nothing to copy from, so the row's copy icon disables itself), and {@code duplicate} /
-     * {@code remove} are null there for the same reason.
-     */
-    private void fillWeldMenu(ContextMenuManager menu, Supplier<MapType> source, Consumer<MapType> target, Runnable duplicate, Runnable remove)
-    {
-        this.welds.aim(source, target);
-
-        UIContext context = this.getContext();
-
-        this.welds.controller.install(menu, context, context.mouseX, context.mouseY);
-
-        if (duplicate != null)
-        {
-            menu.action(Icons.DUPE, UIKeys.MODEL_EDITOR_WELD_DUPLICATE, duplicate);
-        }
-
-        if (remove != null)
-        {
-            menu.icon(MenuVerb.REMOVE, remove).label(UIKeys.MODEL_EDITOR_WELD_REMOVE);
         }
     }
 
@@ -2125,39 +2157,5 @@ public class UIModelConfigEditor extends UIElement
         trackpad.delayedInput();
 
         return UIValues.resettable(trackpad, () -> this.data.scale, this::fillGeneral);
-    }
-
-    /**
-     * A copy/paste controller whose copy source and paste target get re-pointed at whichever entry's
-     * context menu is being opened — the same "current selection" role the clip and replay lists give
-     * their controllers, except here the selection only lives as long as the menu.
-     */
-    private class EntryClipboard
-    {
-        public final UICopyPasteController controller;
-
-        private Supplier<MapType> source;
-        private Consumer<MapType> target;
-
-        public EntryClipboard(PresetManager manager, String copyPrefix)
-        {
-            this.controller = new UICopyPasteController(manager, copyPrefix)
-                .supplier(() -> this.source == null ? null : this.source.get())
-                .consumer((data, mouseX, mouseY) ->
-                {
-                    if (this.target != null)
-                    {
-                        this.target.accept(data);
-                    }
-                })
-                .canCopy(() -> this.source != null)
-                .canPaste(() -> UIModelConfigEditor.this.data != null && this.target != null);
-        }
-
-        public void aim(Supplier<MapType> source, Consumer<MapType> target)
-        {
-            this.source = source;
-            this.target = target;
-        }
     }
 }

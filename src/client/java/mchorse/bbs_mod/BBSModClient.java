@@ -11,6 +11,7 @@ import mchorse.bbs_mod.api.client.events.RegisterTrackCategoriesEvent;
 import mchorse.bbs_mod.api.client.events.RegisterFilmToolsEvent;
 import mchorse.bbs_mod.api.client.events.RegisterFormPanelsEvent;
 import mchorse.bbs_mod.api.client.events.RegisterReplayActionsEvent;
+import mchorse.bbs_mod.api.client.events.RegisterRigSectionsEvent;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import mchorse.bbs_mod.audio.MinecraftSoundCapture;
@@ -32,13 +33,15 @@ import mchorse.bbs_mod.client.ModelBlockConversion;
 import mchorse.bbs_mod.client.renderer.LivePlayerItemUse;
 import mchorse.bbs_mod.client.renderer.ModelBlockEntityRenderer;
 import mchorse.bbs_mod.client.renderer.ThirdPersonItemUse;
+import mchorse.bbs_mod.cubic.ModelInstance;
 import mchorse.bbs_mod.cubic.animation.ItemUsePose;
 import mchorse.bbs_mod.client.renderer.entity.ActorEntityRenderer;
 import mchorse.bbs_mod.client.renderer.entity.GunProjectileEntityRenderer;
 import mchorse.bbs_mod.client.renderer.item.GunItemRenderer;
 import mchorse.bbs_mod.client.renderer.item.ModelBlockItemRenderer;
 import mchorse.bbs_mod.cubic.model.ModelManager;
-import mchorse.bbs_mod.api.BBSAddonMod;
+import mchorse.bbs_mod.cubic.rig.RigMarkup;
+import mchorse.bbs_mod.addons.Addons;
 import mchorse.bbs_mod.api.client.events.BBSClientReadyEvent;
 import mchorse.bbs_mod.api.client.events.RegisterClientSettingsEvent;
 import mchorse.bbs_mod.api.client.events.RegisterClipPanelsEvent;
@@ -68,6 +71,8 @@ import mchorse.bbs_mod.api.client.events.RegisterL10nEvent;
 import mchorse.bbs_mod.film.Films;
 import mchorse.bbs_mod.film.Recorder;
 import mchorse.bbs_mod.film.WorldVideoExportSession;
+import mchorse.bbs_mod.film.sequence.FilmClip;
+import mchorse.bbs_mod.film.sequence.SequenceParts;
 import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.forms.FormCategories;
 import mchorse.bbs_mod.forms.categories.UserFormCategory;
@@ -88,6 +93,7 @@ import mchorse.bbs_mod.network.ServerNetwork;
 import mchorse.bbs_mod.particles.ParticleManager;
 import mchorse.bbs_mod.resources.AssetProvider;
 import mchorse.bbs_mod.resources.Link;
+import mchorse.bbs_mod.resources.packs.ExternalAssetsSourcePack;
 import mchorse.bbs_mod.resources.packs.URLError;
 import mchorse.bbs_mod.resources.packs.URLRepository;
 import mchorse.bbs_mod.resources.packs.URLSourcePack;
@@ -105,8 +111,11 @@ import mchorse.bbs_mod.ui.morphing.UIMorphingPanel;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.keys.KeyCombo;
 import mchorse.bbs_mod.ui.utils.keys.KeybindSettings;
+import mchorse.bbs_mod.utils.clips.ClipFactory;
+import mchorse.bbs_mod.utils.CameraFollow;
 import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.ScreenshotRecorder;
+import mchorse.bbs_mod.utils.VideoExportSettings;
 import mchorse.bbs_mod.utils.VideoRecorder;
 import mchorse.bbs_mod.utils.colors.Color;
 import mchorse.bbs_mod.utils.colors.Colors;
@@ -131,7 +140,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.InvalidateRenderStateCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.fabricmc.fabric.impl.client.rendering.BlockEntityRendererRegistryImpl;
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.option.KeyBinding;
@@ -171,6 +179,7 @@ public class BBSModClient implements ClientModInitializer
     private static EntitySelectors selectors;
 
     private static ParticleManager particles;
+    private static ClipFactory sequenceClips;
 
     private static KeyBinding keyDashboard;
     private static KeyBinding keyItemEditor;
@@ -297,6 +306,15 @@ public class BBSModClient implements ClientModInitializer
         return particles;
     }
 
+    /**
+     * The clips a sequence's timeline is made of: films and the sound over them. Nothing is drawn
+     * over the films, so the sequence's video is put together by ffmpeg alone.
+     */
+    public static ClipFactory getSequenceClipPalette()
+    {
+        return sequenceClips;
+    }
+
     public static CameraController getCameraController()
     {
         return cameraController;
@@ -381,6 +399,7 @@ public class BBSModClient implements ClientModInitializer
     {
         BBSRendering.setCustomSize(false, 0, 0);
         dashboard = null;
+        CameraFollow.reset();
         DashboardWarmup.reset();
         worldExportSession.stop();
         videos.delete();
@@ -542,12 +561,7 @@ public class BBSModClient implements ClientModInitializer
 
         /* The client half of the addons, picked up before anything client side is posted. Their
          * common half is registered by BBSMod, from the "bbs-addon" entrypoint. */
-        FabricLoader.getInstance()
-            .getEntrypointContainers("bbs-client-addon", BBSAddonMod.class)
-            .forEach((container) ->
-            {
-                BBSMod.events.register(container.getEntrypoint());
-            });
+        Addons.load("bbs-client-addon", BBSMod.events::register);
 
         AssetProvider provider = BBSMod.getProvider();
 
@@ -613,6 +627,7 @@ public class BBSModClient implements ClientModInitializer
 
         provider.register(new URLSourcePack("http", repository));
         provider.register(new URLSourcePack("https", repository));
+        provider.register(new ExternalAssetsSourcePack(SequenceParts.SOURCE, SequenceParts.getFolder()).providesFiles());
 
         PlayerSkins.init(new File(parentFile, "skin_cache"));
 
@@ -656,6 +671,14 @@ public class BBSModClient implements ClientModInitializer
             }
         });
 
+        BBSSettings.welds.postCallback((v, f) ->
+        {
+            for (ModelInstance model : models.models.values())
+            {
+                model.refreshWelds();
+            }
+        });
+
         BBSSettings.taskbarSide.modes(UIDashboardPanels.getSideLabels());
 
         BBSSettings.keystrokeMode.modes(
@@ -669,6 +692,12 @@ public class BBSModClient implements ClientModInitializer
         BBSSettings.rotate3dSphereMode.modes(
             UIKeys.ENGINE_ROTATE_3D_SPHERE_MODE_TRACKBALL,
             UIKeys.ENGINE_ROTATE_3D_SPHERE_MODE_ARCBALL
+        );
+
+        BBSSettings.gizmoAntialiasing.modes(
+            UIKeys.ENGINE_GIZMO_ANTIALIASING_OFF,
+            IKey.constant("2×"),
+            IKey.constant("4×")
         );
 
         BBSSettings.translateHotkeyOrder
@@ -710,6 +739,11 @@ public class BBSModClient implements ClientModInitializer
             .register(Link.bbs("spline"), SplineClientClip.class, new ClipFactoryData(Icons.GRAPH, 0x5599ff).in(ClipCategories.OVERWRITE))
             .register(Link.bbs("curve"), CurveClientClip.class, new ClipFactoryData(Icons.ARC, 0xff1493).in(ClipCategories.MISC));
 
+        sequenceClips = new ClipFactory().category(ClipCategories.MISC);
+        sequenceClips
+            .register(Link.bbs("film"), FilmClip.class, new ClipFactoryData(Icons.FILM, 0x9d6cf0).in(ClipCategories.MISC))
+            .register(Link.bbs("audio"), AudioClientClip.class, new ClipFactoryData(Icons.SOUND, 0xffc825).in(ClipCategories.MISC));
+
         /* The client-side registries, each followed by the event that lets addons add to it.
          * They used to fill themselves in static initialisers, so the moment depended on who
          * touched the class first — a moment nobody chose and an addon could not aim at. */
@@ -719,6 +753,7 @@ public class BBSModClient implements ClientModInitializer
         UIFormEditor.setup();
         BBSMod.events.post(new RegisterFormEditorsEvent());
         BBSMod.events.post(new RegisterFormPanelsEvent());
+        BBSMod.events.post(new RegisterRigSectionsEvent());
         BBSMod.events.post(new RegisterReplayActionsEvent());
 
         UIClip.setup();
@@ -762,6 +797,9 @@ public class BBSModClient implements ClientModInitializer
         StructureWand.register();
         ModelBlockConversion.register();
 
+        /* The rig's markup the film viewport draws is what this world frame rendered */
+        WorldRenderEvents.START.register((context) -> RigMarkup.beginWorld());
+        WorldRenderEvents.END.register((context) -> RigMarkup.endWorld());
         WorldRenderEvents.BEFORE_ENTITIES.register((context) -> BBSRendering.beginEntityPass());
 
         WorldRenderEvents.AFTER_ENTITIES.register((context) ->
@@ -823,15 +861,6 @@ public class BBSModClient implements ClientModInitializer
          * (a drawn bow, a raised shield), and that state is computed here on
          * the client - hand it the lookup. */
         ItemUsePose.setSource(ThirdPersonItemUse::get);
-
-        WorldRenderEvents.LAST.register((context) ->
-        {
-            if (videoRecorder.isRecording() && BBSRendering.canRender)
-            {
-                minecraftSoundCapture.captureFrame();
-                videoRecorder.recordFrame();
-            }
-        });
 
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> client.execute(() ->
         {
@@ -1035,7 +1064,7 @@ public class BBSModClient implements ClientModInitializer
             return;
         }
 
-        worldExportSession.start(null, null);
+        worldExportSession.start(VideoExportSettings.global(), null, null);
     }
 
     private KeyBinding createKey(String id, int key)
@@ -1119,7 +1148,7 @@ public class BBSModClient implements ClientModInitializer
             return;
         }
 
-        worldExportSession.start(filmId, panel.getData());
+        worldExportSession.start(VideoExportSettings.global(), filmId, panel.getData());
     }
 
     private void keyPauseFilm()

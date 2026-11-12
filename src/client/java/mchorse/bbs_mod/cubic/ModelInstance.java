@@ -1,7 +1,9 @@
 package mchorse.bbs_mod.cubic;
 
+import mchorse.bbs_mod.api.client.render.ModelMeshReplacement;
 import com.mojang.blaze3d.systems.RenderSystem;
 import mchorse.bbs_mod.BBSModClient;
+import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.bobj.BOBJBone;
 import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.client.BBSShaders;
@@ -15,6 +17,7 @@ import mchorse.bbs_mod.cubic.model.ArmorType;
 import mchorse.bbs_mod.cubic.model.View;
 import mchorse.bbs_mod.cubic.model.bobj.BOBJModel;
 import mchorse.bbs_mod.cubic.model.config.ModelConfig;
+import mchorse.bbs_mod.cubic.render.CarrierClip;
 import mchorse.bbs_mod.cubic.render.CubicCubeRenderer;
 import mchorse.bbs_mod.cubic.render.CubicMatrixRenderer;
 import mchorse.bbs_mod.cubic.render.CubicRenderer;
@@ -269,7 +272,7 @@ public class ModelInstance implements IModelInstance
         return this.vaos;
     }
 
-    /** Welds resolved against this model, built once. Empty when the model declares none or isn't cubic. */
+    /** Welds resolved against this model, built once. Empty when the model declares none, isn't cubic or welds are switched off. */
     public List<WeldBinding> getWeldBindings()
     {
         if (this.weldBindings == null)
@@ -277,7 +280,7 @@ public class ModelInstance implements IModelInstance
             this.weldBindings = new ArrayList<>();
             this.weldedGroups = new HashSet<>();
 
-            if (this.model instanceof Model model)
+            if (this.model instanceof Model model && BBSSettings.welds.get())
             {
                 for (ModelWeld weld : this.config.getWelds())
                 {
@@ -307,6 +310,22 @@ public class ModelInstance implements IModelInstance
         return this.weldMesh;
     }
 
+    /** Seat the bones the config lists on the curved welds above them (see {@link WeldMesh#follow}). */
+    public void followWelds()
+    {
+        if (this.config.weldFollowers.get().isEmpty() || !(this.model instanceof Model model))
+        {
+            return;
+        }
+
+        WeldMesh weldMesh = this.getWeldMesh();
+
+        if (weldMesh != null)
+        {
+            weldMesh.follow(model, this.config.weldFollowers.get());
+        }
+    }
+
     /** Drop the resolved welds and their bands; both rebuild from the current cubes and config on next use. */
     private void resetWelds()
     {
@@ -330,10 +349,16 @@ public class ModelInstance implements IModelInstance
      */
     public void invalidateWelds()
     {
+        this.config.rebuild();
+        this.refreshWelds();
+    }
+
+    /** Re-resolve the same config's welds — the welds setting was switched: the bones welded before and after re-bake. */
+    public void refreshWelds()
+    {
         Set<ModelGroup> welded = this.weldedGroups;
 
         this.resetWelds();
-        this.config.rebuild();
         this.queueRebake(welded == null ? Collections.emptySet() : welded, true);
     }
 
@@ -672,7 +697,7 @@ public class ModelInstance implements IModelInstance
                 );
                 origin.rotateY(MathUtils.PI);
 
-                bones.put(group.id, matrix, origin, evaluatedChannelRotation(group.current, group.orient, true));
+                bones.put(group.id, matrix, origin, evaluatedChannelRotation(group.current, group.orient, true), group.offBody);
             }
         }
         else if (this.model instanceof BOBJModel model)
@@ -736,8 +761,11 @@ public class ModelInstance implements IModelInstance
      * and drawn with each bone (see {@link WeldMesh}); only bones with no VAO (shape-keyed meshes, or none
      * baked yet) tessellate on the CPU. A model with no VAOs at all draws its band in that CPU bake.
      */
-    private void renderHybrid(MatrixStack stack, ShaderProgram shader, Color color, int light, int overlay, StencilMap stencilMap, ShapeKeys keys, Function<String, Link> textureResolver, Model model, WeldMesh weldMesh)
+    private void renderHybrid(MatrixStack stack, ShaderProgram shader, Color color, int light, int overlay, StencilMap stencilMap, ShapeKeys keys, Function<String, Link> textureResolver, Model model, WeldMesh weldMesh, ModelMeshReplacement meshes, CarrierClip carrier)
     {
+        /* The bake is in the model's own frame (ROOT), so the carrier is reached through this draw's stack. */
+        Matrix4f toCarrier = carrier == null ? null : new Matrix4f(carrier.frame()).invert().mul(stack.peek().getPositionMatrix());
+
         /* The CPU bake draws through the BBS model shader outside picking and the Iris pipeline, which run
          * their own shader state; the VAO bones and the band use the same shader so all of it matches. */
         boolean explicitShader = stencilMap == null && !(BBSRendering.isIrisShadersEnabled() && BBSRendering.isRenderingWorld());
@@ -758,7 +786,7 @@ public class ModelInstance implements IModelInstance
 
         if (!cpuGroups.isEmpty() || cpuBand != null)
         {
-            long key = cacheable ? this.cpuKey(model, keys, light, overlay, color, cpuOverlay != null, stencilMap) : 0L;
+            long key = cacheable ? this.cpuKey(model, keys, light, overlay, color, cpuOverlay != null, stencilMap, meshes) * 31 + carrierKey(carrier, toCarrier) : 0L;
 
             entry = cacheable ? this.cpuCache.find(key, epoch) : null;
 
@@ -771,6 +799,8 @@ public class ModelInstance implements IModelInstance
                 bake.setCpuGroups(cpuGroups);
                 bake.setBakePass(true);
                 bake.setBand(weldMesh);
+                bake.setMeshes(meshes);
+                bake.setCarrierClip(this.config.carrierBones.get(), carrier, toCarrier);
 
                 builder = Tessellator.getInstance().getBuffer();
                 builder.begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_COLOR_TEXTURE_OVERLAY_LIGHT_NORMAL);
@@ -813,6 +843,11 @@ public class ModelInstance implements IModelInstance
         if (band != null)
         {
             renderProcessor.setPosedBand(band, ModelVAORenderer.captureModelView(stack), new Matrix3f(stack.peek().getNormalMatrix()));
+        }
+
+        if (meshes != null)
+        {
+            renderProcessor.setMeshes(meshes, ModelVAORenderer.captureModelView(stack), new Matrix3f(stack.peek().getNormalMatrix()));
         }
 
         RenderSystem.setShader(() -> drawShader);
@@ -866,9 +901,14 @@ public class ModelInstance implements IModelInstance
     /**
      * What the CPU bake depends on: every bone's evaluated transform, colour and lighting (the pose the seams
      * and the deformation come from), the draw's light/overlay/colour, the shape keys, and the picking mode
-     * (which bakes stencil ids into the light attribute).
+     * (which bakes stencil ids into the light attribute), and which cubes an addon draws itself.
      */
-    private long cpuKey(Model model, ShapeKeys keys, int light, int overlay, Color color, boolean cpuOverlayActive, StencilMap stencilMap)
+    private static long carrierKey(CarrierClip carrier, Matrix4f toCarrier)
+    {
+        return carrier == null ? 0L : (toCarrier.hashCode() * 31L + carrier.min().hashCode()) * 31L + carrier.max().hashCode();
+    }
+
+    private long cpuKey(Model model, ShapeKeys keys, int light, int overlay, Color color, boolean cpuOverlayActive, StencilMap stencilMap, ModelMeshReplacement meshes)
     {
         long hash = 1125899906842597L;
 
@@ -897,6 +937,7 @@ public class ModelInstance implements IModelInstance
         hash = hash * 31 + (cpuOverlayActive ? 1 : 0);
         hash = hash * 31 + (stencilMap == null ? 0 : (stencilMap.increment ? 2 : 1));
         hash = hash * 31 + (keys == null ? 0 : keys.shapeKeys.hashCode());
+        hash = hash * 31 + (meshes == null ? 0 : meshes.key());
 
         return hash;
     }
@@ -1017,9 +1058,15 @@ public class ModelInstance implements IModelInstance
         return groups == null ? Set.of() : groups;
     }
 
-    public void render(MatrixStack stack, Supplier<ShaderProgram> program, Color color, int light, int overlay, StencilMap stencilMap, ShapeKeys keys, Function<String, Link> textureResolver)
+    /**
+     * Draws the model for {@link #form}. {@code meshes} is what an addon draws itself of this form
+     * ({@code ModelMeshEvents}), null for the model as baked; only cubic models take it.
+     */
+    public void render(MatrixStack stack, Supplier<ShaderProgram> program, Color color, int light, int overlay, StencilMap stencilMap, ShapeKeys keys, Function<String, Link> textureResolver, ModelMeshReplacement meshes)
     {
+        keys = this.config.shapeLimits.apply(keys);
         ShaderProgram shader = program.get();
+        CarrierClip carrier = this.config.carrierBones.get().isEmpty() ? null : CarrierClip.current();
 
         if (this.model instanceof Model model)
         {
@@ -1029,23 +1076,19 @@ public class ModelInstance implements IModelInstance
              * model whose VAOs aren't baked yet falls through to the plain CPU path below. */
             if (weldMesh != null || (this.partialVaos && !this.vaos.isEmpty()))
             {
-                this.renderHybrid(stack, shader, color, light, overlay, stencilMap, keys, textureResolver, model, weldMesh);
+                this.renderHybrid(stack, shader, color, light, overlay, stencilMap, keys, textureResolver, model, weldMesh, meshes, carrier);
             }
             else if (this.isVAORendered())
             {
                 CubicVAORenderer renderProcessor = new CubicVAORenderer(shader, this, light, overlay, stencilMap, keys, textureResolver);
 
                 renderProcessor.setColor(color.r, color.g, color.b, color.a);
-                ModelVAORenderer.beginPass(shader);
+                if (meshes != null)
+                {
+                    renderProcessor.setMeshes(meshes, ModelVAORenderer.captureModelView(stack), new Matrix3f(stack.peek().getNormalMatrix()));
+                }
 
-                try
-                {
-                    CubicRenderer.processRenderModel(renderProcessor, null, stack, model);
-                }
-                finally
-                {
-                    ModelVAORenderer.endPass();
-                }
+                CubicRenderer.processRenderModel(renderProcessor, null, stack, model);
             }
             else
             {
@@ -1055,6 +1098,15 @@ public class ModelInstance implements IModelInstance
 
                 renderProcessor.setCpuOverlayActive(cpuOverlay != null);
                 renderProcessor.setColor(color.r, color.g, color.b, color.a);
+                renderProcessor.setMeshes(meshes);
+
+                if (meshes != null)
+                {
+                    renderProcessor.emitMeshes(new Matrix4f(stack.peek().getPositionMatrix()), new Matrix3f(stack.peek().getNormalMatrix()));
+                }
+
+                /* Baked in the caller's frame: the same frame the carrier was taken in. */
+                renderProcessor.setCarrierClip(this.config.carrierBones.get(), carrier, carrier == null ? null : new Matrix4f(carrier.frame()).invert());
                 RenderSystem.setShader(() -> shader);
 
                 BufferBuilder builder = Tessellator.getInstance().getBuffer();

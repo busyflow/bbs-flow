@@ -216,6 +216,25 @@ public abstract class EditorLayoutNode
         );
     }
 
+    /**
+     * Default sequence layout: the preview with the clip's properties beside it on top, the
+     * timeline over the whole width under them.
+     */
+    public static EditorLayoutNode defaultSequenceLayout()
+    {
+        return new SplitterNode(
+            true,
+            0.6F,
+            new SplitterNode(
+                false,
+                0.75F,
+                new PanelNode("preview"),
+                new PanelNode("clip")
+            ),
+            new PanelNode("timeline")
+        );
+    }
+
     /** Returns a new tree with panelId removed; parent splitter is collapsed to its other child. */
     public static EditorLayoutNode copyWithRemovedPanel(EditorLayoutNode root, String panelId)
     {

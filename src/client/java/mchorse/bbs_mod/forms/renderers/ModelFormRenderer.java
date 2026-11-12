@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.forms.renderers;
 
+import mchorse.bbs_mod.api.client.events.ModelMeshEvents;
+import mchorse.bbs_mod.api.client.render.ModelMeshReplacement;
 import mchorse.bbs_mod.api.client.events.FormPoseEvents;
 
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -17,7 +19,9 @@ import mchorse.bbs_mod.cubic.animation.Animator;
 import mchorse.bbs_mod.cubic.animation.IAnimator;
 import mchorse.bbs_mod.cubic.animation.ItemUsePose;
 import mchorse.bbs_mod.cubic.animation.ProceduralAnimator;
+import mchorse.bbs_mod.cubic.data.model.Model;
 import mchorse.bbs_mod.cubic.data.model.ModelGroup;
+import mchorse.bbs_mod.cubic.render.CarrierClip;
 import mchorse.bbs_mod.cubic.ik.ModelIKDebug;
 import mchorse.bbs_mod.cubic.ik.ModelIKRuntime;
 import mchorse.bbs_mod.cubic.spline.ModelSplineRuntime;
@@ -47,6 +51,8 @@ import mchorse.bbs_mod.forms.renderers.utils.MatrixCache;
 import mchorse.bbs_mod.ui.utils.pose.PoseBones;
 import mchorse.bbs_mod.forms.renderers.utils.MatrixCacheEntry;
 import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
+import mchorse.bbs_mod.forms.values.ValueShapeKeys;
+import mchorse.bbs_mod.obj.shapes.ShapeKeys;
 import mchorse.bbs_mod.math.Operation;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.settings.values.core.ValuePose;
@@ -113,8 +119,6 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
     private ModelInstance lastModel;
     private boolean renderingArm;
 
-    /** The rig's debug overlay, read off the rig with the model and drawn after the body parts — see {@link ModelIKDebug#prepare}. */
-    private final List<Runnable> overlays = new ArrayList<>();
 
     private IEntity entity = new StubEntity();
 
@@ -246,6 +250,43 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         }
 
         return pose;
+    }
+
+    /** The shape keys with every overlay track added on top; the base value itself when none holds anything. */
+    public ShapeKeys getShapeKeys()
+    {
+        this.form.syncOverlayTracks();
+        ShapeKeys keys = this.form.shapeKeys.get();
+        ShapeKeys result = keys;
+
+        result = addShapeKeys(keys, result, this.form.shapeKeysOverlay.get());
+
+        for (ValueShapeKeys overlay : this.form.additionalShapeKeys)
+        {
+            result = addShapeKeys(keys, result, overlay.get());
+        }
+
+        return result;
+    }
+
+    private static ShapeKeys addShapeKeys(ShapeKeys base, ShapeKeys result, ShapeKeys overlay)
+    {
+        if (overlay.shapeKeys.isEmpty())
+        {
+            return result;
+        }
+
+        if (result == base)
+        {
+            result = base.copy();
+        }
+
+        for (Map.Entry<String, Float> entry : overlay.shapeKeys.entrySet())
+        {
+            result.shapeKeys.merge(entry.getKey(), entry.getValue(), Float::sum);
+        }
+
+        return result;
     }
 
     private void applyPose(Pose targetPose, Pose pose)
@@ -581,7 +622,10 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         final boolean ignoreMaterials = model.materials.size() <= 1;
         final Link materialFallback = ignoreMaterials ? resolvedDefault : model.getTexture();
 
-        model.render(newStack, program, finalColor, light, overlay, stencilMap, this.form.shapeKeys.get(), (material) ->
+        /* What an addon draws itself of this form, asked once the pose is final. */
+        ModelMeshReplacement meshes = model.model instanceof Model cubic ? ModelMeshEvents.REPLACE.invoker().replace(this.form, cubic, transition) : null;
+
+        model.render(newStack, program, finalColor, light, overlay, stencilMap, this.getShapeKeys(), (material) ->
         {
             if (ignoreMaterials)
             {
@@ -605,11 +649,11 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
             }
 
             return model.getMaterialTexture(material, materialFallback);
-        });
+        }, meshes);
 
         if (stencilMap == null && !this.renderingArm && this.form != null)
         {
-            this.addOverlay(ModelIKDebug.prepare(newStack, model.model, this.form));
+            ModelIKDebug.capture(newStack, model.model, this.form);
         }
 
         gameRenderer.getLightmapTextureManager().disable();
@@ -709,6 +753,7 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
                 case PHYSICS -> this.applyPhysics(entity, model, transition, world);
                 case SPLINE -> this.applySpline(model);
                 case LIMITS -> this.applyConstraints(model);
+                case WELDS -> model.followWelds();
             }
         }
     }
@@ -1172,24 +1217,6 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         }
 
         model.fillStencilMap(context.stencilMap, this.form);
-
-        if (this.form != null)
-        {
-            /* Its own stack: the markers draw after the body parts, when the context's has moved on. */
-            MatrixStack stack = new MatrixStack();
-
-            MatrixStackUtils.multiply(stack, context.stack.peek().getPositionMatrix());
-            this.applySplineMotion(stack);
-            this.addOverlay(ModelIKDebug.prepareStencil(stack, model.model, this.form, context.stencilMap, this.form));
-        }
-    }
-
-    private void addOverlay(Runnable overlay)
-    {
-        if (overlay != null)
-        {
-            this.overlays.add(overlay);
-        }
     }
 
     private void captureMatrices(ModelInstance model)
@@ -1215,9 +1242,13 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
             context.world.push();
         }
 
+        ModelInstance carrier = this.getModel();
+        Matrix4f root = new Matrix4f(context.stack.peek().getPositionMatrix());
+
         for (BodyPart part : this.form.parts.getAllTyped())
         {
-            Matrix4f matrix = part.filterBoneMatrix(this.bones.get(part.bone.get()).matrix());
+            Matrix4f bone = this.bones.get(part.bone.get()).matrix();
+            Matrix4f matrix = part.filterBoneMatrix(bone);
 
             context.stack.push();
             if (context.world != null)
@@ -1244,7 +1275,10 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
                 }
             }
 
+            /* The bone the part is worn on, whole (not filtered like the part's frame), as a box to stay in. */
+            CarrierClip.push(carrier != null && carrier.model instanceof Model cubic ? CarrierClip.of(cubic, part.bone.get(), root, bone) : null);
             this.renderBodyPart(part, context);
+            CarrierClip.pop();
 
             context.stack.pop();
             if (context.world != null)
@@ -1259,14 +1293,6 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         {
             context.world.pop();
         }
-
-        /* Last, so the parts can't paint over the debug drawn through the model. */
-        for (Runnable overlay : this.overlays)
-        {
-            overlay.run();
-        }
-
-        this.overlays.clear();
     }
 
     @Override
@@ -1322,7 +1348,7 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
             o.set(stack.peek().getPositionMatrix());
             stack.pop();
 
-            matrices.put(StringUtils.combinePaths(prefix, entry.getKey()), matrix, o, entry.getValue().evaluatedRotation());
+            matrices.put(StringUtils.combinePaths(prefix, entry.getKey()), matrix, o, entry.getValue().evaluatedRotation(), entry.getValue().offBody());
         }
 
         /* Recursively do the same thing with body parts */

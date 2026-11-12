@@ -11,7 +11,9 @@ import mchorse.bbs_mod.ui.utils.SplineKeyframeEditor;
 import mchorse.bbs_mod.cubic.spline.SplineIK;
 import mchorse.bbs_mod.forms.forms.SplineForm;
 import mchorse.bbs_mod.ui.utils.SplineEditorUtils;
+import mchorse.bbs_mod.ui.utils.ScreenOverlay;
 import mchorse.bbs_mod.ui.utils.SplineOverlay;
+import mchorse.bbs_mod.cubic.rig.RigMarkup;
 
 import java.util.ArrayList;
 import java.util.Objects;
@@ -34,6 +36,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.camera.Camera;
 import mchorse.bbs_mod.camera.controller.RunnerCameraController;
+import mchorse.bbs_mod.camera.data.Position;
 import mchorse.bbs_mod.film.BaseFilmController;
 import mchorse.bbs_mod.film.Film;
 import mchorse.bbs_mod.film.FilmTarget;
@@ -43,6 +46,7 @@ import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.entities.MCEntity;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.graphics.Draw;
+import mchorse.bbs_mod.graphics.SceneDepth;
 import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.morphing.Morph;
@@ -90,11 +94,119 @@ import net.minecraft.world.World;
 
 public class UIFilmController extends UIElement implements GizmoViewport
 {
+    /** The viewport's markup: the motion path, the rig's handles, spline points and shape key handles on one screen layer. */
+    private final ScreenOverlay markup = new ScreenOverlay();
     private final ShapeControllerOverlay shapeOverlay = new ShapeControllerOverlay();
 
-    public boolean pickShapeController(UIContext context)
+    /**
+     * A click on the viewport's markup: the handle nearest to the cursor takes it, whichever overlay
+     * it belongs to — a shape key handle, a spline point, a rig handle. The gizmo's handles come
+     * first (a picked point or goal sits right under the gizmo), a target pick takes the click for itself.
+     */
+    public boolean clickMarkup(UIContext context)
     {
-        return !this.isCovered() && !this.isRecording() && !this.panel.isFlying() && this.shapeOverlay.click(context);
+        if ((context.mouseButton != 0 && context.mouseButton != 1) || this.isCovered() || this.isRecording() || this.panel.isFlying()
+            || this.picker.isPickingTarget() || !this.panel.preview.getViewport().isInside(context)) return false;
+        int stencil = this.getGizmoStencil().getIndex();
+        if (context.mouseButton == 0 && this.canShowGizmo() && stencil >= Gizmo.STENCIL_X && stencil <= Gizmo.STENCIL_MAX) return false;
+        if (this.shapeOverlay.click(context)) return true;
+        if (this.splineOverlay.pick(context.mouseX, context.mouseY) != null) return this.pickSplinePoint(context);
+        Pair<mchorse.bbs_mod.forms.forms.Form, String> bone = this.pickRigHandle(context);
+        if (bone != null && context.mouseButton == 0 && this.orbit.enabled) return this.panel.replayEditor.deferViewportPick(context, bone);
+        return bone != null && this.panel.replayEditor.pickViewportPair(context, bone);
+    }
+
+    /** The form and bone of the rig handle under the cursor, if the markup's nearest handle is one. */
+    public Pair<mchorse.bbs_mod.forms.forms.Form, String> pickRigHandle(UIContext context)
+    {
+        return RigMarkup.pick(this.markup, context.mouseX, context.mouseY);
+    }
+
+    private void renderMarkup(UIContext context)
+    {
+        this.markup.begin(this.panel.preview.getViewport());
+        /* What belongs to the scene hides behind blocks and models */
+        this.markup.occluded(true);
+        this.renderCameraFrustum();
+        this.renderMotionPath();
+        this.markup.occluded(false);
+        this.renderRigMarkup();
+        this.renderSplineOverlay(context);
+        this.renderShapeControllers(context);
+        this.markup.flush(context);
+    }
+
+    /** Where the film's camera stands and looks, seen from outside it: its frustum's edges, the middle in blue. */
+    private void renderCameraFrustum()
+    {
+        if (this.editorController == null || this.getPovMode() == CAMERA_MODE_CAMERA
+            || !BBSSettings.recordingCameraPreview.get() || !BBSSettings.recordingOverlays.get())
+        {
+            return;
+        }
+
+        Position position = this.panel.getRunner().getPosition();
+        Camera camera = this.panel.getDrawnCamera();
+        Matrix4f mvp = new Matrix4f(camera.projection).mul(camera.view);
+        Vector3f origin = new Vector3f(
+            (float) (position.point.x - camera.position.x),
+            (float) (position.point.y - camera.position.y),
+            (float) (position.point.z - camera.position.z)
+        );
+        Vector3f[] rays = Recorder.frustumRays(position);
+
+        for (int i = 0; i < rays.length; i++)
+        {
+            int color = i == rays.length - 1 ? 0xff0080ff : 0xffffffff;
+
+            this.markup.line(mvp, origin, new Vector3f(origin).add(rays[i]), color);
+        }
+    }
+
+    private void renderMotionPath()
+    {
+        ValueMotionPath motionPath = this.getMotionPath();
+
+        if (!motionPath.enabled.get() || this.isRecording())
+        {
+            return;
+        }
+
+        if (this.panel.getData() == null)
+        {
+            return;
+        }
+
+        BBSProfiler.begin(BBSProfiler.Timer.MOTION_PATH);
+        MotionPath.render(this.markup, this.panel.getDrawnCamera(), motionPath, this, this.panel.getData(), this.getReplay(), this.getTick());
+        BBSProfiler.end(BBSProfiler.Timer.MOTION_PATH);
+    }
+
+    /** The selected replay's goals, poles and controllers the world frame captured, the edited bone's ringed. */
+    private void renderRigMarkup()
+    {
+        if (this.isRecording())
+        {
+            return;
+        }
+
+        Pair<String, TransformSpace> bone = this.getBone();
+        IEntity current = this.getCurrentEntity();
+
+        if (current == null)
+        {
+            return;
+        }
+
+        /* Only the body part the parts list picked shows its controls, so a face on the head doesn't crowd
+         * the body's; a part that is no model (it has none) leaves the whole character's. */
+        String part = this.panel.replayEditor.getActiveBodyPart();
+        Form root = current.getForm();
+        Form picked = root == null ? null : (part.isEmpty() ? root : FormUtils.getForm(root, part));
+        boolean onePart = picked instanceof mchorse.bbs_mod.forms.forms.ModelForm;
+
+        RigMarkup.draw(this.markup, RigMarkup.world(), (form) -> onePart ? form == picked : FormUtils.getRoot(form) == root, (form, id) -> bone != null
+            && mchorse.bbs_mod.utils.StringUtils.combinePaths(FormUtils.getPath(form), id).equals(bone.a));
     }
 
     private void renderShapeControllers(UIContext context)
@@ -106,8 +218,8 @@ public class UIFilmController extends UIElement implements GizmoViewport
         IEntity entity = this.getCurrentEntity();
         Replay replay = this.panel.replayEditor.getReplay();
         if (entity == null || replay == null) { this.shapeOverlay.clear(); return; }
-        var camera = this.panel.getCamera();
-        this.shapeOverlay.draw(context, keys.controls, this.panel.preview.getViewport(), camera.projection, c ->
+        var camera = this.panel.getDrawnCamera();
+        this.shapeOverlay.draw(context, this.markup, keys.controls, camera.projection, c ->
         {
             String path = mchorse.bbs_mod.utils.StringUtils.combinePaths(FormUtils.getPath(keys.form), c.bone.get());
             Matrix4f matrix = mchorse.bbs_mod.film.FilmMatrices.getBoneCompositeMatrix(this.getEntities(), entity, replay,
@@ -163,9 +275,9 @@ public class UIFilmController extends UIElement implements GizmoViewport
     private void renderSplineOverlay(UIContext context)
     {
         SplineEditorUtils.viewportHover(this.panel.replayEditor.getBoneKeyframeEditor(), null);
-        if (!this.splineOverlay.begin()) return;
+        if (!this.splineOverlay.begin(this.markup)) return;
         if (this.isCovered() || this.isRecording()) return;
-        var camera = this.panel.getCamera();
+        var camera = this.panel.getDrawnCamera();
         float transition = this.getCurrentTransition();
         for (var replay : this.panel.getData().replays.getList())
         {
@@ -173,8 +285,8 @@ public class UIFilmController extends UIElement implements GizmoViewport
             if (entity == null || entity.getForm() == null) continue;
             for (var source : SplineEditorUtils.sourcesInTree(entity.getForm()))
             {
-                /* A model's spline shows with the rig's debug, as the rest of the rig does. */
-                if (source instanceof SplineIK && !BBSSettings.debugOverlay.get()) continue;
+                /* A model's spline shows with the rig's debug, as the rest of the rig does: the selected replay's only. */
+                if (source instanceof SplineIK && (!BBSSettings.debugOverlay.get() || entity != this.getCurrentEntity())) continue;
                 var owner = SplineEditorUtils.owner(source);
                 Matrix4f parent;
                 if (source instanceof SplineForm)
@@ -189,7 +301,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
                         camera.position.x, camera.position.y, camera.position.z, transition, point);
                 }
                 if (parent == null) continue;
-                this.splineOverlay.draw(context, new Matrix4f(camera.view).mul(parent), camera.projection, this.panel.preview.getViewport(),
+                this.splineOverlay.draw(context, new Matrix4f(camera.view).mul(parent), camera.projection,
                     source, entity == this.getCurrentEntity() ? SplineEditorUtils.selectedPoints(this.panel.replayEditor.getBoneKeyframeEditor(), source) : java.util.Set.of(),
                     entity == this.getCurrentEntity() ? SplineEditorUtils.hoveredPoint(this.panel.replayEditor.getBoneKeyframeEditor(), context, source) : "");
             }
@@ -202,7 +314,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
             var insertion = this.splineOverlay.insertionAt(context.mouseX, context.mouseY);
             if (insertion != null && spline.sameSource(insertion.chain()) && this.getCurrentEntity() != null
                 && FormUtils.getRoot(SplineEditorUtils.owner(insertion.chain())) == this.getCurrentEntity().getForm())
-                this.splineOverlay.drawInsertionPreview(context, this.panel.preview.getViewport());
+                this.splineOverlay.drawInsertionPreview(context);
         }
         var hovered = this.panel.preview.getViewport().isInside(context) ? this.splineOverlay.pick(context.mouseX, context.mouseY) : null;
         if (hovered != null && (this.getCurrentEntity() == null || FormUtils.getRoot(
@@ -235,9 +347,6 @@ public class UIFilmController extends UIElement implements GizmoViewport
     /** Keying the replay by hand at the cursor. */
     public final FilmKeyframeInsertion keyframes = new FilmKeyframeInsertion(this);
 
-    /** Whose motion path stays on screen regardless of the selection. */
-    public final MotionPathPin motionPathPin = new MotionPathPin(this);
-
     /** What the editor draws over the preview. */
     private final FilmControllerHud hud = new FilmControllerHud(this);
 
@@ -257,6 +366,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
     /** The pick buffer the viewport is hit-tested against, and what it currently reports. */
     public final FilmStencilPicker picker = new FilmStencilPicker(this);
+    private final SelectionOutline outline = new SelectionOutline(this);
 
     public final OrbitFilmCameraController orbit = new OrbitFilmCameraController(this);
     public final OrbitViewGizmo orbitGizmo = new OrbitViewGizmo(this);
@@ -335,13 +445,14 @@ public class UIFilmController extends UIElement implements GizmoViewport
         }).category(category);
         this.keys().register(Keys.FILM_CONTROLLER_TOGGLE_MOTION_PATH, () ->
         {
-            this.getMotionPath().enabled.toggle();
+            MotionPath.toggle(this.getReplay(), this.getEditTarget());
+            this.getMotionPath().enabled.set(true);
 
             UIUtils.playClick();
         }).strict().active(() -> !this.panel.hasSelectedClip()).category(category);
-        this.keys().register(Keys.FILM_CONTROLLER_TOGGLE_MOTION_PATH_PIN, () ->
+        this.keys().register(Keys.FILM_CONTROLLER_MOTION_PATHS_VISIBLE, () ->
         {
-            this.motionPathPin.toggle();
+            this.getMotionPath().enabled.toggle();
 
             UIUtils.playClick();
         }).category(category);
@@ -772,7 +883,9 @@ public class UIFilmController extends UIElement implements GizmoViewport
     @Override
     protected boolean subMouseClicked(UIContext context)
     {
-        if (this.pickShapeController(context)) return true;
+        /* The controller gets the click before the preview does: leave the icon bar's to its buttons */
+        if (this.panel.preview.isOverIcons(context)) return false;
+        if (this.clickMarkup(context)) return true;
         for (var tool : this.addonTools) if (tool.click(context)) return true;
 
         if (this.canControl())
@@ -829,6 +942,12 @@ public class UIFilmController extends UIElement implements GizmoViewport
     public Area getGizmoArea()
     {
         return this.panel.preview.getViewport();
+    }
+
+    @Override
+    public boolean isGizmoCovered(UIContext context)
+    {
+        return this.panel.preview.isOverIcons(context);
     }
 
     @Override
@@ -1007,7 +1126,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
     public void toggleOrbitAnchorBodyPart()
     {
-        this.orbit.toggleAnchorBodyPart();
+        this.orbit.toggleTurningWithAnchor();
     }
 
     public boolean zoomOrbit(double mouseWheel)
@@ -1132,6 +1251,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
         if (this.editorController != null)
         {
             this.editorController.update();
+            this.orbit.markActorsPlaced();
         }
 
         if (this.canControl())
@@ -1154,8 +1274,9 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
     public void renderHUD(UIContext context, PreviewHud hud, Area navBlock)
     {
-        this.renderSplineOverlay(context);
-        this.renderShapeControllers(context);
+        /* Under the markup and the gizmo, like the selection outline of any 3D program */
+        this.outline.render(context);
+        this.renderMarkup(context);
         for (var tool : this.addonTools) tool.updateTool(context);
         this.hud.render(context, hud, navBlock);
     }
@@ -1179,29 +1300,14 @@ public class UIFilmController extends UIElement implements GizmoViewport
         if (this.editorController != null)
         {
             this.editorController.render(context);
-
-            int povMode = this.panel.getController().getPovMode();
-
-            if (povMode != UIFilmController.CAMERA_MODE_CAMERA && BBSSettings.recordingCameraPreview.get())
-            {
-                Recorder.renderCameraPreview(this.panel.getRunner().getPosition(), context.camera(), context.matrixStack());
-            }
         }
+
+        /* The world as drawn so far (blocks and actors), for the markup's lines to hide behind */
+        SceneDepth.capture();
 
         this.renderOrbitCenterMarker(context);
 
-        ValueMotionPath motionPath = this.getMotionPath();
-
-        if (motionPath.enabled.get() && !this.isRecording())
-        {
-            boolean pinned = this.motionPathPin.isPinned();
-            Replay replay = pinned ? this.motionPathPin.getReplay() : this.getReplay();
-            FilmTarget target = pinned ? this.motionPathPin.getTarget() : this.getEditTarget();
-
-            BBSProfiler.begin(BBSProfiler.Timer.MOTION_PATH);
-            MotionPath.render(context, motionPath, this, replay, target, replay == null ? 0F : replay.getTick(this.getTick()));
-            BBSProfiler.end(BBSProfiler.Timer.MOTION_PATH);
-        }
+        this.mouse.trackCursor(this.canControl(), ClientNetwork.isIsBBSModOnServer());
 
         RenderSystem.disableDepthTest();
         for (var tool : this.addonTools) tool.renderTool(context);

@@ -21,6 +21,7 @@ import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.film.controller.UIMotionPathContextMenu;
 import mchorse.bbs_mod.ui.film.controller.UIOnionSkinContextMenu;
+import mchorse.bbs_mod.ui.film.controller.OrbitFilmCameraController;
 import mchorse.bbs_mod.ui.film.controller.OrbitViewGizmo;
 import mchorse.bbs_mod.ui.film.controller.UIFilmController;
 import mchorse.bbs_mod.ui.film.utils.UICameraUtils;
@@ -32,35 +33,43 @@ import mchorse.bbs_mod.ui.framework.elements.overlay.UIMessageFolderOverlayPanel
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIMessageOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
 import mchorse.bbs_mod.ui.utils.Area;
-import mchorse.bbs_mod.ui.utils.UI;
+import mchorse.bbs_mod.ui.utils.ScreenOverlay;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.keys.KeyCodes;
 import mchorse.bbs_mod.utils.Direction;
 import mchorse.bbs_mod.utils.FFMpegUtils;
+import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.ScreenshotRecorder;
 import mchorse.bbs_mod.utils.StringUtils;
+import mchorse.bbs_mod.utils.VideoExportSettings;
 import mchorse.bbs_mod.utils.clips.Clip;
 import mchorse.bbs_mod.utils.clips.Clips;
 import mchorse.bbs_mod.utils.colors.Colors;
-import mchorse.bbs_mod.utils.joml.Vectors;
-import mchorse.bbs_mod.settings.values.numeric.ValueBoolean;
 import mchorse.bbs_mod.utils.iris.IrisShaderPacks;
 import mchorse.bbs_mod.utils.iris.ShaderOptions;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.RotationAxis;
+import org.joml.Matrix4f;
 import org.joml.Vector2i;
+import org.joml.Vector3d;
+import org.joml.Vector3f;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 
-public class UIFilmPreview extends UIElement
+/**
+ * The film editor's preview: the world preview with the film's tools on it - its icons, the
+ * gizmos, the orbit, the recording's marks, the audio waveform.
+ */
+public class UIFilmPreview extends UIWorldPreview
 {
     /**
      * Layers an addon put over the preview.
@@ -73,8 +82,6 @@ public class UIFilmPreview extends UIElement
     private List<AudioClip> clips = new ArrayList<>();
     private UIFilmPanel panel;
     private UIPlacementGizmo placementGizmo;
-
-    public UIElement icons;
 
     public UIIcon onionSkin;
     public UIIcon motionPath;
@@ -89,16 +96,14 @@ public class UIFilmPreview extends UIElement
     public UIIcon recordVideo;
     public UIIcon shaders;
 
-    private final Map<UIIcon, ValueBoolean> iconSettings = new LinkedHashMap<>();
-
-    /** Whether the icon bar is currently shown - see {@link #updateIconsVisibility(UIContext)} */
-    private boolean iconsVisible = true;
-
     /** The side of the axes crosshair's block, matching {@link RenderSystem#renderCrosshair}'s reach. */
     private static final int CURSOR_SIZE = 24;
 
-    /** Everything drawn over the frame goes through here - see {@link PreviewHud}. */
-    private final PreviewHud hud = new PreviewHud();
+    /** Until when the wall cut's depth is shown next to the orbit centre, after Alt + wheel. */
+    private long wallCutDepthShownUntil;
+
+    private static final float WALL_CUT_STEP = 0.1F;
+    private static final long WALL_CUT_DEPTH_SHOWN = 1500L;
 
     /** Where the axes crosshair or the navigation ball landed this frame, for drawing and clicking. */
     private final Area navBlock = new Area();
@@ -106,11 +111,7 @@ public class UIFilmPreview extends UIElement
     public UIFilmPreview(UIFilmPanel filmPanel)
     {
         this.panel = filmPanel;
-        this.placementGizmo = new UIPlacementGizmo(filmPanel);
-
-        this.icons = UI.row(0, 0);
-        this.icons.row().resize();
-        this.icons.relative(this).x(0.5F).y(1F).anchor(0.5F, 1F);
+        this.placementGizmo = new UIPlacementGizmo(() -> filmPanel.cameraEditor, filmPanel::getCursor);
 
         /* Preview buttons */
         this.onionSkin = new UIIcon(Icons.ONION_SKIN, (b) -> this.openOnionSkin());
@@ -143,6 +144,7 @@ public class UIFilmPreview extends UIElement
         this.teleport.context((menu) ->
         {
             menu.action(Icons.MOVE_TO, UIKeys.FILM_TELEPORT_CONTEXT_PLAYER, this.panel.playerToCamera, () -> this.panel.setPlayerToCamera(!this.panel.playerToCamera));
+            menu.action(Icons.VISIBLE, UIKeys.FILM_TELEPORT_CONTEXT_SPECTATOR, BBSSettings.editorPlayerFollowsSpectator.get(), () -> BBSSettings.editorPlayerFollowsSpectator.set(!BBSSettings.editorPlayerFollowsSpectator.get()));
             menu.action(Icons.COPY, UIKeys.CAMERA_PANELS_CONTEXT_COPY_POSITION, () ->
             {
                 Position current = new Position(this.panel.getCamera());
@@ -191,8 +193,14 @@ public class UIFilmPreview extends UIElement
             {
                 menu.action(Icons.MOVE_TO, UIKeys.FILM_REPLAY_ORBIT_TELEPORT_TO_RECORDING, controller::teleportOrbitPivotToReplay);
                 menu.action(Icons.LINK, UIKeys.FILM_CONTROLLER_KEYS_ATTACH_ORBIT, controller.orbit.isAttached(), controller::toggleOrbitAttachment);
-                menu.action(Icons.POSE, UIKeys.FILM_CONTROLLER_KEYS_ORBIT_BODY_PART, controller.orbit.isAnchorBodyPart(), controller::toggleOrbitAnchorBodyPart);
+                if (controller.orbit.canPinToBone())
+                {
+                    menu.action(Icons.BONE, UIKeys.FILM_CONTROLLER_ORBIT_PIN_TO_BONE, controller.orbit.isPinnedToBone(), controller.orbit::togglePinToBone);
+                }
+
+                menu.action(Icons.REFRESH, UIKeys.FILM_CONTROLLER_ORBIT_TURNS_WITH_ANCHOR, controller.orbit.isTurningWithAnchor(), controller.orbit::toggleTurningWithAnchor);
                 menu.action(Icons.FRUSTUM, UIKeys.FILM_CONTROLLER_KEYS_TOGGLE_ORTHO, controller.orbit.isOrtho(), controller.orbit::toggleOrtho);
+                menu.action(Icons.CUT, UIKeys.FILM_CONTROLLER_ORBIT_WALL_CUT, controller.orbit.isCuttingWalls(), controller.orbit::toggleWallCut);
             }
         });
         this.autoKeyframe = new UIIcon(Icons.KEY, (b) -> this.toggleAutoKeyframe());
@@ -213,11 +221,7 @@ public class UIFilmPreview extends UIElement
 
             menu.action(Icons.MOVE_TO, UIKeys.FILM_REPLAY_TELEPORT_TO_PLAYER, () -> this.panel.getController().keyframes.insertPlayerFrame());
         });
-        boolean iris = FabricLoader.getInstance().isModLoaded("iris");
-        this.shaders = new UIIcon(Icons.SUN, (b) -> this.toggleShaders());
-        this.shaders.highlight(BBSRendering::isIrisShadersEnabled, Direction.BOTTOM);
-        this.shaders.tooltip(iris ? UIKeys.FILM_TOGGLE_SHADERS : UIKeys.UTILITY_IRIS_REQUIRED);
-        this.shaders.setEnabled(iris);
+        this.shaders = this.createShadersIcon();
         this.recordVideo = new UIIcon(Icons.VIDEO_CAMERA, (b) ->
         {
             if (!this.canExport())
@@ -226,10 +230,12 @@ public class UIFilmPreview extends UIElement
             }
 
             int duration = this.panel.getData().camera.calculateDuration();
-            UIFilmPanel.applyExportSizeToBBS();
+            VideoExportSettings settings = VideoExportSettings.global();
+
+            applyExportSize(settings);
             BBSRendering.scheduleAfterNextExportFrame(() ->
             {
-                this.panel.recorder.startRecording(duration, BBSRendering.getTexture().id, BBSRendering.getVideoWidth(), BBSRendering.getVideoHeight());
+                this.panel.recorder.startRecording(settings, duration, BBSRendering.getTexture().id, BBSRendering.getVideoWidth(), BBSRendering.getVideoHeight());
             });
         });
         this.recordVideo.tooltip(UIKeys.CAMERA_TOOLTIPS_RECORD);
@@ -244,9 +250,10 @@ public class UIFilmPreview extends UIElement
 
                 ScreenshotRecorder recorder = BBSModClient.getScreenshotRecorder();
                 File output = Window.isAltPressed() ? null : recorder.getScreenshotFile();
+                VideoExportSettings settings = VideoExportSettings.global();
 
-                UIFilmPanel.applyExportSizeToBBS();
-                BBSRendering.scheduleAfterHeldExportFrame(() ->
+                applyExportSize(settings);
+                BBSRendering.scheduleAfterHeldExportFrame(settings.heldFrames(), () ->
                 {
                     Texture texture = BBSRendering.getTexture();
                     int w = BBSRendering.getVideoWidth();
@@ -257,7 +264,7 @@ public class UIFilmPreview extends UIElement
                     }
                     finally
                     {
-                        this.panel.restorePreviewSize();
+                        this.applySize();
                     }
 
                     UIBaseMenu currentMenu = UIScreen.getCurrentMenu();
@@ -280,7 +287,7 @@ public class UIFilmPreview extends UIElement
                 UISettingsOverlayPanel panel = new UISettingsOverlayPanel();
 
                 panel.showCategory("bbs", "video");
-                UIOverlay.addOverlay(this.getContext(), panel, 430, 400);
+                UIOverlay.addOverlay(this.getContext(), panel);
             });
 
             menu.action(Icons.VIDEO_CAMERA, UIKeys.FILM_RENDER_QUEUE, this::exportQueueFromTabs);
@@ -291,24 +298,18 @@ public class UIFilmPreview extends UIElement
             });
         });
 
-        this.iconSettings.put(this.onionSkin, BBSSettings.previewIconOnionSkin);
-        this.iconSettings.put(this.motionPath, BBSSettings.previewIconMotionPath);
-        this.iconSettings.put(this.teleport, BBSSettings.previewIconTeleport);
-        this.iconSettings.put(this.flight, BBSSettings.previewIconFlight);
-        this.iconSettings.put(this.plause, BBSSettings.previewIconPlayback);
-        this.iconSettings.put(this.control, BBSSettings.previewIconControl);
-        this.iconSettings.put(this.perspective, BBSSettings.previewIconPerspective);
-        this.iconSettings.put(this.autoKeyframe, BBSSettings.previewIconAutoKeyframe);
-        this.iconSettings.put(this.liveRecording, BBSSettings.previewIconLiveRecording);
-        this.iconSettings.put(this.shaders, BBSSettings.previewIconShaders);
-        this.iconSettings.put(this.recordReplay, BBSSettings.previewIconRecordReplay);
-        this.iconSettings.put(this.recordVideo, BBSSettings.previewIconExport);
-        for (Map.Entry<UIIcon, ValueBoolean> entry : this.iconSettings.entrySet())
-        {
-            entry.getKey().setVisible(entry.getValue().get());
-            this.icons.add(entry.getKey());
-        }
-        this.add(this.icons);
+        this.addIcon(this.onionSkin, BBSSettings.previewIconOnionSkin);
+        this.addIcon(this.motionPath, BBSSettings.previewIconMotionPath);
+        this.addIcon(this.teleport, BBSSettings.previewIconTeleport);
+        this.addIcon(this.flight, BBSSettings.previewIconFlight);
+        this.addIcon(this.plause, BBSSettings.previewIconPlayback);
+        this.addIcon(this.control, BBSSettings.previewIconControl);
+        this.addIcon(this.perspective, BBSSettings.previewIconPerspective);
+        this.addIcon(this.autoKeyframe, BBSSettings.previewIconAutoKeyframe);
+        this.addIcon(this.liveRecording, BBSSettings.previewIconLiveRecording);
+        this.addIcon(this.shaders, BBSSettings.previewIconShaders);
+        this.addIcon(this.recordReplay, BBSSettings.previewIconRecordReplay);
+        this.addIcon(this.recordVideo, BBSSettings.previewIconExport);
 
         for (Function<UIFilmPreview, UIElement> factory : OVERLAYS)
         {
@@ -320,21 +321,6 @@ public class UIFilmPreview extends UIElement
     public static void registerOverlay(Function<UIFilmPreview, UIElement> factory)
     {
         OVERLAYS.add(factory);
-    }
-
-    private void toggleShaders()
-    {
-        if (!FabricLoader.getInstance().isModLoaded("iris")) return;
-
-        UIContext context = this.getContext();
-
-        ShaderOptions.reload(() ->
-        {
-            if (!IrisShaderPacks.toggle())
-            {
-                UIOverlay.addOverlay(context, new UIMessageOverlayPanel(UIKeys.FILM_TOGGLE_SHADERS, UIKeys.FILM_SELECT_SHADER));
-            }
-        }, () -> UIOverlay.addOverlay(context, new UIMessageOverlayPanel(UIKeys.GENERAL_ERROR, UIKeys.UTILITY_SHADER_ERROR)));
     }
 
     /**
@@ -391,7 +377,7 @@ public class UIFilmPreview extends UIElement
             UIMessageOverlayPanel panel = new UIMessageOverlayPanel(UIKeys.GENERAL_WARNING, UIKeys.GENERAL_FFMPEG_ERROR_DESCRIPTION);
             UIIcon guide = new UIIcon(Icons.HELP, (bb) -> UIUtils.openWebLink(UIKeys.GENERAL_FFMPEG_ERROR_GUIDE_LINK.get()));
 
-            guide.tooltip(UIKeys.GENERAL_FFMPEG_ERROR_GUIDE, Direction.LEFT);
+            guide.tooltip(UIKeys.GENERAL_FFMPEG_ERROR_GUIDE);
             panel.icons.add(guide);
 
             UIOverlay.addOverlay(this.getContext(), panel);
@@ -408,7 +394,7 @@ public class UIFilmPreview extends UIElement
         List<AudioClip> audioClips = camera.getClips(AudioClip.class);
 
         String name = StringUtils.createTimestampFilename() + ".wav";
-        File videos = BBSRendering.getVideoFolder();
+        File videos = VideoExportSettings.global().getFolder();
         UIContext context = this.getContext();
         Vector2i range = BBSSettings.editorLoop.get() ? this.panel.getLoopingRange() : new Vector2i();
 
@@ -422,25 +408,24 @@ public class UIFilmPreview extends UIElement
         }
     }
 
-    public Area getViewport()
+    /** With a film open (camera and recording editors alike), the export's frame is marked. */
+    @Override
+    protected boolean isFramingExport()
     {
-        int width = BBSRendering.getVideoWidth();
-        int height = BBSRendering.getVideoHeight();
-        int w = this.area.w;
-        int h = this.area.h;
+        return this.panel.getData() != null;
+    }
 
-        Camera camera = new Camera();
+    @Override
+    protected boolean isSizeLocked()
+    {
+        return this.panel.recorder.isExporting() || super.isSizeLocked();
+    }
 
-        camera.copy(this.panel.getWorldCamera());
-        camera.updatePerspectiveProjection(width, height);
-
-        Vector2i size = Vectors.resize(width / (float) height, w, h);
-        Area area = new Area();
-
-        area.setSize(size.x, size.y);
-        area.setPos(this.area.mx() - area.w / 2, this.area.my() - area.h / 2);
-
-        return area;
+    /** None of the icons can be used during an export, and the frame is all there is to watch */
+    @Override
+    protected boolean canShowIcons()
+    {
+        return !this.panel.recorder.isExporting();
     }
 
     @Override
@@ -489,66 +474,40 @@ public class UIFilmPreview extends UIElement
 
         if (area.isInside(context) && !this.panel.isFlying() && this.panel.getController().getPovMode() == UIFilmController.CAMERA_MODE_ORBIT)
         {
+            OrbitFilmCameraController orbit = this.panel.getController().orbit;
+
+            /* Alt + wheel sets how much is left standing in front of the orbit centre */
+            if (Window.isAltPressed() && orbit.isCuttingWalls())
+            {
+                float depth = orbit.getWallCutDepth() + (float) context.mouseWheel * WALL_CUT_STEP;
+
+                orbit.setWallCutDepth(MathUtils.clamp(Math.round(depth / WALL_CUT_STEP) * WALL_CUT_STEP, 0F, 32F));
+                this.wallCutDepthShownUntil = System.currentTimeMillis() + WALL_CUT_DEPTH_SHOWN;
+
+                return true;
+            }
+
             return this.panel.getController().zoomOrbit(context.mouseWheel);
         }
 
         return super.subMouseScrolled(context);
     }
 
-    /**
-     * The icon bar can be set to stay out of the way until the mouse comes over the
-     * preview. A context menu opened from an icon takes the mouse out of the preview,
-     * so while any menu is up the bar keeps the visibility it had when it opened.
-     */
-    private void updateIconsVisibility(UIContext context)
-    {
-        boolean changed = false;
-        for (Map.Entry<UIIcon, ValueBoolean> entry : this.iconSettings.entrySet())
-        {
-            boolean visible = entry.getValue().get();
-            if (entry.getKey().isVisible() != visible)
-            {
-                entry.getKey().setVisible(visible);
-                changed = true;
-            }
-        }
-        if (changed) this.icons.resize();
-
-        if (!BBSSettings.editorPreviewIconsAutoHide.get())
-        {
-            this.iconsVisible = true;
-        }
-        else if (!context.hasContextMenu())
-        {
-            this.iconsVisible = this.area.isInside(context.mouseX, context.mouseY);
-        }
-
-        this.iconsVisible &= this.icons.getChildren().stream().anyMatch(element -> element.isVisible());
-        /* None of them can be used during an export, and the frame is all there is to watch */
-        this.iconsVisible &= !this.panel.recorder.isExporting();
-        this.icons.setVisible(this.iconsVisible);
-    }
-
     @Override
     public void render(UIContext context)
     {
-        Texture texture = BBSRendering.getTexture();
         Area area = this.getViewport();
         Camera camera = this.panel.getCamera();
 
         camera.copy(this.panel.getWorldCamera());
         camera.view.set(this.panel.lastView);
         camera.projection.set(this.panel.lastProjection);
-        context.batcher.flush();
 
-        if (texture != null)
-        {
-            context.batcher.texturedBox(texture.id, Colors.WHITE, area.x, area.y, area.w, area.h, 0, texture.height, texture.width, 0, texture.width, texture.height);
-        }
-
+        this.updateExportBands();
+        this.renderFrame(context, area);
         this.updateIconsVisibility(context);
         this.hud.begin(area);
-        if (this.iconsVisible) this.hud.reserve(PreviewHud.Anchor.BOTTOM_CENTER, area.ey() - this.icons.area.y);
+        this.reserveIconBar(area);
 
         /* First in the top left: while exporting, the export is what the editor is doing */
         this.panel.recorder.renderHud(context, this.hud);
@@ -569,43 +528,9 @@ public class UIFilmPreview extends UIElement
             this.renderCursor(context);
         }
 
-        boolean needGuides = BBSSettings.editorRuleOfThirds.get()
-            || BBSSettings.editorCenterLines.get()
-            || BBSSettings.editorCrosshair.get();
-        if (needGuides)
-        {
-            if (BBSSettings.editorRuleOfThirds.get())
-            {
-                int guidesColor = BBSSettings.editorGuidesColor.get();
-
-                context.batcher.box(area.x + area.w / 3 - 1, area.y, area.x + area.w / 3, area.y + area.h, guidesColor);
-                context.batcher.box(area.x + area.w - area.w / 3, area.y, area.x + area.w - area.w / 3 + 1, area.y + area.h, guidesColor);
-
-                context.batcher.box(area.x, area.y + area.h / 3 - 1, area.x + area.w, area.y + area.h / 3, guidesColor);
-                context.batcher.box(area.x, area.y + area.h - area.h / 3, area.x + area.w, area.y + area.h - area.h / 3 + 1, guidesColor);
-            }
-
-            if (BBSSettings.editorCenterLines.get())
-            {
-                int guidesColor = BBSSettings.editorGuidesColor.get();
-                int x = area.mx();
-                int y = area.my();
-
-                context.batcher.box(area.x, y, area.ex(), y + 1, guidesColor);
-                context.batcher.box(x, area.y, x + 1, area.ey(), guidesColor);
-            }
-
-            if (BBSSettings.editorCrosshair.get())
-            {
-                int x = area.mx() + 1;
-                int y = area.my() + 1;
-
-                context.batcher.box(x - 4, y - 1, x + 3, y, Colors.setA(Colors.WHITE, 0.5F));
-                context.batcher.box(x - 1, y - 4, x, y + 3, Colors.setA(Colors.WHITE, 0.5F));
-            }
-        }
-
+        this.renderGuides(context, area);
         this.placementGizmo.render(context, area);
+        this.renderWallCutDepth(context, area, camera);
 
         this.panel.getController().renderHUD(context, this.hud, this.navBlock);
 
@@ -638,14 +563,7 @@ public class UIFilmPreview extends UIElement
             }
         }
 
-        if (this.iconsVisible)
-        {
-            Area a = this.icons.area;
-
-            /* Render icon bar */
-            int barShade = BBSSettings.lightSurfaces() ? (Colors.A50 | 0xFFFFFF) : Colors.A50;
-            context.batcher.gradientVBox(a.x, a.y, a.ex(), a.ey(), 0, barShade);
-        }
+        this.renderIconBar(context);
 
         /* Outside the bar's visibility: hiding the icons must not take away the one line
          * that says how to leave control mode. */
@@ -666,10 +584,43 @@ public class UIFilmPreview extends UIElement
 
         /* Everything the corners collected this frame goes down here, each zone's wash first. */
         this.hud.flush(context);
+        this.renderElements(context);
+    }
 
-        context.batcher.clip(this.area, context);
-        super.render(context);
-        context.batcher.unclip(context);
+    /** The wall cut's depth, by the orbit centre, for a moment after it was changed. */
+    private void renderWallCutDepth(UIContext context, Area area, Camera camera)
+    {
+        OrbitFilmCameraController orbit = this.panel.getController().orbit;
+
+        if (System.currentTimeMillis() > this.wallCutDepthShownUntil || !orbit.isCuttingWalls())
+        {
+            return;
+        }
+
+        String depth = String.format(Locale.ROOT, "%.1f", orbit.getWallCutDepth());
+        String label = UIKeys.FILM_CONTROLLER_ORBIT_WALL_CUT_DEPTH.format(depth).get();
+        int h = context.batcher.getFont().getHeight();
+        int x = area.mx();
+        int y = area.my();
+        Vector3d center = orbit.getWallCutCenter();
+
+        if (center != null)
+        {
+            Matrix4f mvp = new Matrix4f(camera.projection).mul(camera.view);
+            Vector3f point = ScreenOverlay.project(mvp, area, new Vector3f(
+                (float) (center.x - camera.position.x),
+                (float) (center.y - camera.position.y),
+                (float) (center.z - camera.position.z)
+            ));
+
+            if (point != null)
+            {
+                x = (int) point.x;
+                y = (int) point.y;
+            }
+        }
+
+        context.batcher.textCard(label, x + 12, y - h / 2);
     }
 
     private void renderCursor(UIContext context)

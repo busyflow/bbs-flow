@@ -13,10 +13,12 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeSheet;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.shapes.IKeyframeShapeRenderer;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.shapes.KeyframeShapeRenderers;
+import mchorse.bbs_mod.ui.framework.elements.input.list.UIList;
 import mchorse.bbs_mod.ui.framework.elements.utils.FontRenderer;
 import mchorse.bbs_mod.ui.framework.elements.utils.RowStyle;
 import mchorse.bbs_mod.ui.utils.Area;
 import mchorse.bbs_mod.ui.utils.Scroll;
+import mchorse.bbs_mod.ui.utils.bones.UIBoneTreeList;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.renderers.TimelineRulerRenderer;
@@ -52,6 +54,9 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 {
     private static final int FOLD_BASE_INDENT = 4;
     private static final int FOLD_DEPTH_STEP = 4;
+
+    /** Bone rows step in by the bone list's own indent, so the skeleton reads the same in both. */
+    private static final int BONE_INDENT = UIBoneTreeList.INDENT;
     private static final float TRACK_BAR_ALPHA = 0.3F;
 
     /** What the cursor lays over a heading's row in the timeline. */
@@ -96,7 +101,17 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
     /** Navigate without selecting a keyframe or changing the horizontal time viewport. */
     public void revealSheet(UIKeyframeSheet sheet)
     {
-        if (!this.sheets.contains(sheet)) return;
+        if (!this.unfoldTo(sheet)) return;
+        this.lastSheet = sheet;
+        this.revealedSheet = sheet;
+        this.revealUntil = System.currentTimeMillis() + 1400;
+        int y = this.sheetYCache.getOrDefault(sheet, 0) + this.keyframes.getTopMargin();
+        this.dopeSheet.setScroll(y - (this.dopeSheet.area.h - this.getTrackHeight(sheet)) / 2);
+    }
+    /** Unfold everything a row sits in, so it can be seen. Nothing is folded, nothing scrolls and nothing flashes. */
+    public boolean unfoldTo(UIKeyframeSheet sheet)
+    {
+        if (!this.sheets.contains(sheet)) return false;
         for (UIKeyframeSheet.Section section = sheet.section; section != null; section = section.parent())
         {
             this.folds.set(section.id(), true);
@@ -106,12 +121,9 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
             this.folds.set(parent.id, true);
         }
         this.updateScrollSize();
-        this.lastSheet = sheet;
-        this.revealedSheet = sheet;
-        this.revealUntil = System.currentTimeMillis() + 1400;
-        int y = this.sheetYCache.getOrDefault(sheet, 0) + this.keyframes.getTopMargin();
-        this.dopeSheet.setScroll(y - (this.dopeSheet.area.h - this.getTrackHeight(sheet)) / 2);
+        return true;
     }
+
     /** Unfold a heading and the headings it sits in. Nothing is folded, nothing scrolls and nothing flashes. */
     public void revealSection(String id)
     {
@@ -317,7 +329,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
     /** Whether a row shows what folds under it. */
     private boolean isUnfolded(UIKeyframeSheet sheet)
     {
-        return this.folds.isExpanded(sheet.id);
+        return sheet.alwaysOpen || this.folds.isExpanded(sheet.id);
     }
 
     /**
@@ -326,7 +338,69 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
      */
     private int getSheetIndent(UIKeyframeSheet sheet)
     {
-        return this.getIndent(sheet.getDepth() + (sheet.section == null ? 0 : sheet.section.depth() + 1));
+        int base = sheet.section == null ? 0 : sheet.section.depth() + 1;
+
+        if (sheet.isBoneTrack)
+        {
+            return this.getIndent(base) + this.getBoneDepth(sheet) * BONE_INDENT;
+        }
+
+        return this.getIndent(sheet.getDepth() + base);
+    }
+
+    /** How many bone rows up the skeleton this bone row hangs: its level in the bone tree. */
+    private int getBoneDepth(UIKeyframeSheet sheet)
+    {
+        int depth = 0;
+
+        for (UIKeyframeSheet parent = sheet.parent; parent != null && parent.isBoneTrack; parent = parent.parent)
+        {
+            depth += 1;
+        }
+
+        return depth;
+    }
+
+    /** Whether a row is the last of the rows hanging from its parent, which corners its guide. */
+    private static boolean isLastChild(UIKeyframeSheet sheet)
+    {
+        List<UIKeyframeSheet> siblings = sheet.parent.children;
+
+        return siblings.get(siblings.size() - 1) == sheet;
+    }
+
+    /**
+     * The bone list's tree guides down the left of a bone row (see {@link UIList#renderTreeGuides}):
+     * a vertical for every ancestor bone whose branch goes on below, and a tee or a corner into the
+     * row itself. {@code rootX} is where the names of root bones start.
+     */
+    private void renderBoneGuides(UIContext context, UIKeyframeSheet sheet, int rootX, int y, int height)
+    {
+        int depth = this.getBoneDepth(sheet);
+
+        if (depth == 0)
+        {
+            return;
+        }
+
+        int mid = y + height / 2;
+        int level = depth - 1;
+        int gx = rootX + level * BONE_INDENT + 2;
+
+        context.batcher.box(gx, y, gx + 1, isLastChild(sheet) ? mid + 1 : y + height, UIList.GUIDE_COLOR);
+        context.batcher.box(gx + 1, mid, rootX + depth * BONE_INDENT - 2, mid + 1, UIList.GUIDE_COLOR);
+
+        for (UIKeyframeSheet ancestor = sheet.parent; level > 0; ancestor = ancestor.parent)
+        {
+            level -= 1;
+
+            if (!isLastChild(ancestor))
+            {
+                int ax = rootX + level * BONE_INDENT + 2;
+
+                context.batcher.box(ax, y, ax + 1, y + height, UIList.GUIDE_COLOR);
+            }
+        }
     }
 
     private int getIndent(int depth)
@@ -346,7 +420,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
     private boolean hasChildren(UIKeyframeSheet sheet)
     {
-        return !sheet.children.isEmpty();
+        return !sheet.alwaysOpen && !sheet.children.isEmpty();
     }
 
     public List<UIKeyframeSheet> getInteractiveSheets()
@@ -703,6 +777,42 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         this.pickKeyframe(first);
 
         return true;
+    }
+
+    /**
+     * Ctrl+click on a summary mark that stands for only some of the heading's animated tracks keys
+     * the rest at its tick: a column can be made where a key already stands. A full column is left
+     * to be removed as before.
+     */
+    @Override
+    public boolean completeColumn(int mouseX, int mouseY)
+    {
+        UIKeyframeSheet.Section section = this.getSection(mouseY);
+
+        if (section == null) return false;
+
+        SummaryMark mark = this.findSummaryMark(section, mouseX, mouseY);
+
+        if (mark == null) return false;
+
+        float tick = mark.keyframes.get(0).getTick();
+
+        for (UIKeyframeSheet sheet : this.getAnimatedTracks(section))
+        {
+            if (!this.hasKeyframeAt(sheet, tick)) return this.addSummaryKeyframes(section, tick);
+        }
+
+        return false;
+    }
+
+    private boolean hasKeyframeAt(UIKeyframeSheet sheet, float tick)
+    {
+        for (Object object : sheet.channel.getKeyframes())
+        {
+            if (((Keyframe) object).getTick() == tick) return true;
+        }
+
+        return false;
     }
 
     /**
@@ -1445,7 +1555,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
         this.renderRowBackground(context, lx, y, w, height, true);
 
-        RowStyle.row(context.batcher, lx, y, w, height, sheet.color, false, hover, this.keyframes.isEditing() && this.keyframes.isGraphTrack(sheet));
+        RowStyle.row(context.batcher, lx, y, w, height, sheet.color, false, hover, sheet.highlighted || (this.keyframes.isEditing() && this.keyframes.isGraphTrack(sheet)));
 
         if (sheet == this.revealedSheet && System.currentTimeMillis() < this.revealUntil)
         {
@@ -1471,6 +1581,12 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
             FontRenderer font = context.batcher.getFont();
             int textColor = hover ? Colors.WHITE : Colors.setA(Colors.WHITE, 0.75F);
             int textX = lx + (sheet.section == null ? LABEL_TEXT_LEFT : SECTION_TEXT_LEFT) + this.getSheetIndent(sheet);
+
+            if (sheet.isBoneTrack)
+            {
+                this.renderBoneGuides(context, sheet, textX - this.getBoneDepth(sheet) * BONE_INDENT, y, height);
+            }
+
             int textRight = hasIcon ? iconX - LABEL_TEXT_ICON_GAP : lx + w - LABEL_RIGHT_PAD;
 
             if (foldable)
@@ -1552,9 +1668,9 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
         this.renderRowBackground(context, area.x, y, area.w, bh, false);
 
-        if (hover)
+        if (hover || sheet.highlighted)
         {
-            context.batcher.box(area.x, y, area.ex(), y + bh, Colors.setA(sheet.color, 0.12F));
+            context.batcher.box(area.x, y, area.ex(), y + bh, Colors.setA(sheet.color, hover ? 0.12F : 0.08F));
         }
 
         builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);

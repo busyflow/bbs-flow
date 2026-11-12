@@ -34,6 +34,13 @@ public class UIKeyframeEditor extends UITimelinePanel
 
     public UIKeyframes view;
     public UIKeyframeFactory editor;
+
+    /**
+     * A panel that stands in for the picked track's own one: given the picked track (or null), it
+     * answers with the panel to show, or null for the usual per-track panel. The Bones tab shows the
+     * pose of the frame under the cursor this way, whichever bone key is picked or none at all.
+     */
+    private Function<UIKeyframeSheet, UIKeyframeFactory> panels;
     private final UIIcon mode;
 
     public UIKeyframeEditor(Function<Runnable, UIKeyframes> factory)
@@ -110,9 +117,32 @@ public class UIKeyframeEditor extends UITimelinePanel
         }
     }
 
-    private void refreshSelection()
+    public void panels(Function<UIKeyframeSheet, UIKeyframeFactory> panels)
+    {
+        this.panels = panels;
+        this.refreshSelection();
+    }
+
+    public void refreshSelection()
     {
         UIKeyframeSheet sheet = this.view.getPickedSheet();
+        UIKeyframeFactory standIn = this.panels == null ? null : this.panels.apply(sheet);
+
+        if (standIn != null)
+        {
+            if (this.editor != standIn)
+            {
+                this.showPanel(standIn);
+            }
+            else
+            {
+                this.updateParameters();
+                this.editor.requestUpdate();
+            }
+
+            return;
+        }
+
         if (this.editor != null && this.editor.getSheet() == sheet)
         {
             this.updateParameters();
@@ -132,22 +162,11 @@ public class UIKeyframeEditor extends UITimelinePanel
             /* Null when the keyframe's type has no editor registered: the track still works, it
              * just gets no properties panel. It used to be dereferenced straight away, so a type
              * whose registration went missing crashed on the click that selected a keyframe. */
-            this.editor = UIKeyframeFactory.createPanel(new UITrackValue<>(sheet, this.view), this.view);
+            UIKeyframeFactory panel = UIKeyframeFactory.createPanel(new UITrackValue<>(sheet, this.view), this.view);
 
-            if (this.editor != null)
+            if (panel != null)
             {
-                /* The binding runs before scroll children, never inside a field's write callback. */
-                this.editor.valueBinding(this::updateParameters);
-                this.updateParameters();
-                this.attachPropertiesPanel(this.editor, 140);
-                this.editor.setVisible(this.propertiesVisible);
-                this.resize();
-
-                if (this.target != null)
-                {
-                    this.target.resize();
-                    this.editor.resize();
-                }
+                this.attachPanel(panel);
             }
         }
 
@@ -156,6 +175,39 @@ public class UIKeyframeEditor extends UITimelinePanel
         if (this.editor != null)
         {
             this.editor.restoreScroll();
+        }
+    }
+
+    private void showPanel(UIKeyframeFactory panel)
+    {
+        UIKeyframeFactory.saveScroll(this.editor);
+
+        if (this.editor != null)
+        {
+            this.editor.removeFromParent();
+            this.editor = null;
+        }
+
+        this.attachPanel(panel);
+        this.resize();
+        this.editor.restoreScroll();
+    }
+
+    private void attachPanel(UIKeyframeFactory panel)
+    {
+        this.editor = panel;
+
+        /* The binding runs before scroll children, never inside a field's write callback. */
+        this.editor.valueBinding(this::updateParameters);
+        this.updateParameters();
+        this.attachPropertiesPanel(this.editor, 140);
+        this.editor.setVisible(this.propertiesVisible);
+        this.resize();
+
+        if (this.target != null)
+        {
+            this.target.resize();
+            this.editor.resize();
         }
     }
 
@@ -220,14 +272,7 @@ public class UIKeyframeEditor extends UITimelinePanel
 
                 if (id.startsWith("pose"))
                 {
-                    TrackId path = TrackId.parse(sheet.id, TrackKind.BONE);
-                    if (path != null)
-                        bone = path.formPath().isEmpty() ? currentFirst : path.formPath() + "/" + currentFirst;
-                    else
-                    {
-                        int i = sheet.id.lastIndexOf('/');
-                        bone = i >= 0 ? sheet.id.substring(0, i + 1) + currentFirst : currentFirst;
-                    }
+                    bone = pose.poseEditor.bonePath(currentFirst);
                     space = pose.poseEditor.transform.getSpace();
                 }
             }
@@ -370,13 +415,11 @@ public class UIKeyframeEditor extends UITimelinePanel
     {
         super.applyUndoData(data);
 
-        KeyframeState state = new KeyframeState();
+        /* Only the picked keys come back: zoom, scroll and the graph mode stay as the user has them
+         * now. Restoring the whole view jumped the timeline back to where it stood at the edit. */
+        this.view.applySelection(data.getMap("selection"));
 
-        state.extra = data.getMap("extra");
-
-        this.view.applyState(state);
-
-        /* Restore after applyState has selected the track and rebuilt its properties panel. */
+        /* Restore after the keys are picked and their properties panel is built. */
         if (this.editor instanceof UIPoseKeyframeFactory pose && data.has("bones"))
         {
             pose.poseEditor.restoreSelection(DataStorageUtils.stringListFromData(data.get("bones")));
@@ -388,8 +431,10 @@ public class UIKeyframeEditor extends UITimelinePanel
     {
         super.collectUndoData(data);
 
-        KeyframeState keyframeState = this.view.cacheState();
-        data.put("extra", keyframeState.extra);
+        MapType selection = new MapType();
+
+        this.view.cacheSelection(selection);
+        data.put("selection", selection);
 
         if (this.editor instanceof UIPoseKeyframeFactory pose)
         {
