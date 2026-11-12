@@ -345,7 +345,9 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
             return this.getIndent(base) + this.getBoneDepth(sheet) * BONE_INDENT;
         }
 
-        return this.getIndent(sheet.getDepth() + base);
+        int extra = sheet.id != null && sheet.id.contains("pose_overlay") ? 1 : 0;
+
+        return this.getIndent(sheet.getDepth() + base + extra);
     }
 
     /** How many bone rows up the skeleton this bone row hangs: its level in the bone tree. */
