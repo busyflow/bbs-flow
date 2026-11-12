@@ -82,8 +82,9 @@ public class UIFilmPreview extends UIWorldPreview
     private List<AudioClip> clips = new ArrayList<>();
     private UIFilmPanel panel;
     private UIPlacementGizmo placementGizmo;
-    /** Kept on UIFilmPreview for addon mixins (e.g. bbs_trajectory) that @Shadow icons here. */
+    /** Kept on UIFilmPreview for addon mixins (e.g. bbs_trajectory, refreshedui) that @Shadow icons/iconsVisible here. */
     public UIElement icons;
+    protected boolean iconsVisible = true;
 
     public UIIcon onionSkin;
     public UIIcon motionPath;
@@ -501,6 +502,8 @@ public class UIFilmPreview extends UIWorldPreview
     {
         super.updateIconsVisibility(context);
 
+        this.iconsVisible = super.iconsVisible;
+
         /* Compatibility bridge for refreshedui's @Redirect on UIFilmPreview.updateIconsVisibility -> UIElement.setVisible */
         this.icons.setVisible(this.iconsVisible);
     }
@@ -516,10 +519,24 @@ public class UIFilmPreview extends UIWorldPreview
         camera.projection.set(this.panel.lastProjection);
 
         this.updateExportBands();
-        this.renderFrame(context, area);
+
+        /* Inlined from UIWorldPreview.renderFrame / reserveIconBar so refreshedui's UIFilmPreviewMixin targets match */
+        Texture texture = BBSRendering.getTexture();
+
+        context.batcher.flush();
+
+        if (texture != null)
+        {
+            context.batcher.texturedBox(texture.id, Colors.WHITE, area.x, area.y, area.w, area.h, 0, texture.height, texture.width, 0, texture.width, texture.height);
+        }
+
         this.updateIconsVisibility(context);
         this.hud.begin(area);
-        this.reserveIconBar(area);
+
+        if (this.iconsVisible)
+        {
+            this.hud.reserve(PreviewHud.Anchor.BOTTOM_CENTER, area.ey() - this.icons.area.y);
+        }
 
         /* First in the top left: while exporting, the export is what the editor is doing */
         this.panel.recorder.renderHud(context, this.hud);
@@ -575,7 +592,13 @@ public class UIFilmPreview extends UIWorldPreview
             }
         }
 
-        this.renderIconBar(context);
+        if (this.iconsVisible)
+        {
+            Area a = this.icons.area;
+            int barShade = BBSSettings.lightSurfaces() ? (Colors.A50 | 0xFFFFFF) : Colors.A50;
+
+            context.batcher.gradientVBox(a.x, a.y, a.ex(), a.ey(), 0, barShade);
+        }
 
         /* Outside the bar's visibility: hiding the icons must not take away the one line
          * that says how to leave control mode. */
