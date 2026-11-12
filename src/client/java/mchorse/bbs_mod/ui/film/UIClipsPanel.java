@@ -67,6 +67,12 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
     private int syncedTick;
     private double syncedOrigin;
 
+    /** Compatibility constructor for addons (e.g. bbs_pov) compiled against UIClipsPanel(UIFilmPanel, ClipFactory). */
+    public UIClipsPanel(UIFilmPanel owner, ClipFactory factory)
+    {
+        this((IUIClipsOwner) owner, factory);
+    }
+
     public UIClipsPanel(IUIClipsOwner owner, ClipFactory factory)
     {
         this.owner = owner;
