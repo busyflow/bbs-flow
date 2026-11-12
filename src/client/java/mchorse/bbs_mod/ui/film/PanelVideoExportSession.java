@@ -42,6 +42,12 @@ public class PanelVideoExportSession extends VideoExportSession
         this.editor = editor;
     }
 
+    /** Compatibility overload for addons (e.g. bbs_crowd) mixing into start(int, int, int, int). */
+    public boolean start(int duration, int textureId, int width, int height)
+    {
+        return this.start(VideoExportSettings.global(), duration, textureId, width, height);
+    }
+
     public boolean start(VideoExportSettings settings, int duration, int textureId, int width, int height)
     {
         this.duration = duration;
