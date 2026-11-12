@@ -163,6 +163,24 @@ public interface IUIKeyframeGraph
             }
         }
 
+        if (value instanceof mchorse.bbs_mod.utils.pose.Pose pose && !mchorse.bbs_mod.ui.utils.pose.UIPoseEditor.PINNED_LIMBS.isEmpty())
+        {
+            mchorse.bbs_mod.ui.film.UIFilmPanel panel = mchorse.bbs_mod.BBSModClient.getDashboard() != null
+                ? mchorse.bbs_mod.BBSModClient.getDashboard().getPanel(mchorse.bbs_mod.ui.film.UIFilmPanel.class)
+                : null;
+
+            if (panel != null)
+            {
+                mchorse.bbs_mod.ui.film.replays.FilmBoneWorldProvider provider = new mchorse.bbs_mod.ui.film.replays.FilmBoneWorldProvider(panel);
+                boolean isOverlay = sheet.id != null && sheet.id.contains("pose_overlay");
+
+                for (Map.Entry<String, org.joml.Matrix4f> entry : mchorse.bbs_mod.ui.utils.pose.UIPoseEditor.PINNED_LIMBS.entrySet())
+                {
+                    provider.solveBoneWorldTransform(pose, entry.getKey(), entry.getValue(), tick, isOverlay);
+                }
+            }
+        }
+
         /* Adding a keyframe is a discrete edit: seal the undo so several keyframes made
          * in a row (within the merge window) each undo separately, not all at once. */
         sheet.channel.preNotify(IValueListener.FLAG_UNMERGEABLE);

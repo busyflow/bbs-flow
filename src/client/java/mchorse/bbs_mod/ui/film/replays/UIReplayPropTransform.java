@@ -111,6 +111,8 @@ public class UIReplayPropTransform extends UIPropTransform
     private double startPrimaryYaw;
     private double startPrimaryPitch;
 
+    public Runnable onTransformChanged;
+
     public void setRunning(boolean running)
     {
         this.running = running;
@@ -361,7 +363,7 @@ public class UIReplayPropTransform extends UIPropTransform
     {
         List<Keyframe<Double>> kfs = channel.getKeyframes();
 
-        if (!kfs.isEmpty() && kfs.size() == origValues.length && (isMulti || kfs.size() > 1))
+        if (isMulti && !kfs.isEmpty() && kfs.size() == origValues.length)
         {
             for (int i = 0; i < kfs.size(); i++)
             {
@@ -430,6 +432,11 @@ public class UIReplayPropTransform extends UIPropTransform
         }
 
         this.postCallback();
+
+        if (this.onTransformChanged != null)
+        {
+            this.onTransformChanged.run();
+        }
     }
 
     @Override
@@ -513,5 +520,10 @@ public class UIReplayPropTransform extends UIPropTransform
         }
 
         this.postCallback();
+
+        if (this.onTransformChanged != null)
+        {
+            this.onTransformChanged.run();
+        }
     }
 }

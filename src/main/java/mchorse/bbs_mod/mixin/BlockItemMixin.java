@@ -1,6 +1,7 @@
 package mchorse.bbs_mod.mixin;
 
 import mchorse.bbs_mod.BBSMod;
+import mchorse.bbs_mod.actions.types.SwipeActionClip;
 import mchorse.bbs_mod.actions.types.blocks.PlaceBlockActionClip;
 import net.minecraft.block.BlockState;
 import net.minecraft.item.BlockItem;
@@ -32,6 +33,8 @@ public class BlockItemMixin
 
                 return clip;
             });
+
+            BBSMod.getActions().addAction(player, SwipeActionClip::new);
         }
     }
 }

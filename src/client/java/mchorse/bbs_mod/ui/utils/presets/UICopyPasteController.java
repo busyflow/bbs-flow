@@ -21,6 +21,7 @@ public class UICopyPasteController
 
     private Supplier<Boolean> canCopy;
     private Supplier<Boolean> canPaste;
+    private Supplier<Boolean> canPasteClipboard;
 
     private IKey copyLabel = UIKeys.GENERAL_COPY;
     private IKey pasteLabel = UIKeys.GENERAL_PASTE;
@@ -69,6 +70,13 @@ public class UICopyPasteController
     public UICopyPasteController canPaste(Supplier<Boolean> canPaste)
     {
         this.canPaste = canPaste;
+
+        return this;
+    }
+
+    public UICopyPasteController canPasteClipboard(Supplier<Boolean> canPasteClipboard)
+    {
+        this.canPasteClipboard = canPasteClipboard;
 
         return this;
     }
@@ -124,17 +132,27 @@ public class UICopyPasteController
 
     public boolean canPaste()
     {
-        if (!this.canPreviewPresets())
+        if (this.canPaste != null && !this.canPaste.get())
         {
             return false;
         }
 
-        return Window.getClipboardMap(this.copyPrefix) != null;
+        if (Window.getClipboardMap(this.copyPrefix) == null)
+        {
+            return false;
+        }
+
+        if (this.canPasteClipboard != null && !this.canPasteClipboard.get())
+        {
+            return false;
+        }
+
+        return true;
     }
 
     public boolean canPreviewPresets()
     {
-        return !(this.canPaste != null && !this.canPaste.get());
+        return this.manager != null && !(this.canPaste != null && !this.canPaste.get());
     }
 
     /**
@@ -154,7 +172,10 @@ public class UICopyPasteController
     {
         this.installClipboard(menu, mouseX, mouseY);
 
-        menu.icon(MenuVerb.PRESETS, () -> this.openPresets(context, mouseX, mouseY)).enabled(this.canPreviewPresets());
+        if (this.manager != null)
+        {
+            menu.icon(MenuVerb.PRESETS, () -> this.openPresets(context, mouseX, mouseY)).enabled(this.canPreviewPresets());
+        }
     }
 
     /**

@@ -559,7 +559,8 @@ public class StubEntity implements IEntity
         {
             float prevSpeed = accessor.getSpeed();
             float newSpeed = prevSpeed + (speed - prevSpeed) * 0.4F;
-            float step = (newSpeed / scale) * swingSpeed;
+            float divisor = (float) Math.pow(scale, 0.75);
+            float step = (newSpeed / divisor) * swingSpeed;
             accessor.setPrevSpeed(prevSpeed);
             accessor.setSpeed(newSpeed);
             accessor.setPos(accessor.getPos() + step);

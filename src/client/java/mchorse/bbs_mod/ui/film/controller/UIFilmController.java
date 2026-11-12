@@ -520,8 +520,13 @@ public class UIFilmController extends UIElement implements GizmoViewport
         IEntity entity = this.getEntities().get(replay.getId());
         if (entity == null) return;
         entity.setForm(FormUtils.copy(replay.form.get()));
-        replay.anchor.setRuntimeValue(replay.evaluateAnchor(replay.getTick(this.panel.getCursor()) + this.panel.getRunner().getTransition(0F)));
-        replay.properties.applyProperties(entity.getForm(), replay.getTick(this.panel.getCursor()) + this.panel.getRunner().getTransition(0F));
+        float tick = replay.getTick(this.panel.getCursor()) + this.panel.getRunner().getTransition(0F);
+        replay.anchor.setRuntimeValue(replay.evaluateAnchor(tick));
+        replay.properties.applyProperties(entity.getForm(), tick);
+        if (this.editorController != null && !mchorse.bbs_mod.ui.utils.pose.UIPoseEditor.PINNED_LIMBS.isEmpty())
+        {
+            this.editorController.enforcePinnedLimbs(replay, entity, tick);
+        }
         RenderFrame.invalidate();
     }
 
@@ -851,11 +856,12 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
     private void pickReplay(int index)
     {
-        this.panel.replayEditor.setReplay(this.panel.getData().replays.getList().get(index));
-
-        if (!this.panel.replayEditor.isVisible())
+        if (index >= 0 && index < this.panel.getData().replays.getList().size())
         {
+            Replay replay = this.panel.getData().replays.getList().get(index);
             this.panel.showPanel(this.panel.replayEditor);
+            this.panel.replayEditor.setReplay(replay, true, UIReplaysEditor.OrbitReaction.SWITCH);
+            this.panel.replayEditor.showReplayTracks();
         }
     }
 

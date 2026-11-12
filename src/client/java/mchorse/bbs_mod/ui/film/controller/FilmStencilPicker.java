@@ -228,7 +228,7 @@ public class FilmStencilPicker
             int selectedReplayIndex = this.controller.getCurrentReplayIndex();
             int stencilIndex = index - REPLAY_STENCIL_OFFSET;
 
-            if (stencilIndex >= 0 && stencilIndex < this.controller.panel.getData().replays.getList().size() && stencilIndex != selectedReplayIndex)
+            if (stencilIndex >= 0 && stencilIndex < this.controller.panel.getData().replays.getList().size())
             {
                 this.hoveredReplayIndex = stencilIndex;
 

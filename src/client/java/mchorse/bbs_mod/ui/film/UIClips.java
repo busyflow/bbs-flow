@@ -155,7 +155,8 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
             .supplier(this::copyClips)
             .consumer(this::pasteClips)
             .canCopy(() -> this.delegate.getClip() != null)
-            .canPaste(this::canPasteClipboard)
+            .canPaste(() -> this.clips != null)
+            .canPasteClipboard(this::canPasteClipboard)
             .labels(UIKeys.CAMERA_TIMELINE_CONTEXT_COPY, UIKeys.CAMERA_TIMELINE_CONTEXT_PASTE);
 
         this.delegate = delegate;
@@ -503,7 +504,14 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
 
         data.put("clips", clips);
 
-        for (Clip clip : this.getClipsFromSelection())
+        List<Clip> selected = this.getClipsFromSelection();
+
+        if (selected.isEmpty() && this.delegate.getClip() != null)
+        {
+            selected = List.of(this.delegate.getClip());
+        }
+
+        for (Clip clip : selected)
         {
             clips.add(this.factory.toData(clip));
         }
@@ -554,9 +562,20 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
      */
     private void pasteClips(MapType data, int tick)
     {
-        this.clearSelection();
+        if (data == null)
+        {
+            return;
+        }
 
         ListType clipsList = data.getList("clips");
+
+        if (clipsList == null || clipsList.isEmpty())
+        {
+            return;
+        }
+
+        this.clearSelection();
+
         List<Clip> newClips = new ArrayList<>();
         int min = Integer.MAX_VALUE;
 
@@ -1155,6 +1174,29 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
         return mouseY >= this.area.y && mouseY < TimelineRulerRenderer.getRulerBottom(this.area);
     }
 
+    public boolean isLayerTall(int layer)
+    {
+        if (BBSSettings.tallAudioLayers == null || !BBSSettings.tallAudioLayers.get() || this.clips == null)
+        {
+            return false;
+        }
+
+        for (Clip clip : this.clips.get())
+        {
+            if (clip.layer.get() == layer && clip instanceof mchorse.bbs_mod.camera.clips.misc.AudioClip)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public int getLayerHeight(int layer)
+    {
+        return this.isLayerTall(layer) ? Math.max(36, this.layerHeight + 16) : this.layerHeight;
+    }
+
     public int fromLayerY(int mouseY)
     {
         int bottom = this.area.ey() - MARGIN;
@@ -1165,15 +1207,38 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
         }
 
         mouseY -= this.getScroll();
+        int diff = bottom - mouseY;
 
-        return (bottom - mouseY) / this.getLayerHeight();
+        if (diff < 0)
+        {
+            return -1;
+        }
+
+        for (int i = 0; i < this.layers; i++)
+        {
+            int h = this.getLayerHeight(i);
+
+            if (diff < h)
+            {
+                return i;
+            }
+
+            diff -= h;
+        }
+
+        return this.layers - 1;
     }
 
     public int toLayerY(int layer)
     {
-        int h = this.getLayerHeight();
+        int y = this.area.ey() - MARGIN + this.getScroll();
 
-        return this.area.ey() - MARGIN - (layer + 1) * h + this.getScroll();
+        for (int i = 0; i <= layer; i++)
+        {
+            y -= this.getLayerHeight(i);
+        }
+
+        return y;
     }
 
     private int getScroll()
@@ -1200,7 +1265,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
     /** Scrolls as little as it takes for a layer's lane to show between the ruler and the bottom margin. */
     public void scrollToLayer(int layer)
     {
-        int h = this.getLayerHeight();
+        int h = this.getLayerHeight(layer);
         int y = this.toLayerY(layer);
         int top = TimelineRulerRenderer.getRulerBottom(this.area);
         int bottom = this.area.ey() - MARGIN;
@@ -1375,7 +1440,14 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
     {
         this.updateLayers();
 
-        this.vertical.scrollSize = this.clips == null ? 0 : this.layers * this.getLayerHeight();
+        int total = 0;
+
+        for (int i = 0; i < this.layers; i++)
+        {
+            total += this.getLayerHeight(i);
+        }
+
+        this.vertical.scrollSize = this.clips == null ? 0 : total;
         this.vertical.clamp();
     }
 
@@ -1446,7 +1518,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
                     }
                 }
 
-                this.grabMode = this.getClipHandle(clip, context, this.getLayerHeight());
+                this.grabMode = this.getClipHandle(clip, context, this.getLayerHeight(clip.layer.get()));
                 this.canGrab = false;
                 this.grabbing = true;
                 this.grabbedClips = this.getClipsFromSelection();
@@ -2098,7 +2170,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
             int x = this.toGraphX(clip.tick.get());
             int y = this.toLayerY(clip.layer.get());
 
-            clipArea.set(x, y, this.toGraphX(clip.tick.get() + clip.duration.get()) - x, this.getLayerHeight());
+            clipArea.set(x, y, this.toGraphX(clip.tick.get() + clip.duration.get()) - x, this.getLayerHeight(clip.layer.get()));
 
             if (area.intersects(clipArea))
             {
@@ -2147,8 +2219,9 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
             for (int i = 0; i < this.layers; i++)
             {
                 int ly = this.toLayerY(i);
+                int lh = this.getLayerHeight(i);
 
-                batcher.box(area.x, ly, area.ex(), ly + h, BBSSettings.timelineRowSurface(i));
+                batcher.box(area.x, ly, area.ex(), ly + lh, BBSSettings.timelineRowSurface(i));
             }
         }
         finally
@@ -2185,8 +2258,9 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
         {
             Clip clip = clips.get(i);
             IUIClipRenderer renderer = this.renderers.get(clip);
+            int clipHeight = this.getLayerHeight(clip.layer.get());
 
-            Area clipArea = this.getClipArea(clip, CLIP_AREA, h);
+            Area clipArea = this.getClipArea(clip, CLIP_AREA, clipHeight);
 
             /* A clip fully off the visible span was drawn anyway and only hidden by the
              * scissor after all its work was done. The margin keeps edge handles alive. */
@@ -2210,7 +2284,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
                 context.batcher.outline(clipArea.x, clipArea.y, clipArea.ex(), clipArea.ey(), Colors.WHITE);
             }
 
-            int clipHandle = this.getClipHandle(clip, context, h);
+            int clipHandle = this.getClipHandle(clip, context, clipHeight);
             int color = this.grabMode != 0 ? Colors.WHITE : Colors.A50;
 
             boolean fading = selected && (this.grabMode == 3 || this.grabMode == 4);
@@ -2223,11 +2297,11 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
 
             if (clipHandle == 1 || (selected && this.grabMode == 1))
             {
-                context.batcher.icon(Icons.CLIP_HANLDE_LEFT, color, clipArea.x, clipArea.y + 10, 0F, 0.5F);
+                context.batcher.icon(Icons.CLIP_HANLDE_LEFT, color, clipArea.x, clipArea.y + clipArea.h / 2, 0F, 0.5F);
             }
             else if (clipHandle == 2 || (selected && this.grabMode == 2))
             {
-                context.batcher.icon(Icons.CLIP_HANLDE_RIGHT, color, clipArea.ex(), clipArea.y + 10, 1F, 0.5F);
+                context.batcher.icon(Icons.CLIP_HANLDE_RIGHT, color, clipArea.ex(), clipArea.y + clipArea.h / 2, 1F, 0.5F);
             }
         }
 
@@ -2307,8 +2381,9 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
     private int getFadeHandle(Clip clip, int mouseX, int mouseY)
     {
         int top = this.toLayerY(clip.layer.get());
+        int lh = this.getLayerHeight(clip.layer.get());
 
-        if (!this.hasFadeHandles(clip) || mouseY >= top + Math.min(this.getLayerHeight() / 2, FADE_HANDLE_SIZE + 4))
+        if (!this.hasFadeHandles(clip) || mouseY >= top + Math.min(lh / 2, FADE_HANDLE_SIZE + 4))
         {
             return 0;
         }
@@ -2375,8 +2450,9 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
         int x = this.toGraphX(this.addPreview.x);
         int y = this.toLayerY(this.addPreview.y);
         int d = this.toGraphX(this.addPreview.x + this.addPreview.z);
+        int lh = this.getLayerHeight(this.addPreview.y);
 
-        context.batcher.outline(x, y, d, y + h, Colors.WHITE);
+        context.batcher.outline(x, y, d, y + lh, Colors.WHITE);
     }
 
     /** Fill the area outside the film with the darkest tonal surface. */

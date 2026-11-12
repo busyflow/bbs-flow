@@ -32,6 +32,7 @@ public final class BoneRole
     public static final BoneRole LIMIT = new BoneRole(Colors.A100 | Colors.ORANGE, Shape.FULL, UIKeys.BONES_ROLE_LIMIT);
     public static final BoneRole MIRROR = new BoneRole(Colors.A100 | 0x5599ff, Shape.FULL, UIKeys.MODEL_EDITOR_BONE_MIRROR);
     public static final BoneRole PICKING = new BoneRole(Colors.A100 | Colors.GREEN, Shape.FULL, UIKeys.MODEL_EDITOR_BONE_PICKING);
+    public static final BoneRole PINNED = new BoneRole(Colors.A100 | 0xff3333, Shape.FULL, UIKeys.BONES_ROLE_PINNED);
 
     private static final int OFF_COLOR = Colors.GRAY;
 

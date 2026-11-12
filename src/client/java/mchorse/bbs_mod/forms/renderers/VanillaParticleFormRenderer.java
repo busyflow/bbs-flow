@@ -6,6 +6,7 @@ import mchorse.bbs_mod.forms.ITickable;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.forms.VanillaParticleForm;
 import mchorse.bbs_mod.forms.forms.utils.ParticleSettings;
+import mchorse.bbs_mod.mixin.client.ParticleManagerInvoker;
 import mchorse.bbs_mod.particles.vanilla.HeldParticles;
 import mchorse.bbs_mod.particles.vanilla.VanillaParticlePreview;
 import mchorse.bbs_mod.particles.vanilla.VanillaParticleScene;
@@ -14,10 +15,16 @@ import mchorse.bbs_mod.utils.MathUtils;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.joml.Matrices;
 import mchorse.bbs_mod.utils.joml.Vectors;
+import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.client.render.Camera;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.particle.BlockStateParticleEffect;
+import net.minecraft.particle.DefaultParticleType;
+import net.minecraft.particle.ItemStackParticleEffect;
 import net.minecraft.particle.ParticleEffect;
 import net.minecraft.particle.ParticleType;
 import net.minecraft.particle.ParticleTypes;
@@ -223,15 +230,19 @@ public class VanillaParticleFormRenderer extends FormRenderer<VanillaParticleFor
         }
 
         /* What the world's addParticle comes down to with "always spawn" on, minus
-         * the particle getting lost: the form keeps it on its own time */
+         * the particle getting lost: the form keeps it on its own time.
+         * We invoke bbs$createParticle directly to bypass third-party mixins
+         * (such as BBS-POV's live-player proximity suppression on addParticle(ParticleEffect,...))
+         * that would otherwise cancel particles spawned close to the camera/spectator player. */
         ParticleManager particles = MinecraftClient.getInstance().particleManager;
 
         this.emitTick((effect, x, y, z, velocityX, velocityY, velocityZ) ->
         {
-            Particle particle = particles.addParticle(effect, x, y, z, velocityX, velocityY, velocityZ);
+            Particle particle = ((ParticleManagerInvoker) particles).bbs$createParticle(effect, x, y, z, velocityX, velocityY, velocityZ);
 
             if (particle != null)
             {
+                particles.addParticle(particle);
                 this.held.add(particle);
             }
         });
@@ -346,15 +357,30 @@ public class VanillaParticleFormRenderer extends FormRenderer<VanillaParticleFor
         ParticleSettings settings = this.form.settings.get();
         ParticleType type = Registries.PARTICLE_TYPE.get(settings.particle);
 
+        if (type instanceof DefaultParticleType defaultType)
+        {
+            return defaultType;
+        }
+
         try
         {
             if (type != null)
             {
-                return type.getParametersFactory().read(type, new StringReader(" " + settings.arguments));
+                String args = settings.arguments == null ? "" : settings.arguments.trim();
+                return type.getParametersFactory().read(type, new StringReader(" " + args));
             }
         }
         catch (Exception e)
         {}
+
+        if (type == ParticleTypes.ITEM)
+        {
+            return new ItemStackParticleEffect(ParticleTypes.ITEM, new ItemStack(Items.OAK_WOOD));
+        }
+        else if (type == ParticleTypes.BLOCK)
+        {
+            return new BlockStateParticleEffect(ParticleTypes.BLOCK, Blocks.OAK_PLANKS.getDefaultState());
+        }
 
         return ParticleTypes.FLAME;
     }

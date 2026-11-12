@@ -33,6 +33,7 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
     private boolean checked;
     private boolean rewind;
     private long lastParticleUpdate = lastUpdate;
+    private String lastEffect = null;
 
     public ParticleFormRenderer(ParticleForm form)
     {
@@ -46,24 +47,31 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
 
     public void ensureEmitter(World world, float transition)
     {
+        String currentEffect = this.form.effect.get();
+        if (!java.util.Objects.equals(this.lastEffect, currentEffect))
+        {
+            this.lastEffect = currentEffect;
+            this.checked = false;
+            this.emitter = null;
+        }
+
         if (this.lastParticleUpdate < lastUpdate)
         {
             this.lastParticleUpdate = lastUpdate;
             this.checked = false;
         }
 
-        if (!this.checked)
+        if (!this.checked || this.emitter == null)
         {
-            ParticleScheme scheme = BBSModClient.getParticles().load(this.form.effect.get());
+            ParticleScheme scheme = BBSModClient.getParticles().load(currentEffect);
 
             if (scheme != null)
             {
                 this.emitter = new ParticleEmitter();
                 this.emitter.setScheme(scheme);
                 this.emitter.setWorld(world);
+                this.checked = true;
             }
-
-            this.checked = true;
         }
 
         if (this.emitter != null && !BBSRendering.isIrisShadowPass())

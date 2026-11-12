@@ -2,16 +2,24 @@ package mchorse.bbs_mod.mixin.client;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import mchorse.bbs_mod.entity.IEntityFormProvider;
+import mchorse.bbs_mod.forms.forms.Form;
+import mchorse.bbs_mod.morphing.IMorphProvider;
 import mchorse.bbs_mod.particles.vanilla.HeldParticles;
 import mchorse.bbs_mod.particles.vanilla.IHeldParticle;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.VertexConsumer;
+import net.minecraft.entity.Entity;
+import net.minecraft.particle.ParticleEffect;
+import net.minecraft.util.math.Box;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Keeps the particles a form let into the world on that form's time (see
@@ -21,6 +29,85 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ParticleManager.class)
 public class ParticleManagerMixin
 {
+    @Inject(method = "createParticle", at = @At("RETURN"))
+    private void bbs$scaleParticle(ParticleEffect parameters, double x, double y, double z, double velocityX, double velocityY, double velocityZ, CallbackInfoReturnable<Particle> cir)
+    {
+        Particle particle = cir.getReturnValue();
+
+        if (particle != null)
+        {
+            float scale = 1.0F;
+            MinecraftClient client = MinecraftClient.getInstance();
+
+            if (client.world != null)
+            {
+                Entity cameraEntity = client.cameraEntity;
+                if (cameraEntity != null)
+                {
+                    Form form = null;
+                    if (cameraEntity instanceof IMorphProvider provider && provider.getMorph() != null)
+                    {
+                        form = provider.getMorph().getForm();
+                    }
+                    else if (cameraEntity instanceof IEntityFormProvider provider)
+                    {
+                        form = provider.getForm();
+                    }
+
+                    if (form != null)
+                    {
+                        float s = form.getScaleY();
+                        if (Math.abs(s - 1.0F) > 0.001F && s > 0.001F)
+                        {
+                            double distSq = cameraEntity.squaredDistanceTo(x, y, z);
+                            double radius = Math.max(2.0, 3.0 * s);
+                            if (distSq <= radius * radius)
+                            {
+                                scale = s;
+                            }
+                        }
+                    }
+                }
+
+                if (scale == 1.0F && client.cameraEntity != null)
+                {
+                    for (Entity entity : client.world.getOtherEntities(client.cameraEntity, new Box(x - 3.0, y - 3.0, z - 3.0, x + 3.0, y + 3.0, z + 3.0)))
+                    {
+                        Form form = null;
+                        if (entity instanceof IMorphProvider provider && provider.getMorph() != null)
+                        {
+                            form = provider.getMorph().getForm();
+                        }
+                        else if (entity instanceof IEntityFormProvider provider)
+                        {
+                            form = provider.getForm();
+                        }
+
+                        if (form != null)
+                        {
+                            float s = form.getScaleY();
+                            if (Math.abs(s - 1.0F) > 0.001F && s > 0.001F)
+                            {
+                                double distSq = entity.squaredDistanceTo(x, y, z);
+                                double radius = Math.max(2.0, 3.0 * s);
+                                if (distSq <= radius * radius)
+                                {
+                                    scale = s;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (Math.abs(scale - 1.0F) > 0.001F && scale > 0.001F)
+            {
+                particle.scale(scale);
+            }
+        }
+    }
+
     @Inject(method = "tick", at = @At("HEAD"))
     private void bbs$advanceHeldClock(CallbackInfo info)
     {

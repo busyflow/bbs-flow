@@ -99,6 +99,11 @@ public class HeldParticles
         this.particles.add(particle);
     }
 
+    public int size()
+    {
+        return this.particles.size();
+    }
+
     public void clear()
     {
         for (Particle particle : this.particles)

@@ -135,6 +135,11 @@ public class Morph
             MapType map = (MapType) DataStorageUtils.fromNbt(compound.getCompound("Form"));
 
             this.form = FormUtils.fromData(map);
+
+            if (this.form != null && this.entity.getMcEntity() instanceof PlayerEntity player)
+            {
+                this.form.onMorph(player);
+            }
         }
     }
 }

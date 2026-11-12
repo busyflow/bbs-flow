@@ -353,6 +353,21 @@ public class UISettingsOverlayPanel extends UIOverlayPanel
                 continue;
             }
 
+            if (value instanceof ValueGroup subGroup)
+            {
+                drawn.add(value);
+
+                if (!category.getId().equals("refreshed") && subGroup.isVisible() && (!filtered || this.hasMatch(subGroup)))
+                {
+                    UISectionHeader subHeader = new UISectionHeader(this, subGroup);
+                    subHeader.marginTop(8);
+                    this.options.add(subHeader);
+                    this.appendValues(subGroup, filtered);
+                }
+
+                continue;
+            }
+
             UISettingsLayout.IValueRow row = UISettingsLayout.getRow(value);
             List<BaseValue> values = row == null ? Collections.singletonList(value) : row.getValues();
 
@@ -433,6 +448,16 @@ public class UISettingsOverlayPanel extends UIOverlayPanel
         if (this.isMisc(category) && (this.matchesLanguageTools() || this.matchesCdnTools())) return true;
         for (BaseValue value : category.getAll())
         {
+            if (value instanceof ValueGroup subGroup)
+            {
+                if (subGroup.isVisible() && this.hasMatch(subGroup))
+                {
+                    return true;
+                }
+
+                continue;
+            }
+
             if (this.isValueVisible(value) && this.matches(value))
             {
                 return true;

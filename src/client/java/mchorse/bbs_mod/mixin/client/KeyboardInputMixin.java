@@ -55,20 +55,32 @@ public class KeyboardInputMixin
     {
         UIBaseMenu menu = UIScreen.getCurrentMenu();
 
-        if (!(menu instanceof UIDashboard dashboard) || !(dashboard.getPanels().panel instanceof UIFilmPanel filmPanel))
+        if (menu == null)
         {
             return;
         }
 
-        /* canControl, not isControlling: an overlay over the preview takes the input for itself,
-         * and the actor used to keep walking on the last keys it saw while its author was busy in
-         * a popup. The mouse already stood down for an overlay; the keyboard did not. */
-        if (!filmPanel.getController().canControl())
+        boolean canControl = false;
+        if (menu instanceof UIDashboard dashboard && dashboard.getPanels().panel instanceof UIFilmPanel filmPanel)
         {
-            return;
+            canControl = filmPanel.getController().canControl();
         }
 
         KeyboardInput input = (KeyboardInput) (Object) this;
+
+        if (!canControl)
+        {
+            input.pressingForward = false;
+            input.pressingBack = false;
+            input.pressingLeft = false;
+            input.pressingRight = false;
+            input.movementForward = 0F;
+            input.movementSideways = 0F;
+            input.jumping = false;
+            input.sneaking = false;
+            return;
+        }
+
         GameOptions options = MinecraftClient.getInstance().options;
 
         input.pressingForward = isBoundKeyDown(options.forwardKey);

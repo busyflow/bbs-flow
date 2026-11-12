@@ -85,6 +85,7 @@ public abstract class UIKeyframeFactory <T> extends UIElement
         register(KeyframeFactories.PARTICLE_SETTINGS, UIParticleSettingsKeyframeFactory::new);
 
         registerProperty("model", UIModelKeyframeFactory::new);
+        registerProperty("selected_slot", UISelectedSlotKeyframeFactory::new);
     }
 
     public static <T> void register(IKeyframeFactory<T> clazz, IUIKeyframeFactoryFactory<T> factory)
@@ -149,22 +150,29 @@ public abstract class UIKeyframeFactory <T> extends UIElement
     {
         UIKeyframeSheet sheet = track.sheet;
 
-        if (sheet == null || sheet.property == null || sheet.isBoneTrack)
+        if (sheet == null || sheet.isBoneTrack)
         {
             return null;
         }
 
-        return PROPERTIES.get(StringUtils.fileName(sheet.channel.getId()));
+        String key = sheet.property != null ? StringUtils.fileName(sheet.channel.getId()) : sheet.id;
+
+        return PROPERTIES.get(key);
     }
 
     public UIKeyframeFactory(UITrackValue<T> track, UIKeyframes editor)
+    {
+        this(track, editor, KeyframeFactories.isNumeric(track.getFactory()));
+    }
+
+    public UIKeyframeFactory(UITrackValue<T> track, UIKeyframes editor, boolean numeric)
     {
         this.track = track;
         this.editor = editor;
         this.scroll = UI.scrollView(UIConstants.MARGIN, Math.max(UIConstants.SCROLL_PADDING, 4));
         this.scroll.scroll.cancelScrolling();
         this.scroll.full(this);
-        this.parameters = new UIKeyframeParameters(editor, KeyframeFactories.isNumeric(track.getFactory()));
+        this.parameters = new UIKeyframeParameters(editor, numeric);
         this.scroll.add(this.parameters);
         this.add(this.scroll);
     }

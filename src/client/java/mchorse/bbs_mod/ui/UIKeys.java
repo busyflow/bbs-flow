@@ -1167,6 +1167,7 @@ public class UIKeys
     public static final IKey BONES_ROLE_POLE = L10n.lang("bbs.ui.bones.role.pole");
     public static final IKey BONES_ROLE_LIMIT = L10n.lang("bbs.ui.bones.role.limit");
     public static final IKey BONES_ROLE_OFF = L10n.lang("bbs.ui.bones.role.off");
+    public static final IKey BONES_ROLE_PINNED = L10n.lang("bbs.ui.bones.role.pinned");
     public static final IKey MODEL_EDITOR_FACE_FRONT = L10n.lang("bbs.ui.model_editor.face.front");
     public static final IKey MODEL_EDITOR_FACE_BACK = L10n.lang("bbs.ui.model_editor.face.back");
     public static final IKey MODEL_EDITOR_FACE_RIGHT = L10n.lang("bbs.ui.model_editor.face.right");
@@ -1267,6 +1268,8 @@ public class UIKeys
     public static final IKey PANELS_MODALS_RENAME_FOLDER_TITLE = L10n.lang("bbs.ui.panels.modals.rename_folder-title");
     public static final IKey PANELS_PARTICLES = L10n.lang("bbs.ui.panels.particles");
     public static final IKey PANELS_SAVED_NOTIFICATION = L10n.lang("bbs.ui.panels.saved-notification");
+    public static final IKey POSE_LOCK_LIMB = L10n.lang("bbs.ui.pose.lock_limb");
+    public static final IKey POSE_LOCK_LIMB_TOOLTIP = L10n.lang("bbs.ui.pose.lock_limb_tooltip");
     public static final IKey POSE_CONTEXT_APPLY = L10n.lang("bbs.ui.pose.context.apply");
     public static final IKey POSE_CONTEXT_COPY = L10n.lang("bbs.ui.pose.context.copy");
     public static final IKey POSE_CONTEXT_FIX = L10n.lang("bbs.ui.pose.context.fix");
@@ -1274,6 +1277,9 @@ public class UIKeys
     public static final IKey POSE_CONTEXT_FIX_IN_PLACE = L10n.lang("bbs.ui.pose.context.fix_in_place");
     public static final IKey POSE_CONTEXT_FIX_IN_PLACE_CHILDREN = L10n.lang("bbs.ui.pose.context.fix_in_place_children");
     public static final IKey POSE_CONTEXT_FLIP_POSE = L10n.lang("bbs.ui.pose.context.flip_pose");
+    public static final IKey POSE_CONTEXT_LOCK_LIMB = L10n.lang("bbs.ui.pose.context.lock_limb");
+    public static final IKey POSE_CONTEXT_UNLOCK_LIMB = L10n.lang("bbs.ui.pose.context.unlock_limb");
+    public static final IKey POSE_CONTEXT_UNLOCK_ALL_LIMBS = L10n.lang("bbs.ui.pose.context.unlock_all_limbs");
     public static final IKey POSE_CONTEXT_NAME = L10n.lang("bbs.ui.pose.context.name");
     public static final IKey POSE_CONTEXT_PASTE = L10n.lang("bbs.ui.pose.context.paste");
     public static final IKey POSE_CONTEXT_RESET = L10n.lang("bbs.ui.pose.context.reset");

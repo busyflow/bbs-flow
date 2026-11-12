@@ -359,6 +359,15 @@ public class UIReplaysEditorUtils
             replayTransform,
             transition
         ));
+        replayTransform.onTransformChanged = () ->
+        {
+            UIKeyframeEditor keyframeEditor = panel.replayEditor.getBoneKeyframeEditor();
+
+            if (keyframeEditor != null && keyframeEditor.editor instanceof UIPoseKeyframeFactory poseFactory)
+            {
+                poseFactory.poseEditor.solveAllPinnedLimbs();
+            }
+        };
 
         UIKeyframeEditor hotkeyEditor = panel.replayEditor.getBoneKeyframeEditor();
         UIPropTransform transform = getEditableTransform(hotkeyEditor);

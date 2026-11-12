@@ -14,6 +14,7 @@ import mchorse.bbs_mod.ui.film.controller.ReplayContextAction;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIIcon;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeEditor;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeSheet;
 import mchorse.bbs_mod.ui.film.utils.keyframes.UIFilmKeyframes;
 import mchorse.bbs_mod.settings.values.IValueListener;
@@ -284,6 +285,18 @@ public class UIAnchorKeyframeFactory extends UIKeyframeFactory<Anchor>
         protected void applyToSelection(Consumer<Transform> consumer)
         {
             apply(this.editor.track, consumer);
+
+            UIFilmPanel panel = this.editor.getPanel();
+
+            if (panel != null)
+            {
+                UIKeyframeEditor keyframeEditor = panel.replayEditor.getBoneKeyframeEditor();
+
+                if (keyframeEditor != null && keyframeEditor.editor instanceof UIPoseKeyframeFactory poseFactory)
+                {
+                    poseFactory.poseEditor.solveAllPinnedLimbs();
+                }
+            }
         }
 
         public static void apply(UITrackValue<Anchor> track, Consumer<Transform> consumer)

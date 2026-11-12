@@ -53,7 +53,7 @@ public class UITrackValue<T>
      * nothing selected here the panel keeps showing the key it was opened for, never the track
      * at the playhead.
      */
-    private Keyframe<T> getKeyframe()
+    public Keyframe<T> getKeyframe()
     {
         Keyframe selected = this.editor.getSelectedKeyframe();
 

@@ -77,12 +77,25 @@ public class PlayerEntityMixin
             {
                 Form form = morph.getForm();
 
-                if (form != null && form.hitbox.get())
+                if (form != null)
                 {
                     PlayerEntity player = (PlayerEntity) (Object) this;
-                    float height = form.hitboxHeight.get() * (player.isSneaking() ? form.hitboxSneakMultiplier.get() : 1F);
 
-                    info.setReturnValue(form.hitboxEyeHeight.get() * height);
+                    if (form.hitbox.get())
+                    {
+                        float height = form.hitboxHeight.get() * (player.isSneaking() ? form.hitboxSneakMultiplier.get() : 1F);
+
+                        info.setReturnValue(form.hitboxEyeHeight.get() * height);
+                    }
+                    else
+                    {
+                        float scale = form.getScaleY();
+
+                        if (Math.abs(scale - 1F) > 0.001F && scale > 0.001F)
+                        {
+                            info.setReturnValue((player.isSneaking() ? 1.27F : 1.62F) * scale);
+                        }
+                    }
                 }
             }
         }

@@ -15,9 +15,11 @@ import mchorse.bbs_mod.ui.framework.elements.input.UIPropTransform;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeSheet;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UIStringList;
+import mchorse.bbs_mod.ui.utils.IWorldTransformProvider;
 import mchorse.bbs_mod.ui.utils.pose.UIPoseEditor;
 import mchorse.bbs_mod.utils.CollectionUtils;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UITrackValue;
+import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.utils.pose.Pose;
 import mchorse.bbs_mod.utils.pose.PoseFixInPlace;
 import mchorse.bbs_mod.utils.pose.PoseTransform;
@@ -86,6 +88,13 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
         }
 
         this.scroll.add(this.poseEditor);
+
+        mchorse.bbs_mod.ui.film.UIFilmPanel filmPanel = editor.getParent(mchorse.bbs_mod.ui.film.UIFilmPanel.class);
+
+        if (filmPanel != null)
+        {
+            this.poseEditor.transform.worldTransform(new FilmBoneWorldProvider(filmPanel));
+        }
     }
 
     /**
@@ -199,7 +208,77 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
         public void refreshValue()
         {
             if (this.transform.isUserEditing() || this.fix.isUserEditing() || this.lighting.isUserEditing()) return;
-            this.refreshPose(this.track.getValue());
+
+            Pose pose = this.track.getValue();
+
+            if (!PINNED_LIMBS.isEmpty() && pose != null)
+            {
+                this.solveAllPinnedLimbs(pose);
+            }
+
+            this.refreshPose(pose);
+        }
+
+        public void solveAllPinnedLimbs(Pose pose)
+        {
+            if (PINNED_LIMBS.isEmpty() || pose == null)
+            {
+                return;
+            }
+
+            IWorldTransformProvider provider = this.getEffectiveWorldProvider();
+
+            if (provider instanceof FilmBoneWorldProvider filmProvider)
+            {
+                float tick = this.track.getValueTick();
+                boolean isOverlay = this.track.sheet != null
+                    && this.track.sheet.id != null
+                    && this.track.sheet.id.contains("pose_overlay");
+
+                List<String> orderedPinned = this.getHierarchyOrderedBones(PINNED_LIMBS.keySet());
+
+                for (String bone : orderedPinned)
+                {
+                    Matrix4f targetWorld = PINNED_LIMBS.get(bone);
+
+                    if (targetWorld != null)
+                    {
+                        filmProvider.solveBoneWorldTransform(pose, bone, targetWorld, tick, isOverlay);
+                    }
+                }
+            }
+        }
+
+        public void solveAllPinnedLimbs()
+        {
+            if (PINNED_LIMBS.isEmpty() || this.track == null)
+            {
+                return;
+            }
+
+            IWorldTransformProvider provider = this.getEffectiveWorldProvider();
+
+            if (provider instanceof FilmBoneWorldProvider filmProvider)
+            {
+                float tick = this.track.getValueTick();
+                boolean isOverlay = this.track.sheet != null
+                    && this.track.sheet.id != null
+                    && this.track.sheet.id.contains("pose_overlay");
+
+                List<String> orderedPinned = this.getHierarchyOrderedBones(PINNED_LIMBS.keySet());
+
+                this.track.edit((pose) ->
+                {
+                    for (String bone : orderedPinned)
+                    {
+                        Matrix4f targetWorld = PINNED_LIMBS.get(bone);
+
+                        filmProvider.solveBoneWorldTransform(pose, bone, targetWorld, tick, isOverlay);
+                    }
+                });
+
+                this.refreshPose(this.track.getValue());
+            }
         }
 
         private String getGroup(PoseTransform transform)
@@ -297,9 +376,61 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
         protected void applyToSelection(Consumer<Transform> consumer)
         {
             Map<String, UIPoseEditor.BoneEdit> targets = this.editor.resolveBoneEdits(this.isMirrorEdit(), this.isAlternateInvert());
+            Map<String, Matrix4f> pinned = UIPoseEditor.PINNED_LIMBS;
 
-            UIPoseFactoryEditor.applyBones(this.editor.track, new ArrayList<>(targets.keySet()),
-                (bone, poseT) -> this.editor.applyToBone(targets.get(bone), poseT, consumer));
+            this.editor.track.edit((pose) ->
+            {
+                for (Map.Entry<String, UIPoseEditor.BoneEdit> entry : targets.entrySet())
+                {
+                    this.editor.applyToBone(entry.getValue(), pose.getOrCreate(entry.getKey()), consumer);
+                }
+
+                if (!pinned.isEmpty())
+                {
+                    IWorldTransformProvider provider = this.editor.getEffectiveWorldProvider();
+
+                    if (provider instanceof FilmBoneWorldProvider filmProvider)
+                    {
+                        float tick = this.editor.track.getValueTick();
+                        boolean isOverlay = this.editor.track.sheet != null
+                            && this.editor.track.sheet.id != null
+                            && this.editor.track.sheet.id.contains("pose_overlay");
+
+                        List<String> orderedPinned = this.editor.getHierarchyOrderedBones(pinned.keySet());
+
+                        for (String pinnedBone : orderedPinned)
+                        {
+                            if (!targets.containsKey(pinnedBone))
+                            {
+                                Matrix4f targetWorld = pinned.get(pinnedBone);
+
+                                filmProvider.solveBoneWorldTransform(pose, pinnedBone, targetWorld, tick, isOverlay);
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (!pinned.isEmpty())
+            {
+                IWorldTransformProvider provider = this.editor.getEffectiveWorldProvider();
+
+                if (provider != null)
+                {
+                    for (String editedBone : targets.keySet())
+                    {
+                        if (pinned.containsKey(editedBone))
+                        {
+                            Matrix4f newMat = new Matrix4f();
+
+                            if (provider.getWorldMatrix(editedBone, newMat))
+                            {
+                                pinned.put(editedBone, newMat);
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         @Override

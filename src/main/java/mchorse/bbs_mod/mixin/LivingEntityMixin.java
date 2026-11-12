@@ -7,6 +7,8 @@ import mchorse.bbs_mod.entity.IEntityFormProvider;
 import mchorse.bbs_mod.entity.ILimbAnimatorExtension;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.morphing.IMorphProvider;
+import net.minecraft.block.BlockRenderType;
+import net.minecraft.block.BlockState;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
@@ -14,16 +16,29 @@ import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.item.RangedWeaponItem;
+import net.minecraft.particle.BlockStateParticleEffect;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Hand;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Constant;
+import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(LivingEntity.class)
-public class LivingEntityMixin
+public abstract class LivingEntityMixin
 {
+    @Shadow protected abstract float turnHead(float bodyYaw, float headTurnSpeed);
+
     @Inject(method = "applyDamage", at = @At("HEAD"))
     public void onApplyDamage(DamageSource source, float amount, CallbackInfo info)
     {
@@ -121,7 +136,8 @@ public class LivingEntityMixin
                 {
                     float prevSpeed = accessor.getSpeed();
                     float newSpeed = prevSpeed + (targetSpeed - prevSpeed) * 0.4F;
-                    float step = (newSpeed / scale) * swingSpeed;
+                    float divisor = (float) Math.pow(scale, 0.75);
+                    float step = (newSpeed / divisor) * swingSpeed;
                     accessor.setPrevSpeed(prevSpeed);
                     accessor.setSpeed(newSpeed);
                     accessor.setPos(accessor.getPos() + step);
@@ -135,9 +151,123 @@ public class LivingEntityMixin
         }
     }
 
-    /* @Inject(method = "swingHand(Lnet/minecraft/util/Hand;Z)V", at = @At("HEAD"), cancellable = true)
-    public void onSwingHand(Hand hand, boolean fromServerPlayer, CallbackInfo info)
+    @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/LivingEntity;turnHead(FF)F"))
+    private float onTurnHead(LivingEntity entity, float bodyYaw, float f)
     {
-        info.cancel();
-    } */
+        Form form = null;
+        if ((Object) this instanceof IMorphProvider morphProvider && morphProvider.getMorph() != null)
+        {
+            form = morphProvider.getMorph().getForm();
+        }
+        else if ((Object) this instanceof IEntityFormProvider formProvider)
+        {
+            form = formProvider.getForm();
+        }
+
+        if (form != null)
+        {
+            float scale = form.getScaleY();
+            if (Math.abs(scale - 1F) > 0.001F && scale > 0.001F)
+            {
+                double dx = entity.getX() - entity.prevX;
+                double dz = entity.getZ() - entity.prevZ;
+                float distSq = (float) (dx * dx + dz * dz);
+                float threshold = 0.0025F * scale * scale;
+
+                if (distSq > threshold)
+                {
+                    f = ((float) Math.sqrt(distSq) / scale) * 3.0F;
+                    float movementYaw = (float) MathHelper.atan2(dz, dx) * 57.295776F - 90.0F;
+                    float diff = MathHelper.abs(MathHelper.wrapDegrees(entity.getYaw()) - movementYaw);
+
+                    if (95.0F < diff && diff < 265.0F)
+                    {
+                        bodyYaw = movementYaw - 180.0F;
+                    }
+                    else
+                    {
+                        bodyYaw = movementYaw;
+                    }
+                }
+                if (entity.handSwingProgress > 0.0F)
+                {
+                    bodyYaw = entity.getYaw();
+                }
+            }
+        }
+
+        return this.turnHead(bodyYaw, f);
+    }
+
+    @Inject(method = "getJumpVelocity", at = @At("RETURN"), cancellable = true)
+    public void onGetJumpVelocity(CallbackInfoReturnable<Float> cir)
+    {
+        Form form = null;
+        if ((Object) this instanceof IMorphProvider morphProvider && morphProvider.getMorph() != null)
+        {
+            form = morphProvider.getMorph().getForm();
+        }
+        else if ((Object) this instanceof IEntityFormProvider formProvider)
+        {
+            form = formProvider.getForm();
+        }
+
+        if (form != null)
+        {
+            float scale = form.getScaleY();
+            if (Math.abs(scale - 1F) > 0.001F && scale > 0.001F)
+            {
+                /* Froude similarity: real gravity, jump height × s, air time × √s */
+                cir.setReturnValue(cir.getReturnValue() * (float) Math.sqrt(scale));
+            }
+        }
+    }
+
+    /**
+     * Body scale of a scaled form (1 when unscaled). Movement follows Froude (dynamic) similarity,
+     * the way real big and small animals move under the same gravity: lengths × s, velocities × √s,
+     * times × √s. A giant walks faster in blocks but its strides are slow and heavy.
+     */
+    @Unique
+    private float bbs$getBodyScale()
+    {
+        Form form = null;
+        if ((Object) this instanceof IMorphProvider morphProvider && morphProvider.getMorph() != null)
+        {
+            form = morphProvider.getMorph().getForm();
+        }
+        else if ((Object) this instanceof IEntityFormProvider formProvider)
+        {
+            form = formProvider.getForm();
+        }
+
+        if (form == null)
+        {
+            return 1F;
+        }
+
+        float scale = form.getScaleY();
+
+        return Math.abs(scale - 1F) > 0.001F && scale > 0.001F ? scale : 1F;
+    }
+
+    /* Step-up height, so a big body walks over blocks and a tiny one is stopped by slabs */
+    @Inject(method = "getStepHeight", at = @At("RETURN"), cancellable = true)
+    private void bbs$scaleStepHeight(CallbackInfoReturnable<Float> cir)
+    {
+        float scale = this.bbs$getBodyScale();
+        if (scale != 1F) cir.setReturnValue(cir.getReturnValue() * scale);
+    }
+
+    /* Horizontal movement speed scaling so giants move with appropriate weight rather than gliding quickly */
+    @Inject(method = "getMovementSpeed()F", at = @At("RETURN"), cancellable = true)
+    private void bbs$scaleMovementSpeed(CallbackInfoReturnable<Float> cir)
+    {
+        float scale = this.bbs$getBodyScale();
+        if (scale > 1.001F)
+        {
+            float speedFactor = (float) (1.0 / Math.pow(scale, 0.25));
+            cir.setReturnValue(cir.getReturnValue() * speedFactor);
+        }
+    }
 }

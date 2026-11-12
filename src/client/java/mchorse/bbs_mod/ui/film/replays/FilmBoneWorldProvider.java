@@ -69,6 +69,12 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
         }
 
         UIKeyframeEditor keyframeEditor = this.panel.replayEditor.getBoneKeyframeEditor();
+
+        if (keyframeEditor == null || keyframeEditor.editor == null)
+        {
+            keyframeEditor = this.panel.replayEditor.keyframeEditor;
+        }
+
         UIKeyframeSheet sheet = keyframeEditor != null && keyframeEditor.editor != null ? keyframeEditor.editor.getSheet() : null;
 
         if (sheet != null)
@@ -121,6 +127,11 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
         Replay replay = replayEditor.getReplay();
         IEntity entity = this.panel.getController().getCurrentEntity();
 
+        if (entity == null && replay != null)
+        {
+            entity = this.panel.getController().getEntities().get(replay.getId());
+        }
+
         if (bone == null || replay == null || entity == null)
         {
             return false;
@@ -171,6 +182,11 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
         Replay replay = replayEditor.getReplay();
         IEntity entity = this.panel.getController().getCurrentEntity();
 
+        if (entity == null && replay != null)
+        {
+            entity = this.panel.getController().getEntities().get(replay.getId());
+        }
+
         if (replay == null || entity == null)
         {
             return false;
@@ -184,6 +200,12 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
         }
 
         UIKeyframeEditor keyframeEditor = this.panel.replayEditor.getBoneKeyframeEditor();
+
+        if (keyframeEditor == null || keyframeEditor.editor == null)
+        {
+            keyframeEditor = this.panel.replayEditor.keyframeEditor;
+        }
+
         UIKeyframeSheet sheet = keyframeEditor != null && keyframeEditor.editor != null ? keyframeEditor.editor.getSheet() : null;
         ValuePose property = (sheet != null && sheet.property instanceof ValuePose vp) ? vp : null;
 
@@ -225,6 +247,7 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
         boolean wasQuaternion = savedMode == Transform.RotationMode.QUATERNION;
 
         final ValuePose finalProp = property;
+        final IEntity finalEntity = entity;
 
         try
         {
@@ -250,7 +273,7 @@ public class FilmBoneWorldProvider implements IWorldTransformProvider
                 RenderFrame.invalidate();
 
                 Matrix4f mat = FilmMatrices.getBoneCompositeMatrix(
-                    this.panel.getController().getEntities(), entity, replay, 0D, 0D, 0D, transition, this.getBonePath(bone), true
+                    this.panel.getController().getEntities(), finalEntity, replay, 0D, 0D, 0D, transition, this.getBonePath(bone), true
                 );
 
                 return mat == null ? new Matrix4f() : mat;

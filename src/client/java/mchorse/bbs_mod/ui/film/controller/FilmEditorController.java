@@ -1,6 +1,9 @@
 package mchorse.bbs_mod.ui.film.controller;
 
 import mchorse.bbs_mod.film.FilmMatrices;
+import mchorse.bbs_mod.forms.forms.IPosedForm;
+import mchorse.bbs_mod.settings.values.core.ValuePose;
+import mchorse.bbs_mod.ui.film.replays.FilmBoneWorldProvider;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.film.BaseFilmController;
 import mchorse.bbs_mod.film.FilmEntityRenderer;
@@ -8,22 +11,31 @@ import mchorse.bbs_mod.film.Film;
 import mchorse.bbs_mod.film.FilmControllerContext;
 import mchorse.bbs_mod.film.FilmTarget;
 import mchorse.bbs_mod.film.replays.Replay;
+import mchorse.bbs_mod.forms.ITickable;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.entities.MCEntity;
+import mchorse.bbs_mod.forms.entities.ReplayEntity;
 import mchorse.bbs_mod.forms.entities.StubEntity;
 import mchorse.bbs_mod.forms.forms.Form;
+import mchorse.bbs_mod.forms.forms.ParticleForm;
+import mchorse.bbs_mod.forms.forms.VanillaParticleForm;
 import mchorse.bbs_mod.forms.renderers.utils.RenderFrame;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.ui.ValueOnionSkin;
 import mchorse.bbs_mod.ui.film.replays.UIReplaysEditorUtils;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeEditor;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeSheet;
+import mchorse.bbs_mod.ui.utils.pose.UIPoseEditor;
 import mchorse.bbs_mod.utils.CollectionUtils;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
+import mchorse.bbs_mod.utils.pose.Pose;
 import mchorse.bbs_mod.utils.profiler.BBSProfiler;
 import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import mchorse.bbs_mod.utils.keyframes.KeyframeSegment;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.minecraft.client.network.ClientPlayerEntity;
+import org.joml.Matrix4f;
 import org.joml.Vector3d;
 
 import java.util.List;
@@ -33,7 +45,7 @@ public class FilmEditorController extends BaseFilmController
 {
     public UIFilmController controller;
 
-    private int lastTick;
+    private int lastTick = Integer.MIN_VALUE;
     private boolean fractionalPreview;
 
     public FilmEditorController(Film film, UIFilmController controller)
@@ -60,18 +72,16 @@ public class FilmEditorController extends BaseFilmController
     {
         ticks = this.getTick() + (this.controller.panel.getRunner().isRunning() ? 1 : 0);
 
-        int step = ticks - this.lastTick;
+        int step = (this.lastTick == Integer.MIN_VALUE) ? 9999 : (ticks - this.lastTick);
+        /* While playing, the cursor follows real time (and audio sync), so it regularly
+         * skips a tick or two on a hiccup. Treating that as a seek wiped every particle
+         * in flight mid-playback - the "particles sometimes don't show" bug. Only a
+         * backward move or a real seek counts as a jump while playing. */
+        boolean isJump = this.controller.isPlaying()
+            ? (step < 0 || step > 10)
+            : (step != 0 && step != 1);
 
-        super.updateEntities(ticks);
-
-        this.lastTick = ticks;
-
-        /* Playback and stepping move the cursor one tick at a time. Anything else
-         * is a jump in time, and what the forms simulate tick by tick (particles)
-         * starts over where the cursor landed instead of carrying on from where
-         * it was. Only after the update, so the ticks a jump forward replays
-         * (see applyReplay) don't spill into the fresh start */
-        if (step != 0 && step != 1)
+        if (isJump)
         {
             for (IEntity entity : this.entities.values())
             {
@@ -81,6 +91,10 @@ public class FilmEditorController extends BaseFilmController
                 }
             }
         }
+
+        super.updateEntities(ticks);
+
+        this.lastTick = ticks;
     }
 
     @Override
@@ -91,6 +105,11 @@ public class FilmEditorController extends BaseFilmController
 
         if (isPlaying && isActor)
         {
+            Replay replay = entity instanceof ReplayEntity re ? re.replay : null;
+            if (replay != null && entity.getForm() != null)
+            {
+                this.applyTracks(replay, entity.getForm(), tick, 0F);
+            }
             super.updateEntityAndForm(entity, tick);
         }
     }
@@ -154,23 +173,79 @@ public class FilmEditorController extends BaseFilmController
             entity.setPrevBodyYaw(entity.getBodyYaw());
             entity.setPrevPitch(entity.getPitch());
 
-            /* Signed, not absolute: only a forward jump has intermediate ticks to replay. This loop is
-             * the only thing that grows an actor age while the film is paused, so it IS the simulation
-             * clock here - taking the absolute value made a backward scrub advance physics FORWARD by
-             * the distance scrubbed, and every scrub back lurched the chains. */
-            int diff = ticks - this.lastTick;
+            int diff = (this.lastTick == Integer.MIN_VALUE) ? 9999 : (ticks - this.lastTick);
+            boolean isJump = (diff != 0 && diff != 1);
 
-            while (diff > 0)
+            if (diff == 1 && !isJump)
             {
                 entity.update();
 
                 if (entity.getForm() != null)
                 {
+                    this.applyTracks(replay, entity.getForm(), ticks, 0F);
                     entity.getForm().update(entity);
                 }
-
-                diff -= 1;
             }
+        }
+    }
+
+    private boolean isParticleForm(Form form)
+    {
+        if (form == null)
+        {
+            return false;
+        }
+
+        if (form instanceof VanillaParticleForm || form instanceof ParticleForm)
+        {
+            return true;
+        }
+
+        if (form.getRenderer() instanceof ITickable)
+        {
+            return true;
+        }
+
+        for (mchorse.bbs_mod.forms.forms.BodyPart part : form.parts.getList())
+        {
+            if (this.isParticleForm(part.getForm()))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void warmupParticleForm(Replay replay, IEntity entity, int currentTick)
+    {
+        Form form = entity.getForm();
+
+        if (form == null)
+        {
+            return;
+        }
+
+        form.restart();
+
+        int startTick = Math.max(0, currentTick - 25);
+
+        for (int t = startTick; t < currentTick; t++)
+        {
+            replay.keyframes.apply(t, entity);
+            this.applyTracks(replay, form, t, 0F);
+            form.update(entity);
+        }
+
+        replay.keyframes.apply(currentTick, entity);
+        this.applyTracks(replay, form, currentTick, 0F);
+        form.update(entity);
+
+        Vector3d anchoredPos = FilmMatrices.getAnchoredPosition(this.entities, entity, replay, 0F);
+
+        if (anchoredPos != null)
+        {
+            entity.setPosition(anchoredPos.x, anchoredPos.y, anchoredPos.z);
         }
     }
 
@@ -232,6 +307,102 @@ public class FilmEditorController extends BaseFilmController
             || !this.controller.orbit.enabled;
     }
 
+    private boolean isEnforcingPinned;
+
+    private boolean isCurrent(Replay replay)
+    {
+        return replay != null && replay == this.controller.getReplay();
+    }
+
+    public void enforcePinnedLimbs(Replay replay, IEntity entity, float tick)
+    {
+        if (this.isEnforcingPinned || replay == null || entity == null)
+        {
+            return;
+        }
+
+        Map<String, Matrix4f> pinned = UIPoseEditor.PINNED_LIMBS;
+
+        if (pinned.isEmpty())
+        {
+            return;
+        }
+
+        Form form = entity.getForm();
+
+        if (!(form instanceof IPosedForm posedForm))
+        {
+            return;
+        }
+
+        UIKeyframeEditor keyframeEditor = this.controller.panel.replayEditor.getBoneKeyframeEditor();
+
+        if (keyframeEditor == null || keyframeEditor.editor == null)
+        {
+            keyframeEditor = this.controller.panel.replayEditor.keyframeEditor;
+        }
+
+        UIKeyframeSheet sheet = keyframeEditor != null && keyframeEditor.editor != null ? keyframeEditor.editor.getSheet() : null;
+        boolean isOverlay = sheet != null && sheet.id != null && sheet.id.contains("pose_overlay");
+
+        ValuePose poseProp = isOverlay ? posedForm.getPoseOverlay() : posedForm.getPose();
+
+        if (poseProp == null || poseProp.get() == null)
+        {
+            return;
+        }
+
+        Pose pose = poseProp.get();
+
+        this.isEnforcingPinned = true;
+
+        try
+        {
+            FilmBoneWorldProvider provider = new FilmBoneWorldProvider(this.controller.panel);
+            List<String> orderedBones = UIPoseEditor.getHierarchyOrderedBonesStatic(pinned.keySet());
+            boolean modified = false;
+
+            for (String bone : orderedBones)
+            {
+                Matrix4f targetWorld = pinned.get(bone);
+
+                if (targetWorld != null)
+                {
+                    if (provider.solveBoneWorldTransform(pose, bone, targetWorld, tick, isOverlay))
+                    {
+                        modified = true;
+                    }
+                }
+            }
+
+            if (modified)
+            {
+                poseProp.set(pose);
+                RenderFrame.invalidate();
+            }
+        }
+        finally
+        {
+            this.isEnforcingPinned = false;
+        }
+    }
+
+    @Override
+    protected void applyTracks(Replay replay, Form root, float tick, float transition)
+    {
+        super.applyTracks(replay, root, tick, transition);
+
+        if (this.isCurrent(replay) && !UIPoseEditor.PINNED_LIMBS.isEmpty() && !this.isEnforcingPinned)
+        {
+            IEntity entity = this.entities.get(replay.getId());
+
+            if (entity != null)
+            {
+                this.enforcePinnedLimbs(replay, entity, tick);
+            }
+        }
+    }
+
     @Override
     protected void renderEntity(WorldRenderContext context, Replay replay, IEntity entity)
     {
@@ -239,6 +410,13 @@ public class FilmEditorController extends BaseFilmController
 
         if (!(this.controller.getPovMode() == UIFilmController.CAMERA_MODE_FIRST_PERSON && current))
         {
+            if (current && !UIPoseEditor.PINNED_LIMBS.isEmpty() && !this.isEnforcingPinned)
+            {
+                float tick = replay.getTick(this.getTick()) + this.getTransition(entity, context.tickDelta());
+
+                this.enforcePinnedLimbs(replay, entity, tick);
+            }
+
             super.renderEntity(context, replay, entity);
         }
 
@@ -276,6 +454,11 @@ public class FilmEditorController extends BaseFilmController
                     replay.keyframes.apply(isPlaying ? ticks : tick, entity);
                     Form form = entity.getForm();
                     replay.properties.applyProperties(form, tick);
+
+                    if (current && !UIPoseEditor.PINNED_LIMBS.isEmpty() && !this.isEnforcingPinned)
+                    {
+                        this.enforcePinnedLimbs(replay, entity, tick);
+                    }
 
                     /* Back on the current tick after the onion excursion. */
                     RenderFrame.invalidate();

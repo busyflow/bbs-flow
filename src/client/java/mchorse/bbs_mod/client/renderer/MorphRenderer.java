@@ -32,7 +32,7 @@ public class MorphRenderer
         /* Only the real player is hidden - the vanilla pass already skips it, but Iris'
          * shadow pass doesn't, so it would cast a shadow. Player mob forms of the film
          * render their own stand-in entities and stay */
-        if (hidePlayer && !inInventoryDraw && player == MinecraftClient.getInstance().player)
+        if ((hidePlayer || UIScreen.getCurrentMenu() != null) && !inInventoryDraw && player == MinecraftClient.getInstance().player)
         {
             return true;
         }

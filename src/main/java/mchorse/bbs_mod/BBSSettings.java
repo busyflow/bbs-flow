@@ -158,6 +158,7 @@ public class BBSSettings {
 	public static ValueBoolean editorCrosshair;
 	public static ValueBoolean editorSeconds;
 	public static ValueBoolean editorTimelineGrid;
+	public static ValueBoolean tallAudioLayers;
 	public static ValueInt editorPeriodicSave;
 	public static ValueBoolean editorHorizontalFlight;
 	public static ValueBoolean editorFlightFreeLook;

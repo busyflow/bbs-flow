@@ -237,6 +237,18 @@ public class UIValueMap
 
         if (factory == null)
         {
+            for (Map.Entry<Class<? extends BaseValue>, IUIValueFactory<? extends BaseValue>> entry : factories.entrySet())
+            {
+                if (entry.getKey().isAssignableFrom(value.getClass()))
+                {
+                    factory = (IUIValueFactory<T>) entry.getValue();
+                    break;
+                }
+            }
+        }
+
+        if (factory == null)
+        {
             return Collections.emptyList();
         }
 

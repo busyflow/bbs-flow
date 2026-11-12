@@ -36,6 +36,37 @@ public class UIFilmKeyframes extends UIKeyframes
     }
 
     @Override
+    protected boolean subMouseClicked(UIContext context)
+    {
+        if (this.area.isInside(context))
+        {
+            UIFilmPanel panel = this.getParent(UIFilmPanel.class);
+
+            if (panel != null && panel.replayEditor != null)
+            {
+                if (panel.replayEditor.keyframeEditor != null && this == panel.replayEditor.keyframeEditor.view)
+                {
+                    if (panel.replayEditor.getPoseKeyframeEditor() != null && panel.replayEditor.getPoseKeyframeEditor().view != null)
+                    {
+                        panel.replayEditor.getPoseKeyframeEditor().view.pickKeyframe(null);
+                        panel.replayEditor.getPoseKeyframeEditor().view.getGraph().clearSelection();
+                    }
+                }
+                else if (panel.replayEditor.getPoseKeyframeEditor() != null && this == panel.replayEditor.getPoseKeyframeEditor().view)
+                {
+                    if (panel.replayEditor.keyframeEditor != null && panel.replayEditor.keyframeEditor.view != null)
+                    {
+                        panel.replayEditor.keyframeEditor.view.pickKeyframe(null);
+                        panel.replayEditor.keyframeEditor.view.getGraph().clearSelection();
+                    }
+                }
+            }
+        }
+
+        return super.subMouseClicked(context);
+    }
+
+    @Override
     public void triggerChange()
     {
         super.triggerChange();

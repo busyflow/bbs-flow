@@ -483,6 +483,11 @@ public abstract class UITransform extends UIElement
         return this;
     }
 
+    public IWorldTransformProvider getWorldTransformProvider()
+    {
+        return this.worldProvider;
+    }
+
     public boolean canCopyWorldTransform()
     {
         return this.worldProvider != null && this.worldProvider.getWorldMatrix(new Matrix4f());

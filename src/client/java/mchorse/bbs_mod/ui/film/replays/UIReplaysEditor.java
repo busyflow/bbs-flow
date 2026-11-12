@@ -622,7 +622,11 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
 
             this.pendingPick = null;
 
-            if (this.replay != replay) this.revealedSearchTrack = null;
+            if (this.replay != replay)
+            {
+                this.revealedSearchTrack = null;
+                mchorse.bbs_mod.ui.utils.pose.UIPoseEditor.PINNED_LIMBS.clear();
+            }
             this.replay = replay;
             this.partSelection = replay == null ? new TimelineBodyPartSelection()
                 : this.selectedPartsByReplay.computeIfAbsent(replay.getId(), key -> new TimelineBodyPartSelection());

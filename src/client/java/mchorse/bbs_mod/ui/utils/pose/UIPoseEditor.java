@@ -5,6 +5,8 @@ import mchorse.bbs_mod.data.types.MapType;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
+import mchorse.bbs_mod.ui.film.UIFilmPanel;
+import mchorse.bbs_mod.ui.film.replays.FilmBoneWorldProvider;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.UISection;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIToggle;
@@ -16,8 +18,10 @@ import mchorse.bbs_mod.ui.framework.elements.input.list.UIStringList;
 import mchorse.bbs_mod.ui.utils.BoneSelection;
 import mchorse.bbs_mod.ui.utils.IBoneSelectionHost;
 import mchorse.bbs_mod.ui.utils.ILivePoseHost;
+import mchorse.bbs_mod.ui.utils.IWorldTransformProvider;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.UIConstants;
+import mchorse.bbs_mod.ui.utils.bones.BoneRole;
 import mchorse.bbs_mod.ui.utils.bones.BoneRoles;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.context.MenuIcon;
@@ -31,6 +35,7 @@ import mchorse.bbs_mod.utils.pose.PoseFixInPlace;
 import mchorse.bbs_mod.utils.pose.PoseManager;
 import mchorse.bbs_mod.utils.pose.PoseTransform;
 import mchorse.bbs_mod.utils.pose.Transform;
+import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
@@ -55,11 +60,14 @@ public class UIPoseEditor extends UIElement
     public UIBoneList groups;
     public UISliderTrackpad fix;
     public UIToggle boneVisible;
+    public UIToggle lockLimb;
     public UIColor color;
     public UIColor overlay;
     public UISliderTrackpad lighting;
     public UIPropTransform transform;
     public UISection material;
+
+    public static final Map<String, Matrix4f> PINNED_LIMBS = new LinkedHashMap<>();
 
     private String group = "";
     private boolean hasBones = true;
@@ -89,6 +97,23 @@ public class UIPoseEditor extends UIElement
 
             menu.bar.register(new MenuIcon(Icons.CONVERT, UIKeys.POSE_CONTEXT_FLIP_POSE, MenuVerb.Slot.COMMON, this::flipPose).keepOpen());
 
+            List<String> current = this.groups.list.getCurrent();
+
+            if (!current.isEmpty())
+            {
+                boolean allLocked = current.stream().allMatch(this::isLimbLocked);
+
+                menu.bar.register(new MenuIcon(allLocked ? Icons.UNLOCKED : Icons.LOCKED,
+                    allLocked ? UIKeys.POSE_CONTEXT_UNLOCK_LIMB : UIKeys.POSE_CONTEXT_LOCK_LIMB,
+                    MenuVerb.Slot.COMMON,
+                    () -> this.setLimbsLocked(current, !allLocked)).keepOpen());
+            }
+
+            if (!PINNED_LIMBS.isEmpty())
+            {
+                menu.bar.register(new MenuIcon(Icons.UNLOCKED, UIKeys.POSE_CONTEXT_UNLOCK_ALL_LIMBS, MenuVerb.Slot.COMMON, this::unlockAllLimbs).keepOpen());
+            }
+
             return menu;
         });
         this.boneVisible = new UIToggle(UIKeys.MODEL_EDITOR_BONE_VISIBLE, true, (toggle) ->
@@ -104,6 +129,23 @@ public class UIPoseEditor extends UIElement
 
             this.applyChildren((pt) -> this.setBoneVisible(pt, visible));
         }));
+        this.lockLimb = new UIToggle(UIKeys.POSE_LOCK_LIMB, false, (toggle) ->
+        {
+            List<String> current = this.groups.list.getCurrent();
+
+            if (current.isEmpty())
+            {
+                toggle.setValue(false);
+                return;
+            }
+
+            this.setLimbsLocked(current, toggle.getValue());
+        });
+        this.lockLimb.tooltip(UIKeys.POSE_LOCK_LIMB_TOOLTIP);
+        this.lockLimb.context((menu) ->
+        {
+            menu.action(Icons.UNLOCKED, UIKeys.POSE_CONTEXT_UNLOCK_ALL_LIMBS, this::unlockAllLimbs);
+        });
         this.fix = new UISliderTrackpad((v) -> this.applyFixToSelection(v.floatValue()));
         this.fix.limit(0D, 1D).increment(0.1D).values(0.1, 0.05D, 0.2D);
         this.fix.tooltip(UIKeys.POSE_CONTEXT_FIX_TOOLTIP);
@@ -153,6 +195,7 @@ public class UIPoseEditor extends UIElement
         this.transform.setModel();
 
         this.keys().register(Keys.TRANSFORMATIONS_TOGGLE_FIX, this::toggleFix).category(UIKeys.TRANSFORMS_KEYS_CATEGORY);
+        this.keys().register(Keys.TRANSFORMATIONS_TOGGLE_LOCK_LIMB, this::toggleSelectedLimbsLock).category(UIKeys.TRANSFORMS_KEYS_CATEGORY);
         this.keys().register(Keys.TRANSFORMATIONS_FLIP_POSE, this::flipPose).active(this.groups::hasBones).category(UIKeys.TRANSFORMS_KEYS_CATEGORY);
 
         this.column().vertical().stretch();
@@ -196,11 +239,12 @@ public class UIPoseEditor extends UIElement
 
         this.material = materialSection(this.color, this.overlay, this.lighting);
         this.material.setVisible(this.hasBones);
+        this.lockLimb.setVisible(this.hasBones);
 
         /* Every row rides the same labelRow grid, so the trackpads and colour swatches pin to one
          * divider column and the names never truncate. */
-        UIElement[] fields = this.poseOnly ? new UIElement[] {this.boneVisible, this.transform} : new UIElement[] {
-            this.boneVisible,
+        UIElement[] fields = this.poseOnly ? new UIElement[] {UI.row(this.boneVisible, this.lockLimb), this.transform} : new UIElement[] {
+            UI.row(this.boneVisible, this.lockLimb),
             UI.labelRow(UIKeys.POSE_CONTEXT_FIX, this.fix),
             this.transform,
             this.material
@@ -272,6 +316,11 @@ public class UIPoseEditor extends UIElement
             {
                 roles.touch(entry.getKey());
             }
+        }
+
+        for (String bone : PINNED_LIMBS.keySet())
+        {
+            roles.mark(bone, 0, BoneRole.PINNED);
         }
     }
 
@@ -396,6 +445,7 @@ public class UIPoseEditor extends UIElement
 
         this.fix.setVisible(hasBones);
         this.boneVisible.setVisible(hasBones);
+        this.lockLimb.setVisible(hasBones);
         this.transform.setVisible(hasBones);
         this.material.setVisible(hasBones);
 
@@ -533,6 +583,7 @@ public class UIPoseEditor extends UIElement
             this.boneSelection().set("");
             this.fix.setValue(0F);
             this.boneVisible.setValue(true);
+            this.updateLockLimbState();
             this.color.setColor(Colors.WHITE);
             this.overlay.setColor(0x00ffffff);
             this.lighting.setValue(0F);
@@ -549,6 +600,7 @@ public class UIPoseEditor extends UIElement
 
         this.fix.setValue(poseTransform.fix);
         this.boneVisible.setValue(poseTransform.visible);
+        this.updateLockLimbState();
         this.color.setColor(poseTransform.color.getARGBColor());
         this.overlay.setColor(poseTransform.overlay.getARGBColor());
         this.lighting.setValue(poseTransform.lighting);
@@ -825,5 +877,171 @@ public class UIPoseEditor extends UIElement
     protected void setLighting(PoseTransform poseTransform, float value)
     {
         poseTransform.lighting = value;
+    }
+
+    public IWorldTransformProvider getEffectiveWorldProvider()
+    {
+        IWorldTransformProvider provider = this.transform.getWorldTransformProvider();
+
+        if (provider != null)
+        {
+            return provider;
+        }
+
+        UIFilmPanel panel = null;
+        UIElement anchor = this.selectionAnchor();
+
+        if (anchor != null)
+        {
+            panel = anchor.getAncestor(UIFilmPanel.class);
+        }
+
+        if (panel == null)
+        {
+            panel = this.getAncestor(UIFilmPanel.class);
+        }
+
+        if (panel == null && mchorse.bbs_mod.BBSModClient.getDashboard() != null)
+        {
+            panel = mchorse.bbs_mod.BBSModClient.getDashboard().getPanel(UIFilmPanel.class);
+        }
+
+        if (panel != null)
+        {
+            provider = new FilmBoneWorldProvider(panel);
+            this.transform.worldTransform(provider);
+
+            return provider;
+        }
+
+        return null;
+    }
+
+    public boolean isLimbLocked(String bone)
+    {
+        return bone != null && PINNED_LIMBS.containsKey(bone);
+    }
+
+    public Map<String, Matrix4f> getPinnedLimbs()
+    {
+        return PINNED_LIMBS;
+    }
+
+    public void setLimbsLocked(Collection<String> bones, boolean lock)
+    {
+        if (bones == null || bones.isEmpty())
+        {
+            return;
+        }
+
+        IWorldTransformProvider provider = this.getEffectiveWorldProvider();
+
+        for (String bone : bones)
+        {
+            if (lock)
+            {
+                if (provider != null)
+                {
+                    Matrix4f matrix = new Matrix4f();
+
+                    if (provider.getWorldMatrix(bone, matrix))
+                    {
+                        PINNED_LIMBS.put(bone, matrix);
+                    }
+                }
+            }
+            else
+            {
+                PINNED_LIMBS.remove(bone);
+            }
+        }
+
+        this.updateLockLimbState();
+    }
+
+    public void toggleSelectedLimbsLock()
+    {
+        List<String> current = this.groups.list.getCurrent();
+
+        if (!current.isEmpty())
+        {
+            boolean allLocked = current.stream().allMatch(this::isLimbLocked);
+
+            this.setLimbsLocked(current, !allLocked);
+        }
+    }
+
+    public void unlockAllLimbs()
+    {
+        PINNED_LIMBS.clear();
+        this.updateLockLimbState();
+    }
+
+    public void clearPinnedLimbs()
+    {
+        PINNED_LIMBS.clear();
+        this.updateLockLimbState();
+    }
+
+    public void updateLockLimbState()
+    {
+        List<String> current = this.groups.list.getCurrent();
+
+        if (current == null || current.isEmpty())
+        {
+            this.lockLimb.setValue(false);
+        }
+        else
+        {
+            boolean allLocked = true;
+
+            for (String b : current)
+            {
+                if (!PINNED_LIMBS.containsKey(b))
+                {
+                    allLocked = false;
+                    break;
+                }
+            }
+
+            this.lockLimb.setValue(allLocked);
+        }
+
+        if (PINNED_LIMBS.isEmpty())
+        {
+            this.lockLimb.tooltip(UIKeys.POSE_LOCK_LIMB);
+        }
+        else
+        {
+            this.lockLimb.tooltip(mchorse.bbs_mod.l10n.keys.IKey.raw("Lock this limb in place.\n(Pinned: " + String.join(", ", PINNED_LIMBS.keySet()) + ")"));
+        }
+    }
+
+    public static List<String> getHierarchyOrderedBonesStatic(Collection<String> bones)
+    {
+        return new ArrayList<>(bones);
+    }
+
+    public List<String> getHierarchyOrderedBones(Collection<String> bones)
+    {
+        List<String> ordered = new ArrayList<>();
+
+        for (String bone : this.groups.list.getList())
+        {
+            if (bones.contains(bone))
+            {
+                ordered.add(bone);
+            }
+        }
+
+        for (String bone : bones)
+        {
+            if (!ordered.contains(bone))
+            {
+                ordered.add(bone);
+            }
+        }
+
+        return ordered;
     }
 }
