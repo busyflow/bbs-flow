@@ -82,6 +82,8 @@ public class UIFilmPreview extends UIWorldPreview
     private List<AudioClip> clips = new ArrayList<>();
     private UIFilmPanel panel;
     private UIPlacementGizmo placementGizmo;
+    /** Kept on UIFilmPreview for addon mixins (e.g. bbs_trajectory) that @Shadow icons here. */
+    public UIElement icons;
 
     public UIIcon onionSkin;
     public UIIcon motionPath;
@@ -110,6 +112,7 @@ public class UIFilmPreview extends UIWorldPreview
 
     public UIFilmPreview(UIFilmPanel filmPanel)
     {
+        this.icons = super.icons;
         this.panel = filmPanel;
         this.placementGizmo = new UIPlacementGizmo(() -> filmPanel.cameraEditor, filmPanel::getCursor);
 
