@@ -497,6 +497,15 @@ public class UIFilmPreview extends UIWorldPreview
     }
 
     @Override
+    protected void updateIconsVisibility(UIContext context)
+    {
+        super.updateIconsVisibility(context);
+
+        /* Compatibility bridge for refreshedui's @Redirect on UIFilmPreview.updateIconsVisibility -> UIElement.setVisible */
+        this.icons.setVisible(this.iconsVisible);
+    }
+
+    @Override
     public void render(UIContext context)
     {
         Area area = this.getViewport();
