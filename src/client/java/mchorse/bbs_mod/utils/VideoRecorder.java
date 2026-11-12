@@ -79,6 +79,11 @@ public class VideoRecorder
     /**
      * Start recording the video using ffmpeg, with the given export settings
      */
+    public void startRecording(String movieName, File audioFile, int textureId, int width, int height)
+    {
+        this.startRecording(VideoExportSettings.global(), movieName, audioFile, textureId, width, height);
+    }
+
     public void startRecording(VideoExportSettings settings, String movieName, File audioFile, int textureId, int width, int height)
     {
         if (this.recording)
