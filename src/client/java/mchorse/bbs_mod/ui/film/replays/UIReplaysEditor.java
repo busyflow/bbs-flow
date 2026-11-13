@@ -1692,8 +1692,10 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
             if (!entry.key().equals(compound)) continue;
             this.filmPanel.showPanel(this);
             this.revealTrack(entry, false);
-            UIReplaysEditorUtils.pickPropertyTrack(this.keyframeEditor, this.filmPanel, compound, context.mouseButton == 1);
-            SplineEditorUtils.selectPoint(this.keyframeEditor, path);
+            UIKeyframeEditor editor = this.getBoneKeyframeEditor();
+
+            UIReplaysEditorUtils.pickPropertyTrack(editor, this.filmPanel, compound, context.mouseButton == 1);
+            SplineEditorUtils.selectPoint(editor, path);
             return true;
         }
         return false;
@@ -1779,20 +1781,21 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
 
         String path = FormUtils.getPath(form);
         boolean picked = this.partSelection.includes(path);
+        UIKeyframeEditor editor = this.getBoneKeyframeEditor();
 
         this.selectBodyPart(path);
 
         if (!picked && !insert)
         {
-            if (this.keyframeEditor != null)
+            if (editor != null)
             {
-                this.keyframeEditor.view.getGraph().clearSelection();
+                editor.view.getGraph().clearSelection();
             }
 
             return;
         }
 
-        UIReplaysEditorUtils.pickForm(this.keyframeEditor, this.filmPanel, form, bone, insert);
+        UIReplaysEditorUtils.pickForm(editor, this.filmPanel, form, bone, insert);
     }
 
     public boolean clickViewport(UIContext context, Area area)
