@@ -40,6 +40,7 @@ public class ActionManager
 
         for (ActionRecorder recorder : this.recorders.values())
         {
+            recorder.restoreInventory();
             this.stopDamage(recorder.getWorld(), recorder);
         }
 
@@ -78,6 +79,7 @@ public class ActionManager
 
         if (recorder != null)
         {
+            recorder.restoreInventory();
             this.stopDamage(recorder.getWorld(), recorder);
         }
     }
@@ -222,6 +224,7 @@ public class ActionManager
         }
 
         this.stop(remove.getFilm().getId());
+        remove.restoreInventory();
         this.stopDamage(remove.getWorld(), remove);
 
         return remove;

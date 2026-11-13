@@ -8,10 +8,16 @@ import mchorse.bbs_mod.actions.types.SwipeActionClip;
 import mchorse.bbs_mod.actions.types.blocks.InteractBlockActionClip;
 import mchorse.bbs_mod.actions.types.item.UseItemActionClip;
 import mchorse.bbs_mod.film.Film;
+import mchorse.bbs_mod.network.ServerNetwork;
 import mchorse.bbs_mod.utils.clips.Clips;
+import net.minecraft.entity.player.PlayerInventory;
+import net.minecraft.item.ItemStack;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.Hand;
 import net.minecraft.server.world.ServerWorld;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class ActionRecorder
 {
@@ -22,6 +28,10 @@ public class ActionRecorder
     private int tick;
     private int countdown;
     private int initialTick;
+
+    private final List<ItemStack> cachedInventory = new ArrayList<>();
+    private final int cachedSelectedSlot;
+    private boolean inventoryRestored;
 
     /** The use clip still being held down, so its duration can keep growing. */
     private UseItemActionClip useClip;
@@ -40,6 +50,14 @@ public class ActionRecorder
         this.tick = tick;
         this.countdown = countdown;
         this.initialTick = tick;
+
+        PlayerInventory inventory = entity.getInventory();
+        this.cachedSelectedSlot = inventory.selectedSlot;
+
+        for (int i = 0; i < inventory.size(); i++)
+        {
+            this.cachedInventory.add(inventory.getStack(i).copy());
+        }
     }
 
     public Film getFilm()
@@ -169,6 +187,42 @@ public class ActionRecorder
         else
         {
             this.interactClip = null;
+        }
+    }
+
+    /**
+     * Restores the player's inventory (main, armor, offhand, and selected hotbar slot)
+     * back to the snapshot taken when recording began.
+     */
+    public void restoreInventory()
+    {
+        if (this.inventoryRestored || this.entity == null)
+        {
+            return;
+        }
+
+        this.inventoryRestored = true;
+
+        PlayerInventory inventory = this.entity.getInventory();
+        int count = Math.min(inventory.size(), this.cachedInventory.size());
+
+        for (int i = 0; i < count; i++)
+        {
+            inventory.setStack(i, this.cachedInventory.get(i).copy());
+        }
+
+        inventory.selectedSlot = this.cachedSelectedSlot;
+        inventory.markDirty();
+
+        if (this.entity.networkHandler != null && !this.entity.isDisconnected())
+        {
+            if (this.entity.currentScreenHandler != null)
+            {
+                this.entity.currentScreenHandler.setCursorStack(ItemStack.EMPTY);
+            }
+
+            this.entity.playerScreenHandler.syncState();
+            ServerNetwork.sendSelectedSlot(this.entity, this.cachedSelectedSlot);
         }
     }
 }
