@@ -154,9 +154,15 @@ public abstract class UIKeyframeFactory <T> extends UIElement
             return null;
         }
 
-        String key = sheet.property != null ? StringUtils.fileName(sheet.channel.getId()) : sheet.id;
+        String key = sheet.property != null ? StringUtils.fileName(sheet.channel.getId()) : StringUtils.fileName(sheet.id);
+        IUIKeyframeFactoryFactory<T> factory = PROPERTIES.get(key);
 
-        return PROPERTIES.get(key);
+        if (factory == null && sheet.channel != null)
+        {
+            factory = PROPERTIES.get(StringUtils.fileName(sheet.channel.getId()));
+        }
+
+        return factory;
     }
 
     public UIKeyframeFactory(UITrackValue<T> track, UIKeyframes editor)
