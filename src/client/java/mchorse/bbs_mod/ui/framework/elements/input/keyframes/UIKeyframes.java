@@ -1605,6 +1605,56 @@ public class UIKeyframes extends UITimelineCanvas
         return this.isDuplicatingAtPlayhead() ? this.getPlayheadTick(context) : this.fromGraphCursor(context.mouseX);
     }
 
+    private UIKeyframeSheet getSheetByIdentity(Keyframe keyframe)
+    {
+        for (UIKeyframeSheet sheet : this.currentGraph.getSheets())
+        {
+            for (Object candidate : sheet.channel.getKeyframes())
+            {
+                if (candidate == keyframe)
+                {
+                    return sheet;
+                }
+            }
+        }
+
+        return this.currentGraph.getSheet(keyframe);
+    }
+
+    private void selectByIdentity(List<Keyframe> keyframes)
+    {
+        for (Keyframe keyframe : keyframes)
+        {
+            UIKeyframeSheet sheet = this.getSheetByIdentity(keyframe);
+
+            if (sheet != null)
+            {
+                sheet.selection.add(keyframe);
+            }
+        }
+    }
+
+    private boolean isSelectionMatch(List<Keyframe> keyframes, boolean requireAll)
+    {
+        if (keyframes.isEmpty())
+        {
+            return false;
+        }
+
+        for (Keyframe keyframe : keyframes)
+        {
+            UIKeyframeSheet sheet = this.getSheetByIdentity(keyframe);
+            boolean selected = sheet != null && sheet.selection.has(keyframe);
+
+            if (requireAll != selected)
+            {
+                return !requireAll;
+            }
+        }
+
+        return requireAll;
+    }
+
     private void pickOrStartSelectingKeyframes(UIContext context)
     {
         /* Picking keyframe or initiating selection */
@@ -1620,21 +1670,21 @@ public class UIKeyframes extends UITimelineCanvas
         if (found != null)
         {
             List<Keyframe> clicked = this.currentGraph.findKeyframes(context.mouseX, context.mouseY);
+            /* Summary marks render as selected when any child keyframe in the column is selected,
+             * so keep an existing multi-selection when dragging a partially selected summary too. */
+            boolean keepSelection = pair.b == KeyframeType.SUMMARY ? this.isSelectionMatch(clicked, false) : this.isAllSelected(clicked);
 
-            if (!shift && !this.isAllSelected(clicked))
+            if (!shift && !keepSelection)
             {
                 this.currentGraph.clearSelection();
             }
-            else if (!shift && pair.b == KeyframeType.REGULAR)
+            else if (!shift && (pair.b == KeyframeType.REGULAR || pair.b == KeyframeType.SUMMARY))
             {
                 /* Already selected: keep the selection for a drag, narrow it on a plain click (see subMouseReleased) */
                 this.narrowSelectionTo = clicked;
             }
 
-            for (Keyframe keyframe : clicked)
-            {
-                this.currentGraph.getSheet(keyframe).selection.add(keyframe);
-            }
+            this.selectByIdentity(clicked);
 
             this.pickKeyframe(found);
         }
@@ -1672,12 +1722,7 @@ public class UIKeyframes extends UITimelineCanvas
 
     private boolean isAllSelected(List<Keyframe> keyframes)
     {
-        for (Keyframe keyframe : keyframes)
-        {
-            if (!this.currentGraph.getSheet(keyframe).selection.has(keyframe)) return false;
-        }
-
-        return true;
+        return this.isSelectionMatch(keyframes, true);
     }
 
     @Override
@@ -1726,11 +1771,7 @@ public class UIKeyframes extends UITimelineCanvas
             Keyframe picked = this.currentGraph.getSelected();
 
             this.currentGraph.clearSelection();
-
-            for (Keyframe keyframe : this.narrowSelectionTo)
-            {
-                this.currentGraph.getSheet(keyframe).selection.add(keyframe);
-            }
+            this.selectByIdentity(this.narrowSelectionTo);
 
             this.pickKeyframe(picked != null && this.narrowSelectionTo.contains(picked) ? picked : this.narrowSelectionTo.get(0));
         }

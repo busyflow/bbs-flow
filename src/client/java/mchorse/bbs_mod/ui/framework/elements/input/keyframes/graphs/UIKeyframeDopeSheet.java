@@ -941,19 +941,33 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         }
 
         List keyframes = sheet.channel.getKeyframes();
+        int y = this.getDopeSheetY(sheet) + this.getTrackHeight(sheet) / 2;
+        Keyframe best = null;
+        int bestDist = Integer.MAX_VALUE;
+        boolean bestSelected = false;
+
         for (int j = 0; j < keyframes.size(); j++)
         {
             Keyframe keyframe = (Keyframe) keyframes.get(j);
             int x = this.keyframes.toGraphX(keyframe.getTick());
-            int y = this.getDopeSheetY(sheet) + this.getTrackHeight(sheet) / 2;
 
             if (this.isNear(x, y, mouseX, mouseY, false))
             {
-                return new Pair<>(keyframe, KeyframeType.REGULAR);
+                int dist = Math.abs(x - mouseX);
+                boolean selected = sheet.selection.has(j);
+
+                /* Pick the nearest keyframe in pixel space; prefer already-selected ones on ties so
+                 * dragging a multi-selection does not unexpectedly switch to an overlapping neighbor. */
+                if (best == null || dist < bestDist || (dist == bestDist && selected && !bestSelected))
+                {
+                    best = keyframe;
+                    bestDist = dist;
+                    bestSelected = selected;
+                }
             }
         }
 
-        return null;
+        return best == null ? null : new Pair<>(best, KeyframeType.REGULAR);
     }
 
     @Override
