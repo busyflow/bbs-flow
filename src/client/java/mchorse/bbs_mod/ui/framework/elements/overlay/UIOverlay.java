@@ -62,6 +62,38 @@ public class UIOverlay extends UIElement
         return overlay;
     }
 
+    private static UIOverlay addSizedOverlay(UIContext context, UIOverlayPanel panel)
+    {
+        UIOverlay overlay = new UIOverlay();
+
+        panel.relative(overlay).xy(0.5F, 0.5F).anchor(0.5F).bounds(overlay, 0);
+        setupPanel(context, overlay, panel);
+
+        return overlay;
+    }
+
+    /** Compatibility overloads kept for addons calling the sized addOverlay signatures. */
+    public static UIOverlay addOverlay(UIContext context, UIOverlayPanel panel, float w, float h)
+    {
+        panel.wh(w, h);
+
+        return addSizedOverlay(context, panel);
+    }
+
+    public static UIOverlay addOverlay(UIContext context, UIOverlayPanel panel, int w, int h)
+    {
+        panel.wh(w, h);
+
+        return addSizedOverlay(context, panel);
+    }
+
+    public static UIOverlay addOverlay(UIContext context, UIOverlayPanel panel, int w, float h)
+    {
+        panel.w(w).h(h);
+
+        return addSizedOverlay(context, panel);
+    }
+
     private static boolean isUnset(Flex.Unit unit)
     {
         return unit.value == 0F && unit.offset == 0 && unit.target == null;
