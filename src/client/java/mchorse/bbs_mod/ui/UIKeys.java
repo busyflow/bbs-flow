@@ -1906,6 +1906,9 @@ public class UIKeys
     public static final IKey CONFIG_EDITOR_PREVIEW_MODE_EXPORT = L10n.lang("bbs.config.viewport.preview_size_mode.export");
     public static final IKey CONFIG_EDITOR_PREVIEW_MODE_CUSTOM = L10n.lang("bbs.config.viewport.preview_size_mode.custom");
     public static final IKey CONFIG_EDITOR_PREVIEW_MODE_AUTO = L10n.lang("bbs.config.viewport.preview_size_mode.auto");
+    public static final IKey CONFIG_PREVIEW_ICONS_POSITION_BOTTOM = L10n.lang("bbs.config.viewport.preview_icons_position.bottom");
+    public static final IKey CONFIG_PREVIEW_ICONS_POSITION_LEFT = L10n.lang("bbs.config.viewport.preview_icons_position.left");
+    public static final IKey CONFIG_PREVIEW_ICONS_POSITION_RIGHT = L10n.lang("bbs.config.viewport.preview_icons_position.right");
     public static final IKey VALUE_RESET = L10n.lang("bbs.ui.value.reset");
     public static final IKey VIDEO_SETTINGS_HEIGHT = L10n.lang("bbs.ui.video_settings.height");
     public static final IKey VIDEO_SETTINGS_PRESETS_1080P = L10n.lang("bbs.ui.video_settings.presets.1080p");

@@ -105,6 +105,18 @@ public class UIValueMap
 
                 return Arrays.asList(UIValueFactory.column(button, value));
             }
+            else if (value == BBSSettings.editorPreviewIconsPosition)
+            {
+                UICirculate button = new UICirculate(null);
+                button.addLabel(UIKeys.CONFIG_PREVIEW_ICONS_POSITION_BOTTOM);
+                button.addLabel(UIKeys.CONFIG_PREVIEW_ICONS_POSITION_LEFT);
+                button.addLabel(UIKeys.CONFIG_PREVIEW_ICONS_POSITION_RIGHT);
+                button.callback = (b) -> value.set(button.getValue());
+                button.valueBinding(() -> button.setValue(value.get()));
+                button.w(90);
+
+                return Arrays.asList(UIValueFactory.column(button, value));
+            }
 
             if (value.getSubtype() == ValueInt.Subtype.COLOR || value.getSubtype() == ValueInt.Subtype.COLOR_ALPHA)
             {

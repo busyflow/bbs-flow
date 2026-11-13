@@ -533,7 +533,7 @@ public class UIFilmPreview extends UIWorldPreview
         this.updateIconsVisibility(context);
         this.hud.begin(area);
 
-        if (this.iconsVisible)
+        if (this.iconsVisible && BBSSettings.editorPreviewIconsPosition.get() == 0)
         {
             this.hud.reserve(PreviewHud.Anchor.BOTTOM_CENTER, area.ey() - this.icons.area.y);
         }

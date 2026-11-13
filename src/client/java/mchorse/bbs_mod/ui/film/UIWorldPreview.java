@@ -50,6 +50,7 @@ public class UIWorldPreview extends UIElement
 
     /** Whether the icon bar is currently shown - see {@link #updateIconsVisibility(UIContext)} */
     protected boolean iconsVisible = true;
+    private int iconsPosition = -1;
 
     /** Everything drawn over the frame goes through here - see {@link PreviewHud}. */
     protected final PreviewHud hud = new PreviewHud();
@@ -338,6 +339,45 @@ public class UIWorldPreview extends UIElement
         return this.icons.isVisible() && this.icons.area.isInside(context);
     }
 
+    protected void updateIconsLayout()
+    {
+        int position = BBSSettings.editorPreviewIconsPosition.get();
+
+        if (position == this.iconsPosition)
+        {
+            return;
+        }
+
+        boolean first = this.iconsPosition == -1;
+        this.iconsPosition = position;
+
+        if (first && position == 0)
+        {
+            return;
+        }
+
+        if (position == 1)
+        {
+            this.icons.column(0).vertical().width(20);
+            this.icons.w(20);
+            this.icons.relative(this).x(0F, 4).y(0.5F, 0).anchor(0F, 0.5F);
+        }
+        else if (position == 2)
+        {
+            this.icons.column(0).vertical().width(20);
+            this.icons.w(20);
+            this.icons.relative(this).x(1F, -4).y(0.5F, 0).anchor(1F, 0.5F);
+        }
+        else
+        {
+            this.icons.row(0).resize();
+            this.icons.h(20);
+            this.icons.relative(this).x(0.5F, 0).y(1F, -4).anchor(0.5F, 1F);
+        }
+
+        this.icons.resize();
+    }
+
     /**
      * The icon bar can be set to stay out of the way until the mouse comes over the
      * preview. A context menu opened from an icon takes the mouse out of the preview,
@@ -345,6 +385,8 @@ public class UIWorldPreview extends UIElement
      */
     protected void updateIconsVisibility(UIContext context)
     {
+        this.updateIconsLayout();
+
         boolean changed = false;
 
         for (Map.Entry<UIIcon, ValueBoolean> entry : this.iconSettings.entrySet())
@@ -406,7 +448,7 @@ public class UIWorldPreview extends UIElement
     /** Keeps the frame's bottom middle free where the icon bar is up. */
     protected void reserveIconBar(Area area)
     {
-        if (this.iconsVisible)
+        if (this.iconsVisible && BBSSettings.editorPreviewIconsPosition.get() == 0)
         {
             this.hud.reserve(PreviewHud.Anchor.BOTTOM_CENTER, area.ey() - this.icons.area.y);
         }
