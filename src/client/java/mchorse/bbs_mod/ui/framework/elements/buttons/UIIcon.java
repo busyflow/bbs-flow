@@ -150,7 +150,7 @@ public class UIIcon extends UIClickable<UIIcon>
         
         if (this.isEnabled())
         {
-            if (this.isActive())
+            if (this.isActive() || this.isHighlighted())
             {
                 color = 0xFF18191D;
             }
