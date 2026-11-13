@@ -57,6 +57,8 @@ public class ModelForm extends Form implements IPosedForm
     public final ValueString model = new ValueString("model", "");
     public final ValuePose pose = new ValuePose("pose", new Pose());
     public final ValuePose poseOverlay = new ValuePose("pose_overlay", new Pose());
+    /** Compatibility field for addons (e.g. bbs_pov) compiled against ModelForm.boneTracks. */
+    public final ValueBoolean boneTracks = new ValueBoolean("bone_tracks", true);
     public final ValueActionsConfig actions = new ValueActionsConfig("actions", new ActionsConfig());
     public final ValueColor color = new ValueColor("color", Color.white());
     public final ValueMaterials materials = new ValueMaterials("materials");
