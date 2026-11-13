@@ -376,6 +376,7 @@ public class UIWorldPreview extends UIElement
         }
 
         this.icons.resize();
+        this.icons.resize();
     }
 
     /**
@@ -400,7 +401,11 @@ public class UIWorldPreview extends UIElement
             }
         }
 
-        if (changed) this.icons.resize();
+        if (changed)
+        {
+            this.icons.resize();
+            this.icons.resize();
+        }
 
         if (!BBSSettings.editorPreviewIconsAutoHide.get())
         {
