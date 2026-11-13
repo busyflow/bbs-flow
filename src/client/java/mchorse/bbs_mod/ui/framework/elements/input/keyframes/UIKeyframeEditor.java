@@ -4,6 +4,7 @@ import mchorse.bbs_mod.ui.utils.SplineKeyframeEditor;
 
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.camera.clips.overwrite.KeyframeClip;
+import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.film.replays.tracks.TrackId;
 import mchorse.bbs_mod.film.replays.tracks.TrackKind;
 import mchorse.bbs_mod.film.replays.tracks.TrackStyle;
@@ -18,6 +19,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIAnchorK
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIKeyframeFactory;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIPoseKeyframeFactory;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIPoseTransformKeyframeFactory;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UISelectedSlotKeyframeFactory;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UITransformKeyframeFactory;
 import mchorse.bbs_mod.utils.Pair;
 import mchorse.bbs_mod.ui.utils.UIConstants;
@@ -159,10 +161,19 @@ public class UIKeyframeEditor extends UITimelinePanel
 
         if (sheet != null)
         {
-            /* Null when the keyframe's type has no editor registered: the track still works, it
-             * just gets no properties panel. It used to be dereferenced straight away, so a type
-             * whose registration went missing crashed on the click that selected a keyframe. */
-            UIKeyframeFactory panel = UIKeyframeFactory.createPanel(new UITrackValue<>(sheet, this.view), this.view);
+            UIKeyframeFactory panel;
+
+            if (sheet.channel != null && sheet.channel.getParent() instanceof ReplayKeyframes && "selected_slot".equals(sheet.id))
+            {
+                panel = new UISelectedSlotKeyframeFactory(new UITrackValue<>(sheet, this.view), this.view);
+            }
+            else
+            {
+                /* Null when the keyframe's type has no editor registered: the track still works, it
+                 * just gets no properties panel. It used to be dereferenced straight away, so a type
+                 * whose registration went missing crashed on the click that selected a keyframe. */
+                panel = UIKeyframeFactory.createPanel(new UITrackValue<>(sheet, this.view), this.view);
+            }
 
             if (panel != null)
             {
