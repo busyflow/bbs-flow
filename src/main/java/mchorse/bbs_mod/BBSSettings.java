@@ -734,7 +734,7 @@ public class BBSSettings {
 		builder.register(language = new ValueLanguage("language"));
 		enableTrackpadIncrements = builder.getBoolean("trackpad_increments", false);
 		enableTrackpadScrolling = builder.getBoolean("trackpad_scrolling", false);
-		userIntefaceScale = builder.getFloat("ui_scale", 2F, 0F, 4F).slider(0.25D);
+		userIntefaceScale = builder.getFloat("ui_scale", 2F, 0F, 4F).slider(0.05D);
 		pixelArtSmoothing = builder.getBoolean("pixel_art_smoothing", true);
 		taskbarSide = builder.getInt("taskbar_side", 0);
 		fov = builder.getFloat("fov", 70, 0, 180);

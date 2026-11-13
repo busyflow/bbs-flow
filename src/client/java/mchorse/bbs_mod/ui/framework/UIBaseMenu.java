@@ -77,8 +77,8 @@ public abstract class UIBaseMenu
 
         popka.keys().register(Keys.KEYBINDS, () -> this.context.toggleKeybinds());
         popka.keys().register(Keys.TRANSFORMATIONS_TOGGLE_AXES, () -> renderAxes = !renderAxes);
-        popka.keys().register(Keys.UI_SCALE_INC, () -> changeUIScale(0.25F));
-        popka.keys().register(Keys.UI_SCALE_DEC, () -> changeUIScale(-0.25F));
+        popka.keys().register(Keys.UI_SCALE_INC, () -> changeUIScale(0.05F));
+        popka.keys().register(Keys.UI_SCALE_DEC, () -> changeUIScale(-0.05F));
         this.root.add(popka);
 
         this.context.keybinds.relative(this.viewport).wh(0.5F, 1F);
@@ -100,7 +100,9 @@ public abstract class UIBaseMenu
             current = BBSModClient.getGUIScale();
         }
 
-        BBSSettings.userIntefaceScale.set(MathUtils.clamp(current + delta, 0.5F, 4F));
+        float next = Math.round(MathUtils.clamp(current + delta, 0.5F, 4F) * 100F) / 100F;
+
+        BBSSettings.userIntefaceScale.set(next);
     }
 
     public UIRootElement getRoot()
