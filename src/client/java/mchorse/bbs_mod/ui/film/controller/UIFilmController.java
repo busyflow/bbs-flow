@@ -1126,7 +1126,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
 
     public void toggleOrbitAnchorBodyPart()
     {
-        this.orbit.toggleTurningWithAnchor();
+        this.orbit.toggleAnchorBodyPart();
     }
 
     public boolean zoomOrbit(double mouseWheel)

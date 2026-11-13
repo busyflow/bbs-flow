@@ -153,10 +153,37 @@ public class OrbitFilmCameraController extends OrbitViewportController
      */
     private record Subject(Replay replay, IEntity entity, String path, boolean bone)
     {
-        public String key(boolean turning)
+        public String key(boolean turning, boolean bodyPartAnchor)
         {
-            return this.replay.getId() + "|" + this.path + "|" + this.bone + "|" + turning;
+            return this.replay.getId() + "|" + this.path + "|" + this.bone + "|" + turning + "|" + bodyPartAnchor;
         }
+    }
+
+    private String getMainAnchorBone(Form form)
+    {
+        if (form == null)
+        {
+            return null;
+        }
+
+        Form root = FormUtils.getRoot(form);
+
+        if (root instanceof ModelForm modelForm)
+        {
+            ModelInstance model = ModelFormRenderer.getModel(modelForm);
+
+            if (model != null)
+            {
+                String anchor = model.getAnchor();
+
+                if (anchor != null && !anchor.isEmpty())
+                {
+                    return anchor;
+                }
+            }
+        }
+
+        return null;
     }
 
     private Subject getSubject()
@@ -179,9 +206,26 @@ public class OrbitFilmCameraController extends OrbitViewportController
             return null;
         }
 
+        if (!this.isAnchorBodyPart())
+        {
+            return new Subject(replay, entity, null, false);
+        }
+
         String part = this.controller.panel.replayEditor.getActiveBodyPart();
 
-        return new Subject(replay, entity, part.isEmpty() ? null : part, false);
+        if (!part.isEmpty())
+        {
+            return new Subject(replay, entity, part, false);
+        }
+
+        String mainBone = this.getMainAnchorBone(entity.getForm());
+
+        if (mainBone != null)
+        {
+            return new Subject(replay, entity, mainBone, true);
+        }
+
+        return new Subject(replay, entity, null, false);
     }
 
     @Override
@@ -224,12 +268,19 @@ public class OrbitFilmCameraController extends OrbitViewportController
         return center == null ? super.getOrbitCenter(transition) : new Vector3d(center);
     }
 
-    /** Where the pinned bone is (where its gizmo sits), or the middle of the selected body part; null for the replay itself. */
+    /** Where the pinned bone is (where its gizmo sits), or the middle of the selected body part / pose; null for raw replay XYZ. */
     private Vector3f getSelectionCenter(Subject subject, float transition)
     {
         if (subject.path() == null)
         {
-            return null;
+            if (!this.isAnchorBodyPart())
+            {
+                return null;
+            }
+
+            Vector3d center = this.getPoseCenter(subject.entity(), "", transition);
+
+            return center == null ? null : new Vector3f((float) center.x, (float) center.y, (float) center.z);
         }
 
         if (subject.bone())
@@ -266,6 +317,18 @@ public class OrbitFilmCameraController extends OrbitViewportController
     public void toggleAttachment()
     {
         BBSSettings.editorOrbitAttached.set(!BBSSettings.editorOrbitAttached.get());
+
+        this.updateAnchor(this.getCurrentTransition());
+    }
+
+    public boolean isAnchorBodyPart()
+    {
+        return BBSSettings.editorOrbitBodyPartAnchor.get();
+    }
+
+    public void toggleAnchorBodyPart()
+    {
+        BBSSettings.editorOrbitBodyPartAnchor.set(!BBSSettings.editorOrbitBodyPartAnchor.get());
 
         this.updateAnchor(this.getCurrentTransition());
     }
@@ -476,7 +539,7 @@ public class OrbitFilmCameraController extends OrbitViewportController
         }
 
         boolean turning = this.isTurningWithAnchor();
-        String key = subject == null ? null : subject.key(turning);
+        String key = subject == null ? null : subject.key(turning, this.isAnchorBodyPart());
         Vector3d position = new Vector3d();
         Quaternionf rotation = new Quaternionf();
         float time = this.controller.panel.getCursor(transition);
@@ -560,7 +623,16 @@ public class OrbitFilmCameraController extends OrbitViewportController
         IEntity entity = subject.entity();
         FormRenderer renderer = FormUtilsClient.getRenderer(entity.getForm());
 
-        matrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, transition);
+        if (this.isAnchorBodyPart())
+        {
+            Anchor anchor = FilmMatrices.getAnchor(entity, subject.replay());
+            matrix = FilmMatrices.getAnchorMatrix(this.controller.getEntities(), entity, subject.replay(), 0D, 0D, 0D, transition, anchor);
+        }
+
+        if (matrix == null)
+        {
+            matrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, transition);
+        }
 
         if (renderer == null)
         {
@@ -573,7 +645,21 @@ public class OrbitFilmCameraController extends OrbitViewportController
             }
         }
 
-        return MatrixStackUtils.stripScale(matrix);
+        matrix = MatrixStackUtils.stripScale(matrix);
+
+        if (this.isAnchorBodyPart() && subject.path() == null && entity.getForm() != null)
+        {
+            FormFrameCache frame = new FormFrameCache();
+            MatrixCache map = FormFrameCache.collect(frame, entity.getForm(), entity, transition);
+            Vector3f center = this.getPoseCenter(map, "");
+
+            if (center != null)
+            {
+                matrix.translate(center);
+            }
+        }
+
+        return matrix;
     }
 
     /** The film has just put its actors at the cursor's tick. */

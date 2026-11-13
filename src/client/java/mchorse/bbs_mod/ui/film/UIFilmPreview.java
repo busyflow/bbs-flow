@@ -197,6 +197,7 @@ public class UIFilmPreview extends UIWorldPreview
             {
                 menu.action(Icons.MOVE_TO, UIKeys.FILM_REPLAY_ORBIT_TELEPORT_TO_RECORDING, controller::teleportOrbitPivotToReplay);
                 menu.action(Icons.LINK, UIKeys.FILM_CONTROLLER_KEYS_ATTACH_ORBIT, controller.orbit.isAttached(), controller::toggleOrbitAttachment);
+                menu.action(Icons.POSE, UIKeys.FILM_CONTROLLER_KEYS_ORBIT_BODY_PART, controller.orbit.isAnchorBodyPart(), controller::toggleOrbitAnchorBodyPart);
                 if (controller.orbit.canPinToBone())
                 {
                     menu.action(Icons.BONE, UIKeys.FILM_CONTROLLER_ORBIT_PIN_TO_BONE, controller.orbit.isPinnedToBone(), controller.orbit::togglePinToBone);
