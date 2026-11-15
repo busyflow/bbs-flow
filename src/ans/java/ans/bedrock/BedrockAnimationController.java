@@ -185,12 +185,34 @@ public final class BedrockAnimationController {
         }
     }
 
+    public static final class FadingState {
+        public final StateDef state;
+        public float stateTime;
+        public float elapsed;
+        public final float duration;
+        public final float startWeight;
+
+        public FadingState(StateDef state, float stateTime, float duration, float startWeight) {
+            this.state = state;
+            this.stateTime = stateTime;
+            this.elapsed = 0f;
+            this.duration = duration;
+            this.startWeight = startWeight;
+        }
+
+        public float currentWeight() {
+            if (duration <= 1e-4f || elapsed >= duration) return 0f;
+            return startWeight * Math.max(0f, 1f - elapsed / duration);
+        }
+    }
+
     /** Per-instance mutable execution state for a single controller bound to an entity/attachable. */
     public static final class RuntimeState {
         public final BedrockAnimationController def;
         public StateDef currentState;
         public StateDef prevState = null;
         public float prevStateTime = 0f;
+        public final List<FadingState> fadingStates = new ArrayList<>();
         public boolean enteredInitial = false;
         public float stateTime = 0f;
 
@@ -198,6 +220,14 @@ public final class BedrockAnimationController {
             this.def = def;
             this.currentState = def.states.getOrDefault(def.initialStateLower,
                 def.states.isEmpty() ? null : def.states.values().iterator().next());
+        }
+
+        private float totalFadingWeight() {
+            float sum = 0f;
+            for (FadingState fs : fadingStates) {
+                sum += fs.currentWeight();
+            }
+            return Math.min(1f, sum);
         }
 
         public void step(float dt, MolangScope scope, List<ActiveAnimOut> outAnims) {
@@ -213,7 +243,7 @@ public final class BedrockAnimationController {
                 return;
             }
             MolangQueryContext.DefaultContext ctx = scope.getQueryContext() instanceof MolangQueryContext.DefaultContext dc ? dc : null;
-            float prevStateTime = ctx != null ? ctx.stateTime : 0f;
+            float savedCtxStateTime = ctx != null ? ctx.stateTime : 0f;
             boolean prevAny = ctx != null && ctx.anyAnimationFinished;
             boolean prevAll = ctx != null && ctx.allAnimationsFinished;
 
@@ -221,9 +251,9 @@ public final class BedrockAnimationController {
                 if (!enteredInitial) {
                     enteredInitial = true;
                     updateFinishFlags(ctx, animMap, pack);
-                if (ctx != null) {
-                    ctx.stateTime = stateTime;
-                }
+                    if (ctx != null) {
+                        ctx.stateTime = stateTime;
+                    }
                     runEntryEffects(currentState, scope);
                 }
 
@@ -258,49 +288,61 @@ public final class BedrockAnimationController {
                     for (MolangExpr exitExpr : currentState.onExit) {
                         exitExpr.evaluate(scope);
                     }
+                    float transBlendDur = currentState.blendTransition > 1e-4f
+                        ? currentState.blendTransition
+                        : (nextState.blendTransition > 1e-4f ? nextState.blendTransition : 0.15f);
+                    float curWeight = Math.max(0f, 1f - totalFadingWeight());
+                    if (curWeight > 0.001f) {
+                        if (fadingStates.size() >= 4) {
+                            fadingStates.remove(0);
+                        }
+                        fadingStates.add(new FadingState(currentState, stateTime, transBlendDur, curWeight));
+                    }
                     prevState = currentState;
                     prevStateTime = stateTime;
                     currentState = nextState;
                     stateTime = 0f;
                     updateFinishFlags(ctx, animMap, pack);
-                if (ctx != null) {
-                    ctx.stateTime = stateTime;
-                }
+                    if (ctx != null) {
+                        ctx.stateTime = stateTime;
+                    }
                     runEntryEffects(currentState, scope);
                 }
 
                 stateTime += dt;
-                float blendDur = currentState.blendTransition > 1e-4f ? currentState.blendTransition : 0.15f;
-                if (prevState != null && stateTime < blendDur) {
-                    prevStateTime += dt;
+                prevStateTime += dt;
+                for (int i = fadingStates.size() - 1; i >= 0; i--) {
+                    FadingState fs = fadingStates.get(i);
+                    fs.stateTime += dt;
+                    fs.elapsed += dt;
+                    if (fs.elapsed >= fs.duration) {
+                        fadingStates.remove(i);
+                    }
+                }
+                if (fadingStates.isEmpty()) {
+                    prevState = null;
                 }
                 if (ctx != null) {
                     ctx.stateTime = stateTime;
                 }
 
-                if (prevState != null && stateTime < blendDur) {
-                    float alpha = Math.max(0f, Math.min(1f, stateTime / blendDur));
-                    float invAlpha = 1f - alpha;
-                    if (invAlpha > 0.001f) {
-                        for (AnimRef ar : prevState.animations) {
-                            float w = ar.weightExpr.evaluateFloat(scope) * invAlpha;
+                float totalFadeOut = 0f;
+                for (FadingState fs : fadingStates) {
+                    float fw = fs.currentWeight();
+                    totalFadeOut += fw;
+                    if (fw > 0.001f) {
+                        for (AnimRef ar : fs.state.animations) {
+                            float w = ar.weightExpr.evaluateFloat(scope) * fw;
                             if (w > 0.001f) {
-                                outAnims.add(new ActiveAnimOut(ar.shortNameLower, w, prevStateTime));
+                                outAnims.add(new ActiveAnimOut(ar.shortNameLower, w, fs.stateTime));
                             }
                         }
                     }
-                    if (alpha > 0.001f) {
-                        for (AnimRef ar : currentState.animations) {
-                            float w = ar.weightExpr.evaluateFloat(scope) * alpha;
-                            if (w > 0.001f) {
-                                outAnims.add(new ActiveAnimOut(ar.shortNameLower, w, stateTime));
-                            }
-                        }
-                    }
-                } else {
-                    prevState = null;
+                }
+                float curAlpha = Math.max(0f, 1f - totalFadeOut);
+                if (curAlpha > 0.001f) {
                     for (AnimRef ar : currentState.animations) {
-                        float w = ar.weightExpr.evaluateFloat(scope);
+                        float w = ar.weightExpr.evaluateFloat(scope) * curAlpha;
                         if (w > 0.001f) {
                             outAnims.add(new ActiveAnimOut(ar.shortNameLower, w, stateTime));
                         }
@@ -308,7 +350,7 @@ public final class BedrockAnimationController {
                 }
             } finally {
                 if (ctx != null) {
-                    ctx.stateTime = prevStateTime;
+                    ctx.stateTime = savedCtxStateTime;
                     ctx.anyAnimationFinished = prevAny;
                     ctx.allAnimationsFinished = prevAll;
                 }
