@@ -106,6 +106,7 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
             this.updateTexture(context.getTransition());
             emitter.lastGlobal.set(new Vector3f(0, 0, 0));
             emitter.rotation.identity();
+            emitter.renderScale = 1F;
             emitter.renderUI(stack, context.getTransition());
 
             stack.pop();
@@ -154,6 +155,8 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
 
             emitter.lastGlobal.set(translation);
             emitter.rotation.set(matrix);
+            Vector3f scale = matrix.getScale(Vectors.TEMP_3F);
+            emitter.renderScale = (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3F;
 
             if (!BBSRendering.isIrisShadowPass())
             {

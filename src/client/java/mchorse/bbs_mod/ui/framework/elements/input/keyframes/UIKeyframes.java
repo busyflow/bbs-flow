@@ -85,9 +85,6 @@ public class UIKeyframes extends UITimelineCanvas
     private final DoubleClick<Keyframe> keyframeDoubleClick = new DoubleClick<>(true);
     private boolean controlFirst;
     private Pair<Keyframe, KeyframeType> draggingData;
-    /** Keys under a plain click on an already selected keyframe: if the mouse is released without
-     * dragging, the selection narrows down to them (a drag still moves the whole selection). */
-    private List<Keyframe> narrowSelectionTo;
     private boolean scaling;
     private float scalingAnchor;
     private final Map<Keyframe, Keyframe> transformKeys = new IdentityHashMap<>();
@@ -1670,18 +1667,13 @@ public class UIKeyframes extends UITimelineCanvas
         if (found != null)
         {
             List<Keyframe> clicked = this.currentGraph.findKeyframes(context.mouseX, context.mouseY);
-            /* Summary marks render as selected when any child keyframe in the column is selected,
-             * so keep an existing multi-selection when dragging a partially selected summary too. */
-            boolean keepSelection = pair.b == KeyframeType.SUMMARY ? this.isSelectionMatch(clicked, false) : this.isAllSelected(clicked);
+            /* Keep an existing multi-selection whenever the clicked keyframe/summary is already part of it,
+             * even if an unselected neighbor happens to fall within the same hit radius. */
+            boolean keepSelection = this.isSelectionMatch(clicked, false);
 
             if (!shift && !keepSelection)
             {
                 this.currentGraph.clearSelection();
-            }
-            else if (!shift && (pair.b == KeyframeType.REGULAR || pair.b == KeyframeType.SUMMARY))
-            {
-                /* Already selected: keep the selection for a drag, narrow it on a plain click (see subMouseReleased) */
-                this.narrowSelectionTo = clicked;
             }
 
             this.selectByIdentity(clicked);
@@ -1689,7 +1681,7 @@ public class UIKeyframes extends UITimelineCanvas
             this.pickKeyframe(found);
         }
         /* Empty space: a plain click clears the selection on release, a drag moves the view and keeps it;
-         * Shift + click (without dragging a band) clears it too, see subMouseReleased. */
+         * Shift + click keeps it (Shift only adds), see subMouseReleased. */
 
         /* Only the keyframe itself: a handle or a Shift click (adding to the selection) isn't a jump. */
         boolean jumpable = found != null && !shift && pair.b == KeyframeType.REGULAR;
@@ -1748,41 +1740,27 @@ public class UIKeyframes extends UITimelineCanvas
         {
             this.marquee.update(context.mouseX, context.mouseY);
 
+            /* Shift only adds: a band adds its keys, a Shift + click on empty space keeps the selection */
             if (this.marquee.isActive())
             {
                 this.currentGraph.selectInArea(this.getGrabbingArea(context));
             }
-            else
-            {
-                /* Shift + click on empty space without a band: clear the selection */
-                this.currentGraph.clearSelection();
-                this.pickKeyframe(null);
-            }
         }
+
+        boolean mouseHasMoved = Math.abs(context.mouseX - this.initialX) > 2 || Math.abs(context.mouseY - this.initialY) > 2;
 
         if (this.dragging > 0 && this.draggingData != null)
         {
             this.submitKeyframes(true);
             this.currentGraph.pickSelected();
         }
-        else if (this.dragging == 0 && this.narrowSelectionTo != null && context.mouseButton == 0)
-        {
-            /* A plain click (no drag) on a selected keyframe leaves only it selected */
-            Keyframe picked = this.currentGraph.getSelected();
-
-            this.currentGraph.clearSelection();
-            this.selectByIdentity(this.narrowSelectionTo);
-
-            this.pickKeyframe(picked != null && this.narrowSelectionTo.contains(picked) ? picked : this.narrowSelectionTo.get(0));
-        }
-        else if (this.dragging == 0 && this.draggingData == null && context.mouseButton == 0)
+        else if (this.dragging == 0 && !mouseHasMoved && this.draggingData == null && context.mouseButton == 0)
         {
             /* A plain click (no drag) on empty space clears the selection; a drag only moved the view */
             this.currentGraph.clearSelection();
             this.pickKeyframe(null);
         }
 
-        this.narrowSelectionTo = null;
         this.navigating = false;
         this.marquee.reset();
         this.dragging = -1;

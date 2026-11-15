@@ -897,7 +897,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
         for (SummaryMark mark : this.getSummary(section, mouseX - CULL_MARGIN, mouseX + CULL_MARGIN))
         {
-            if (this.isNear(mark.x, y, mouseX, mouseY, false) && (nearest == null || Math.abs(mark.x - mouseX) < Math.abs(nearest.x - mouseX)))
+            if (this.isNear(mark.x, y, mouseX, mouseY, false) && (nearest == null || (mark.selected && !nearest.selected) || (mark.selected == nearest.selected && Math.abs(mark.x - mouseX) < Math.abs(nearest.x - mouseX))))
             {
                 nearest = mark;
             }
@@ -956,9 +956,9 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
                 int dist = Math.abs(x - mouseX);
                 boolean selected = sheet.selection.has(j);
 
-                /* Pick the nearest keyframe in pixel space; prefer already-selected ones on ties so
-                 * dragging a multi-selection does not unexpectedly switch to an overlapping neighbor. */
-                if (best == null || dist < bestDist || (dist == bestDist && selected && !bestSelected))
+                /* Prefer already-selected keyframes within hit radius so an unselected neighbor
+                 * does not steal focus and wipe a multi-selection; break ties by pixel distance. */
+                if (best == null || (selected && !bestSelected) || (selected == bestSelected && dist < bestDist))
                 {
                     best = keyframe;
                     bestDist = dist;

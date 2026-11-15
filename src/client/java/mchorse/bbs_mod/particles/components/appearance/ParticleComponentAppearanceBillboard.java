@@ -387,10 +387,12 @@ public class ParticleComponentAppearanceBillboard extends ParticleComponentBase 
         pz -= emitter.cZ;
 
         /* Calculate the geometry for billboards using cool matrix math */
-        this.vertices[0].set(-this.w / 2, -this.h / 2, 0, 1);
-        this.vertices[1].set(this.w / 2, -this.h / 2, 0, 1);
-        this.vertices[2].set(this.w / 2, this.h / 2, 0, 1);
-        this.vertices[3].set(-this.w / 2, this.h / 2, 0, 1);
+        float w = this.w * emitter.renderScale;
+        float h = this.h * emitter.renderScale;
+        this.vertices[0].set(-w / 2, -h / 2, 0, 1);
+        this.vertices[1].set(w / 2, -h / 2, 0, 1);
+        this.vertices[2].set(w / 2, h / 2, 0, 1);
+        this.vertices[3].set(-w / 2, h / 2, 0, 1);
         this.transform.identity();
 
         if (this.facing == CameraFacing.ROTATE_XYZ || this.facing == CameraFacing.LOOKAT_XYZ)

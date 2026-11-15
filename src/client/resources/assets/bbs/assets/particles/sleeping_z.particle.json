@@ -31,8 +31,8 @@
         "uv": {
           "texture_width": 64,
           "texture_height": 64,
-          "uv": [0, 0],
-          "uv_size": [64, 64]
+          "uv": [64, 0],
+          "uv_size": [-64, 64]
         }
       },
       "minecraft:particle_appearance_tinting": {

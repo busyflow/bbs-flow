@@ -35,9 +35,24 @@ public class KeyframeSelection
         return this.selected.contains(index);
     }
 
+    private int indexOfIdentity(Keyframe keyframe)
+    {
+        List keyframes = this.channel.getKeyframes();
+
+        for (int i = 0, c = keyframes.size(); i < c; i++)
+        {
+            if (keyframes.get(i) == keyframe)
+            {
+                return i;
+            }
+        }
+
+        return keyframes.indexOf(keyframe);
+    }
+
     public boolean has(Keyframe keyframe)
     {
-        return this.selected.contains(this.channel.getKeyframes().indexOf(keyframe));
+        return this.selected.contains(this.indexOfIdentity(keyframe));
     }
 
     public void all()
@@ -92,7 +107,7 @@ public class KeyframeSelection
 
     public void add(Keyframe keyframe)
     {
-        int index = this.channel.getKeyframes().indexOf(keyframe);
+        int index = this.indexOfIdentity(keyframe);
 
         if (index >= 0)
         {

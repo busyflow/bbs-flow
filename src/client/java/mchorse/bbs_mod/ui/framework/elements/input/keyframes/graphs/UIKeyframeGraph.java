@@ -302,11 +302,13 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
         if (!this.plotArea.isInside(mouseX, mouseY)) return null;
         Pair<Keyframe, KeyframeType> result = null;
         double best = 36D;
+        boolean bestSelected = false;
         for (UIKeyframeSheet sheet : this.hitOrder())
         {
             for (Object entry : sheet.channel.getKeyframes())
             {
                 Keyframe key = (Keyframe) entry;
+                boolean selected = sheet.selection.has(key);
                 for (KeyframeType type : KeyframeType.values())
                 {
                     if (type == KeyframeType.SUMMARY) continue;
@@ -316,7 +318,12 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
                     double value = key.getY() + (type == KeyframeType.LEFT_HANDLE ? key.ly : type == KeyframeType.RIGHT_HANDLE ? key.ry : 0);
                     double dx = this.keyframes.toGraphX(time) - mouseX, dy = this.toGraphY(value) - mouseY;
                     double distance = dx * dx + dy * dy;
-                    if (distance < best - 0.01D) { best = distance; result = new Pair<>(key, type); }
+                    if (distance < 36D && (result == null || (selected && !bestSelected) || (selected == bestSelected && distance < best - 0.01D)))
+                    {
+                        best = distance;
+                        bestSelected = selected;
+                        result = new Pair<>(key, type);
+                    }
                 }
             }
         }

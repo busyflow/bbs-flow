@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "actions_and_stuff",
+  "version": "1.1.68+1.20.1",
+  "name": "Actions & Stuff (Java Port)",
+  "description": "Standalone Fabric 1.20.1 port of Oreville Studios' Actions & Stuff v1.1.68: full dynamic Bedrock entity/attachable/first-person animations, MoLang & controller runtime, custom particles, atmospherics, sky/water/biome colors, and full SP2 texture & sound conversion.",
+  "authors": [
+    "Oreville Studios (Original Bedrock Pack)",
+    "Java 1.20.1 Port"
+  ],
+  "license": "All Rights Reserved",
+  "icon": "assets/actions_and_stuff/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "ans.ActionsAndStuffClientMod"
+    ]
+  },
+  "mixins": [
+    {
+      "config": "actions_and_stuff.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=0.14.21",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*"
+  }
+}

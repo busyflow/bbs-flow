@@ -418,7 +418,23 @@ public class UIWorldPreview extends UIElement
 
         this.iconsVisible &= this.icons.getChildren().stream().anyMatch(element -> element.isVisible());
         this.iconsVisible &= this.canShowIcons();
+        boolean wasVisible = this.icons.isVisible();
+
         this.icons.setVisible(this.iconsVisible);
+
+        if (!wasVisible && this.iconsVisible)
+        {
+            this.icons.resize();
+            this.icons.resize();
+        }
+    }
+
+    @Override
+    public void resize()
+    {
+        super.resize();
+        /* Column/row resizers update icons.area.w/h after positioning, so re-apply anchor. */
+        this.icons.resize();
     }
 
     @Override

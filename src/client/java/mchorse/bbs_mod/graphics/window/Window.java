@@ -60,19 +60,26 @@ public class Window
         return GLFW.glfwGetMouseButton(getWindow(), mouse) == GLFW.GLFW_PRESS;
     }
 
+    private static boolean hasWindow()
+    {
+        MinecraftClient client = MinecraftClient.getInstance();
+
+        return client != null && client.getWindow() != null;
+    }
+
     public static boolean isCtrlPressed()
     {
-        return Screen.hasControlDown();
+        return hasWindow() && Screen.hasControlDown();
     }
 
     public static boolean isShiftPressed()
     {
-        return Screen.hasShiftDown();
+        return hasWindow() && Screen.hasShiftDown();
     }
 
     public static boolean isAltPressed()
     {
-        return Screen.hasAltDown();
+        return hasWindow() && Screen.hasAltDown();
     }
 
     public static boolean isKeyPressed(int key)

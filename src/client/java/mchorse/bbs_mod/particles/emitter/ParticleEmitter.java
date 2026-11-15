@@ -62,6 +62,7 @@ public class ParticleEmitter
     /* Intermediate values */
     public Vector3d lastGlobal = new Vector3d();
     public Matrix3f rotation = new Matrix3f();
+    public float renderScale = 1F;
 
     /* Runtime properties */
     public float spawnRemainder;

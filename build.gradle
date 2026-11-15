@@ -34,12 +34,22 @@ repositories {
 	}
 }
 
+sourceSets {
+	ans {
+		java.srcDirs = ['src/ans/java']
+		resources.srcDirs = ['src/ans/resources']
+	}
+}
+
 loom {
     splitEnvironmentSourceSets()
 
 	mods {
 		"bbs" {
 			sourceSet sourceSets.main
+		}
+		"actions_and_stuff" {
+			sourceSet sourceSets.ans
 		}
 	}
 
@@ -170,6 +180,14 @@ tasks.register('uiTimelinePanelTest', JavaExec) {
 	mainClass = 'mchorse.bbs_mod.ui.framework.elements.utils.UITimelinePanelTest'
 }
 
+tasks.register('keyframeSelectionDragTest', JavaExec) {
+	group = 'verification'
+	description = 'Checks KeyframeSelection identity tracking and multi-selection click/drag preservation.'
+	dependsOn tasks.named('testClasses'), tasks.named('clientClasses')
+	classpath = sourceSets.test.runtimeClasspath + sourceSets.client.output + sourceSets.client.runtimeClasspath
+	mainClass = 'mchorse.bbs_mod.ui.framework.elements.input.keyframes.KeyframeSelectionDragTest'
+}
+
 tasks.register('cubicLoopSplineTest', JavaExec) {
 	group = 'verification'
 	description = 'Checks that catmullrom keys of a looping model animation keep their speed over the restart.'
@@ -193,7 +211,7 @@ tasks.register('splineIKDataTest') {
 }
 
 tasks.named('check') {
-	dependsOn tasks.named('splineIKSolverTest'), tasks.named('splineIKDataTest'), tasks.named('cubicLoopSplineTest'), tasks.named('animatorWalkPhaseTest'), tasks.named('uiTimelinePanelTest')
+	dependsOn tasks.named('splineIKSolverTest'), tasks.named('splineIKDataTest'), tasks.named('cubicLoopSplineTest'), tasks.named('animatorWalkPhaseTest'), tasks.named('uiTimelinePanelTest'), tasks.named('keyframeSelectionDragTest')
 }
 
 java {
@@ -375,6 +393,7 @@ tasks.register('addonApiCheckJar', Jar) {
     archiveFileName = 'addon-api-check.jar'
     destinationDirectory = layout.buildDirectory
 }
+
 loom {
     runs {
         addonApiCheck {
@@ -411,3 +430,62 @@ tasks.register('splineIKRuntimeTest', JavaExec) {
 }
 
 tasks.named('check') { dependsOn 'splineIKRuntimeTest' }
+
+// Standalone Actions & Stuff Java 1.20.1 Fabric port (isolated from BBS classes)
+sourceSets {
+	ans {
+		java.srcDirs = ['src/ans/java']
+		resources.srcDirs = ['src/ans/resources']
+		compileClasspath += sourceSets.main.compileClasspath + sourceSets.client.compileClasspath
+		runtimeClasspath += sourceSets.main.runtimeClasspath + sourceSets.client.runtimeClasspath
+	}
+}
+
+tasks.register('ansRawJar', Jar) {
+	group = 'build'
+	description = 'Assembles unmapped jar for standalone Actions & Stuff Fabric 1.20.1 mod.'
+	dependsOn tasks.named('ansClasses')
+	from(sourceSets.ans.output)
+	archiveFileName.set('actions-and-stuff-fabric-1.20.1-dev.jar')
+}
+
+tasks.register('remapAnsJar', net.fabricmc.loom.task.RemapJarTask) {
+	group = 'build'
+	description = 'Remaps standalone Actions & Stuff Fabric 1.20.1 mod to intermediary mappings.'
+	dependsOn tasks.named('ansRawJar')
+	inputFile.set(tasks.named('ansRawJar', Jar).flatMap { it.archiveFile })
+	archiveFileName.set('actions-and-stuff-fabric-1.20.1.jar')
+	doLast {
+		def outJar = archiveFile.get().asFile
+		def downloadsOut = new File('C:/Users/jacqu/Downloads/actions-and-stuff-fabric-1.20.1.jar')
+		def runModsDir = layout.projectDirectory.dir('run/mods').asFile
+		runModsDir.mkdirs()
+		java.nio.file.Files.copy(outJar.toPath(), downloadsOut.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+		java.nio.file.Files.copy(outJar.toPath(), new File(runModsDir, outJar.name).toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+		logger.lifecycle("Copied remapped Actions & Stuff mod to ${downloadsOut} and ${runModsDir}")
+	}
+}
+
+tasks.register('convertActionsAndStuffPack', JavaExec) {
+	group = 'actions_and_stuff'
+	description = 'Converts animation mod.mcpack (root + SP2) into Java 1.20.1 resource pack zip.'
+	dependsOn tasks.named('ansClasses')
+	classpath = sourceSets.ans.runtimeClasspath
+	mainClass = 'ans.pack.ActionsAndStuffPackConverter'
+	args 'C:/Users/jacqu/Downloads/animation mod.mcpack',
+		'C:/Users/jacqu/Downloads/Actions-And-Stuff-Java-1.20.1.zip',
+		layout.projectDirectory.file('run/resourcepacks/Actions-And-Stuff-Java-1.20.1.zip').asFile.absolutePath,
+		'C:/Users/jacqu/.gradle/caches/fabric-loom/1.20.1/minecraft-merged.jar'
+}
+
+tasks.register('verifyActionsAndStuffPort', JavaExec) {
+	group = 'verification'
+	description = 'Verifies converted Java 1.20.1 resource pack, MoLang evaluation, Bedrock runtime & sky/atmosphere port.'
+	dependsOn tasks.named('ansClasses'), tasks.named('convertActionsAndStuffPack'), tasks.named('remapAnsJar')
+	classpath = sourceSets.ans.runtimeClasspath
+	mainClass = 'ans.test.ActionsAndStuffVerificationMain'
+	args 'C:/Users/jacqu/Downloads/Actions-And-Stuff-Java-1.20.1.zip',
+		'C:/Users/jacqu/Downloads/animation mod.mcpack',
+		'C:/Users/jacqu/.gradle/caches/fabric-loom/1.20.1/minecraft-merged.jar',
+		layout.buildDirectory.file('libs/actions-and-stuff-fabric-1.20.1.jar').get().asFile.absolutePath
+}
