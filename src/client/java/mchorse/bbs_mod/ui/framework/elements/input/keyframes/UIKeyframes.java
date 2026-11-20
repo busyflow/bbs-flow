@@ -307,7 +307,37 @@ public class UIKeyframes extends UITimelineCanvas
                 this.pasteKeyframes(parseKeyframes(data), (float) offset, mouseY);
             })
             .canCopy(() -> this.currentGraph.getSelected() != null)
-            .labels(UIKeys.KEYFRAMES_CONTEXT_COPY, UIKeys.KEYFRAMES_CONTEXT_PASTE);
+            .labels(UIKeys.KEYFRAMES_CONTEXT_COPY, UIKeys.KEYFRAMES_CONTEXT_PASTE)
+            .presets((context, controller, mouseX, mouseY) ->
+            {
+                UIKeyframeSheet sheet = this.currentGraph.getSheet(mouseX, mouseY);
+
+                if (sheet == null)
+                {
+                    sheet = this.currentGraph.getLastSheet();
+                }
+
+                if (sheet == null)
+                {
+                    Keyframe selected = this.currentGraph.getSelected();
+
+                    if (selected != null)
+                    {
+                        sheet = this.currentGraph.getSheet(selected);
+                    }
+                }
+
+                UIKeyframePresetsOverlayPanel panel = new UIKeyframePresetsOverlayPanel(controller, this, sheet, mouseX, mouseY);
+
+                if (panel.isPoseMode())
+                {
+                    UIOverlay.addOverlay(context, panel);
+                }
+                else
+                {
+                    UIOverlay.addOverlay(context, panel, 240, 0.5F);
+                }
+            });
 
         /* Context menu items */
         this.context((menu) ->

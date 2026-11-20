@@ -13,10 +13,10 @@ import mchorse.bbs_mod.utils.presets.PresetManager;
 
 public class UIPresetsOverlayPanel extends UIListOverlayPanel {
 
-    private String cwd = "";
-    private final UICopyPasteController controller;
-    private final int mouseX;
-    private final int mouseY;
+    protected String cwd = "";
+    protected final UICopyPasteController controller;
+    protected final int mouseX;
+    protected final int mouseY;
 
     public UIPresetsOverlayPanel(UICopyPasteController controller, int mouseX, int mouseY)
     {
@@ -67,7 +67,7 @@ public class UIPresetsOverlayPanel extends UIListOverlayPanel {
             {
                 UIPromptOverlayPanel pane = new UIPromptOverlayPanel(UIKeys.PRESETS_SAVE_TITLE, UIKeys.PRESETS_SAVE_DESCRIPTION, (t) ->
                 {
-                    this.controller.manager.save(t, type);
+                    this.controller.manager.save(PresetManager.joinRelative(this.cwd, t), type);
                     this.refreshList();
                 });
 
@@ -88,7 +88,7 @@ public class UIPresetsOverlayPanel extends UIListOverlayPanel {
         this.icons.add(save, folder);
     }
 
-    private void goUp()
+    protected void goUp()
     {
         if (this.cwd.isEmpty())
         {
@@ -100,7 +100,7 @@ public class UIPresetsOverlayPanel extends UIListOverlayPanel {
         this.cwd = i < 0 ? "" : this.cwd.substring(0, i);
     }
 
-    private void refreshList()
+    protected void refreshList()
     {
         this.list.list.clear();
         this.addValues(this.controller.manager.listDirectory(this.cwd));

@@ -83,6 +83,11 @@ public class UISearchList <T> extends UIElement
         return this;
     }
 
+    public UIListGrid<T> getGrid()
+    {
+        return this.grid;
+    }
+
     private void setTiles(boolean tiles)
     {
         this.list.setVisible(!tiles);

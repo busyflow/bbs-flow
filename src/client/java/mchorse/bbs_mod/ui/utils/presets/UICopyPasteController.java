@@ -21,6 +21,7 @@ public class UICopyPasteController
 
     private Supplier<Boolean> canCopy;
     private Supplier<Boolean> canPaste;
+    private IPresetsOpener presetsOpener;
 
     private IKey copyLabel = UIKeys.GENERAL_COPY;
     private IKey pasteLabel = UIKeys.GENERAL_PASTE;
@@ -73,6 +74,13 @@ public class UICopyPasteController
         return this;
     }
 
+    public UICopyPasteController presets(IPresetsOpener opener)
+    {
+        this.presetsOpener = opener;
+
+        return this;
+    }
+
     public IPaste getConsumer()
     {
         return this.consumer;
@@ -109,7 +117,14 @@ public class UICopyPasteController
 
     public void openPresets(UIContext context, int mouseX, int mouseY)
     {
-        UIOverlay.addOverlay(context, new UIPresetsOverlayPanel(this, mouseX, mouseY), 240, 0.5F);
+        if (this.presetsOpener != null)
+        {
+            this.presetsOpener.open(context, this, mouseX, mouseY);
+        }
+        else
+        {
+            UIOverlay.addOverlay(context, new UIPresetsOverlayPanel(this, mouseX, mouseY), 240, 0.5F);
+        }
     }
 
     public boolean canCopy()
@@ -170,5 +185,11 @@ public class UICopyPasteController
     public static interface IPaste
     {
         public void paste(MapType mapType, int mouseX, int mouseY);
+    }
+
+    @FunctionalInterface
+    public static interface IPresetsOpener
+    {
+        public void open(UIContext context, UICopyPasteController controller, int mouseX, int mouseY);
     }
 }
