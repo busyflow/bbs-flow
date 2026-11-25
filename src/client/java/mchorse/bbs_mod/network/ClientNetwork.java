@@ -633,6 +633,15 @@ public class ClientNetwork
         ClientPlayNetworking.send(ServerNetwork.SERVER_PLAYER_FOLLOW_SPECTATOR, buf);
     }
 
+    public static void sendExportPlayerState(boolean locking)
+    {
+        PacketByteBuf buf = PacketByteBufs.create();
+
+        buf.writeBoolean(locking);
+
+        ClientPlayNetworking.send(ServerNetwork.SERVER_EXPORT_PLAYER_STATE, buf);
+    }
+
     public static void sendFormTrigger(String triggerId, int type)
     {
         PacketByteBuf buf = PacketByteBufs.create();

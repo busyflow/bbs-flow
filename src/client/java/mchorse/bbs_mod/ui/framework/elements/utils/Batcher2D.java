@@ -13,6 +13,7 @@ import mchorse.bbs_mod.utils.Direction;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.profiler.BBSProfiler;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gl.ShaderProgram;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.render.BufferBuilder;
@@ -33,15 +34,61 @@ public class Batcher2D
     private static final float HIGHLIGHT_STRENGTH = 0.15F;
 
     private static FontRenderer fontRenderer = new FontRenderer();
+    private static FontRenderer nativeFontWrapper = new FontRenderer();
 
     private DrawContext context;
     private FontRenderer font;
 
     public static FontRenderer getDefaultTextRenderer()
     {
-        fontRenderer.setRenderer(MinecraftClient.getInstance().textRenderer);
+        if (BBSSettings.uiFont != null)
+        {
+            String fontPath = BBSSettings.uiFont.get();
+
+            if (fontPath != null && !fontPath.isEmpty())
+            {
+                int size = BBSSettings.uiFontSize != null ? BBSSettings.uiFontSize.get() : 10;
+                MinecraftClient mc = MinecraftClient.getInstance();
+                float physicalScale = mc != null && mc.getWindow() != null
+                    ? (float) mc.getWindow().getScaleFactor()
+                    : 1F;
+
+                mchorse.bbs_mod.fonts.NativeFontRenderer nativeFont =
+                    mchorse.bbs_mod.fonts.NativeFontRenderer.get(fontPath, size, physicalScale);
+
+                if (nativeFont != null)
+                {
+                    nativeFontWrapper.setNativeRenderer(nativeFont, MinecraftClient.getInstance().textRenderer);
+
+                    return nativeFontWrapper;
+                }
+
+                if (BBSModClient.getFonts() != null)
+                {
+                    float uiScale = BBSSettings.userIntefaceScale != null ? BBSSettings.userIntefaceScale.get() : 1F;
+                    float scale = Math.max(3F, (float) Math.ceil(Math.max(1F, uiScale) * 2F));
+                    FontRenderer custom = BBSModClient.getFonts().get(mchorse.bbs_mod.resources.Link.create(fontPath), size, scale);
+
+                    if (custom != null)
+                    {
+                        return custom;
+                    }
+                }
+            }
+        }
+
+        TextRenderer renderer = BBSSettings.uiCustomFont == null || BBSSettings.uiCustomFont.get()
+            ? MinecraftClient.getInstance().textRenderer
+            : getVanillaTextRenderer();
+
+        fontRenderer.setRenderer(renderer);
 
         return fontRenderer;
+    }
+
+    private static TextRenderer getVanillaTextRenderer()
+    {
+        return MinecraftClient.getInstance().textRenderer;
     }
 
     /**
@@ -138,8 +185,10 @@ public class Batcher2D
 
     public FontRenderer getFont()
     {
-        return this.font;
+        return this.customFont != null ? this.customFont : getDefaultTextRenderer();
     }
+
+    private FontRenderer customFont;
 
     /**
      * Swap the font every text call of this batcher goes through, handing back the
@@ -147,9 +196,9 @@ public class Batcher2D
      */
     public FontRenderer setFont(FontRenderer font)
     {
-        FontRenderer previous = this.font;
+        FontRenderer previous = this.customFont;
 
-        this.font = font == null ? getDefaultTextRenderer() : font;
+        this.customFont = font;
 
         return previous;
     }
@@ -342,6 +391,11 @@ public class Batcher2D
     public void dropShadow(int left, int top, int right, int bottom, int offset, int opaque, int shadow)
     {
         if (!BBSSettings.hasInterfaceGlow())
+        {
+            return;
+        }
+
+        if (this.drawSdfRoundedRect(left, top, right - left, bottom - top, 4F, 0F, Math.max(1F, (float) offset), opaque))
         {
             return;
         }
@@ -600,6 +654,76 @@ public class Batcher2D
         this.icon(icon, Colors.WHITE, x, y, ax, ay);
     }
 
+    /**
+     * Draw an analytical GPU SDF rounded rectangle (fill, border, or feathered shadow).
+     * Returns false if the shader is unavailable so callers can fall back cleanly.
+     */
+    public boolean drawSdfRoundedRect(float x, float y, float w, float h, float radius, float borderWidth, float feather, int color)
+    {
+        ShaderProgram shader = BBSShaders.getRoundedRectProgram();
+
+        if (shader == null || w <= 0F || h <= 0F)
+        {
+            return false;
+        }
+
+        this.flushBatch();
+
+        float pad = feather > 0F ? feather : 0F;
+        float x1 = x - pad;
+        float y1 = y - pad;
+        float x2 = x + w + pad;
+        float y2 = y + h + pad;
+
+        Matrix4f matrix4f = this.context.getMatrices().peek().getPositionMatrix();
+        BufferBuilder builder = Tessellator.getInstance().getBuffer();
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+
+        net.minecraft.client.gl.GlUniform uSize = shader.getUniform("RectSize");
+        net.minecraft.client.gl.GlUniform uRadius = shader.getUniform("CornerRadius");
+        net.minecraft.client.gl.GlUniform uBorder = shader.getUniform("BorderWidth");
+        net.minecraft.client.gl.GlUniform uFeather = shader.getUniform("Feather");
+
+        if (uSize != null) uSize.set(w, h);
+        if (uRadius != null) uRadius.set(radius);
+        if (uBorder != null) uBorder.set(borderWidth);
+        if (uFeather != null) uFeather.set(feather);
+
+        RenderSystem.setShader(() -> shader);
+
+        builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+        builder.vertex(matrix4f, x1, y2, 0F).texture(-pad, h + pad).color(color).next();
+        builder.vertex(matrix4f, x2, y2, 0F).texture(w + pad, h + pad).color(color).next();
+        builder.vertex(matrix4f, x2, y1, 0F).texture(w + pad, -pad).color(color).next();
+        builder.vertex(matrix4f, x1, y1, 0F).texture(-pad, -pad).color(color).next();
+
+        BBSProfiler.count(BBSProfiler.Section.UI_DRAW_CALLS);
+        BufferRenderer.drawWithGlobalProgram(builder.end());
+
+        return true;
+    }
+
+    private static void ensureSmoothIconMipmaps(Texture texture)
+    {
+        if (texture == null || texture.id <= 0 || (BBSSettings.uiSmoothIcons != null && !BBSSettings.uiSmoothIcons.get()))
+        {
+            return;
+        }
+
+        if (!texture.isMipmap())
+        {
+            texture.bind();
+            texture.setFilter(org.lwjgl.opengl.GL11.GL_LINEAR);
+            texture.generateMipmap();
+            texture.setParameter(org.lwjgl.opengl.GL30.GL_TEXTURE_MAX_LEVEL, 4);
+            texture.setParameter(org.lwjgl.opengl.GL11.GL_TEXTURE_MIN_FILTER, org.lwjgl.opengl.GL11.GL_LINEAR_MIPMAP_LINEAR);
+            texture.setParameter(org.lwjgl.opengl.GL11.GL_TEXTURE_MAG_FILTER, org.lwjgl.opengl.GL11.GL_LINEAR);
+            texture.unbind();
+        }
+    }
+
     public void icon(Icon icon, int color, float x, float y, float ax, float ay)
     {
         if (icon.texture == null)
@@ -612,7 +736,11 @@ public class Batcher2D
         x -= icon.w * ax;
         y -= icon.h * ay;
 
-        this.texturedBox(BBSModClient.getTextures().getTexture(icon.texture), color, x, y, icon.w, icon.h, icon.x, icon.y, icon.x + icon.w, icon.y + icon.h, icon.textureW, icon.textureH);
+        Texture texture = BBSModClient.getTextures().getTexture(icon.texture);
+
+        ensureSmoothIconMipmaps(texture);
+
+        this.texturedBox(texture, color, x, y, icon.w, icon.h, icon.x, icon.y, icon.x + icon.w, icon.y + icon.h, icon.textureW, icon.textureH);
     }
 
     /**
@@ -629,7 +757,11 @@ public class Batcher2D
 
         color = iconForeground(color);
 
-        this.texturedBox(BBSModClient.getTextures().getTexture(icon.texture), color, x, y, size, size, icon.x, icon.y, icon.x + icon.w, icon.y + icon.h, icon.textureW, icon.textureH);
+        Texture texture = BBSModClient.getTextures().getTexture(icon.texture);
+
+        ensureSmoothIconMipmaps(texture);
+
+        this.texturedBox(texture, color, x, y, size, size, icon.x, icon.y, icon.x + icon.w, icon.y + icon.h, icon.textureW, icon.textureH);
     }
 
     public void iconArea(Icon icon, float x, float y, float w, float h)
@@ -819,8 +951,18 @@ public class Batcher2D
         }
 
         BBSProfiler.count(BBSProfiler.Section.UI_DRAW_CALLS);
-        this.context.drawText(this.font.getRenderer(), label, (int) x, (int) y, color, shadow);
-        this.context.draw();
+        boolean drawShadow = shadow && (BBSSettings.uiTextShadow == null || BBSSettings.uiTextShadow.get());
+        FontRenderer activeFont = this.getFont();
+
+        if (activeFont.hasNativeRenderer())
+        {
+            activeFont.drawNative(this.context.getMatrices(), label, x, y, color, drawShadow);
+        }
+        else
+        {
+            this.context.drawText(activeFont.getRenderer(), label, (int) x, (int) y, color, drawShadow);
+            this.context.draw();
+        }
 
         RenderSystem.depthFunc(GL11.GL_ALWAYS);
     }

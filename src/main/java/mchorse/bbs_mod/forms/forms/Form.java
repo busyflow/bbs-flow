@@ -26,6 +26,7 @@ import mchorse.bbs_mod.settings.values.core.ValueGroup;
 import mchorse.bbs_mod.settings.values.core.ValueString;
 import mchorse.bbs_mod.settings.values.core.ValueTransform;
 import mchorse.bbs_mod.settings.values.core.ValuePose;
+import mchorse.bbs_mod.settings.values.mc.ValueItemStack;
 import mchorse.bbs_mod.forms.values.ValueShapeKeys;
 import mchorse.bbs_mod.obj.shapes.ShapeKeys;
 import mchorse.bbs_mod.settings.values.numeric.ValueBoolean;
@@ -37,8 +38,10 @@ import mchorse.bbs_mod.utils.StringUtils;
 import mchorse.bbs_mod.utils.colors.Color;
 import mchorse.bbs_mod.utils.pose.Transform;
 import mchorse.bbs_mod.utils.pose.Pose;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.attribute.EntityAttributes;
+import net.minecraft.item.ItemStack;
 import org.joml.Vector3f;
 
 import java.util.Collections;
@@ -109,6 +112,13 @@ public abstract class Form extends ValueGroup
     public final ValueFloat stepHeight = new ValueFloat("step_height", 0.5F);
 
     public final ValueInt hotkey = new ValueInt("keybind", 0);
+
+    public final ValueItemStack armorHead = new ValueItemStack("armor_head");
+    public final ValueItemStack armorChest = new ValueItemStack("armor_chest");
+    public final ValueItemStack armorLegs = new ValueItemStack("armor_legs");
+    public final ValueItemStack armorFeet = new ValueItemStack("armor_feet");
+
+    public static final EquipmentSlot[] ARMOR_SLOTS = {EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
 
     public final BodyPartManager parts = new BodyPartManager("parts");
     public final AnimationStates states = new AnimationStates("states");
@@ -206,11 +216,70 @@ public abstract class Form extends ValueGroup
         this.add(this.stepHeight);
 
         this.hotkey.animatable(false).invisible();
+        this.armorHead.invisible();
+        this.armorChest.invisible();
+        this.armorLegs.invisible();
+        this.armorFeet.invisible();
 
         this.add(this.hotkey);
+        this.add(this.armorHead);
+        this.add(this.armorChest);
+        this.add(this.armorLegs);
+        this.add(this.armorFeet);
 
         this.add(this.parts);
         this.add(this.states);
+    }
+
+    public ValueItemStack getArmorValue(EquipmentSlot slot)
+    {
+        return switch (slot)
+        {
+            case HEAD -> this.armorHead;
+            case CHEST -> this.armorChest;
+            case LEGS -> this.armorLegs;
+            case FEET -> this.armorFeet;
+            default -> null;
+        };
+    }
+
+    public ItemStack getConfiguredArmor(EquipmentSlot slot)
+    {
+        ValueItemStack value = this.getArmorValue(slot);
+        ItemStack stack = value == null ? null : value.get();
+
+        return stack == null ? ItemStack.EMPTY : stack;
+    }
+
+    public boolean hasAnyConfiguredArmor()
+    {
+        for (EquipmentSlot slot : ARMOR_SLOTS)
+        {
+            if (!this.getConfiguredArmor(slot).isEmpty())
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public void applyFormArmorTo(IEntity target)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        for (EquipmentSlot slot : ARMOR_SLOTS)
+        {
+            ItemStack configured = this.getConfiguredArmor(slot);
+
+            if (!configured.isEmpty() && target.getEquipmentStack(slot).isEmpty())
+            {
+                target.setEquipmentStack(slot, configured.copy());
+            }
+        }
     }
 
     /** Apply the global overlay counts to existing forms as well as newly created ones. */

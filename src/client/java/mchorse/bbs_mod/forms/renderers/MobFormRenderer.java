@@ -34,7 +34,12 @@ import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.entity.LivingEntityRenderer;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.decoration.ArmorStandEntity;
+import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.math.RotationAxis;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -270,9 +275,43 @@ public class MobFormRenderer extends FormRenderer<MobForm> implements ITickable
     }
 
     @Override
+    public boolean supportsArmor()
+    {
+        this.ensureEntity();
+
+        return this.form.isPlayer()
+            || this.entity instanceof MobEntity
+            || this.entity instanceof ArmorStandEntity
+            || this.entity instanceof PlayerEntity;
+    }
+
+    public void applyConfiguredArmorToEntity(boolean forceSync)
+    {
+        if (!(this.entity instanceof LivingEntity living))
+        {
+            return;
+        }
+
+        for (EquipmentSlot slot : Form.ARMOR_SLOTS)
+        {
+            ItemStack configured = this.form.getConfiguredArmor(slot);
+
+            if (forceSync)
+            {
+                living.equipStack(slot, configured.copy());
+            }
+            else if (!configured.isEmpty() && living.getEquippedStack(slot).isEmpty())
+            {
+                living.equipStack(slot, configured.copy());
+            }
+        }
+    }
+
+    @Override
     protected void renderInUI(UIContext context, int x1, int y1, int x2, int y2)
     {
         this.ensureEntity();
+        this.applyConfiguredArmorToEntity(true);
 
         if (this.entity != null)
         {
@@ -430,6 +469,7 @@ public class MobFormRenderer extends FormRenderer<MobForm> implements ITickable
                 FormTranslucentQueue.setSortOrigin(new Matrix4f(RenderSystem.getModelViewMatrix()).transformPosition(origin));
             }
 
+            this.applyConfiguredArmorToEntity(false);
             this.bones.clear();
 
             /* Where the bones are, for the body parts riding them. The same evaluation the gizmo
@@ -489,6 +529,7 @@ public class MobFormRenderer extends FormRenderer<MobForm> implements ITickable
     {
         this.ensureEntity();
         this.standIn.tick(entity);
+        this.applyConfiguredArmorToEntity(false);
     }
 
     private static class BooleanHolder

@@ -1958,6 +1958,7 @@ public class UIReplayList extends UIList<ReplayListEntry>
             for (Replay replay : this.getSelectedReplays())
             {
                 replay.form.set(FormUtils.copy(f));
+                replay.keyframes.applyFormArmorKeyframes(replay.form.get());
 
                 if (f != null)
                 {

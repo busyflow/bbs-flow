@@ -97,6 +97,13 @@ public class ModelForm extends Form implements IPosedForm
     public final ValueBoolean cemCrawling = new ValueBoolean("cem_crawling", false);
     public final ValueFloat cemHealth = new ValueFloat("cem_health", 1F, 0F, 1F).slider();
 
+    /** Snowball-only timeline tracks: snow particle trail and explode/impact trigger. */
+    public final ValueBoolean snowTrail = new ValueBoolean("snow_trail", true);
+    public final ValueBoolean snowballImpact = new ValueBoolean("impact", false);
+
+    /** Runtime tick of the latest active "true" keyframe on {@link #snowballImpact}, or NaN when none. */
+    public transient float snowballImpactKeyTick = Float.NaN;
+
     /**
      * Runtime per-material texture overrides driven by the per-material animation tracks
      * (keyed by material name). Set each frame by {@code FormProperties} during playback and
@@ -170,6 +177,74 @@ public class ModelForm extends Form implements IPosedForm
         this.add(this.cemClimbing);
         this.add(this.cemCrawling);
         this.add(this.cemHealth);
+
+        this.add(this.snowTrail);
+        this.add(this.snowballImpact);
+    }
+
+    public boolean isSnowballModel()
+    {
+        String model = this.model.get();
+
+        return model != null && (model.equals("snowball") || model.endsWith("/snowball"));
+    }
+
+    public void ensureSnowballParts()
+    {
+        if (!this.isSnowballModel())
+        {
+            return;
+        }
+
+        boolean hasTrail = false;
+        boolean hasImpact = false;
+
+        for (BodyPart part : this.parts.getAllTyped())
+        {
+            if (part.getForm() instanceof ParticleForm particle)
+            {
+                String effect = particle.effect.get();
+
+                if ("snowball_trail".equals(effect))
+                {
+                    hasTrail = true;
+                }
+                else if ("snowball_impact".equals(effect))
+                {
+                    hasImpact = true;
+                }
+            }
+        }
+
+        if (!hasTrail)
+        {
+            this.parts.add(createSnowballParticlePart("Snow Trail", "snowball_trail", false));
+        }
+
+        if (!hasImpact)
+        {
+            this.parts.add(createSnowballParticlePart("Snow Impact", "snowball_impact", true));
+        }
+    }
+
+    private static BodyPart createSnowballParticlePart(String name, String effect, boolean paused)
+    {
+        ParticleForm particle = new ParticleForm();
+
+        particle.name.set(name);
+        particle.effect.set(effect);
+        particle.paused.set(paused);
+        particle.visible.set(true);
+        particle.pickable.set(false);
+
+        BodyPart part = new BodyPart("");
+
+        part.inheritPosition.set(true);
+        part.inheritRotation.set(false);
+        part.inheritScale.set(true);
+        part.setForm(particle);
+
+        return part;
     }
 
     @Override

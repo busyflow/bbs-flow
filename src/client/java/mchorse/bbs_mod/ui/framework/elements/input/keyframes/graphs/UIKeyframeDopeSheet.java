@@ -425,13 +425,31 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         return !sheet.alwaysOpen && !sheet.children.isEmpty();
     }
 
+    public static boolean isPositionTrackHidden(UIKeyframeSheet sheet)
+    {
+        if (sheet == null || BBSSettings.hidePositionKeyframes == null || !BBSSettings.hidePositionKeyframes.get())
+        {
+            return false;
+        }
+
+        if (sheet.section != null && "replay_section/position_rotation".equals(sheet.section.id()))
+        {
+            String id = sheet.id;
+            return "x".equals(id) || "y".equals(id) || "z".equals(id)
+                || "pitch".equals(id) || "yaw".equals(id)
+                || "headYaw".equals(id) || "bodyYaw".equals(id);
+        }
+
+        return false;
+    }
+
     public List<UIKeyframeSheet> getInteractiveSheets()
     {
         List<UIKeyframeSheet> sheets = new ArrayList<>();
 
         for (UIKeyframeSheet sheet : this.sheets)
         {
-            if (this.isVisible(sheet))
+            if (this.isVisible(sheet) && !isPositionTrackHidden(sheet))
             {
                 sheets.add(sheet);
             }
@@ -864,7 +882,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
         for (UIKeyframeSheet sheet : this.sheets)
         {
-            if (sheet.section == null || !sheet.section.isIn(section))
+            if (sheet.section == null || !sheet.section.isIn(section) || isPositionTrackHidden(sheet))
             {
                 continue;
             }
@@ -935,7 +953,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
         UIKeyframeSheet sheet = this.getSheet(mouseY);
 
-        if (sheet == null)
+        if (sheet == null || isPositionTrackHidden(sheet))
         {
             return null;
         }
@@ -1689,6 +1707,11 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
             context.batcher.box(area.x, y, area.ex(), y + bh, Colors.setA(sheet.color, hover ? 0.12F : 0.08F));
         }
 
+        if (isPositionTrackHidden(sheet))
+        {
+            return;
+        }
+
         builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
 
         /* Keyframes sorted by tick map to ascending X, so everything left of the view is
@@ -1825,7 +1848,7 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
     private void renderSheetKeyframeShapes(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area, UIKeyframeSheet sheet, int y)
     {
-        if (!this.isVisible(sheet))
+        if (!this.isVisible(sheet) || isPositionTrackHidden(sheet))
         {
             return;
         }
@@ -1926,6 +1949,9 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
      * are picked, dragged and removed like keyframes — each one acts on its whole column.
      */
     private void renderSectionKeyframes(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area)
+    {}
+
+    private void renderSectionSummaryMarks(UIContext context, BufferBuilder builder, Matrix4f matrix, Area area)
     {
         IKeyframeShapeRenderer shape = KeyframeShapeRenderers.SHAPES.get(KeyframeShape.SQUARE);
         Area grabbing = this.keyframes.isSelecting() ? this.keyframes.getGrabbingArea(context) : null;
@@ -1997,12 +2023,22 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         Matrix4f matrix = context.batcher.getContext().getMatrices().peek().getPositionMatrix();
 
         context.batcher.clipBox(area.x, rulerBottom, area.ex(), area.ey(), context);
-        builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
-        this.renderSectionKeyframes(context, builder, matrix, area);
-        this.renderSheetsTopmostKeyframes(context, builder, matrix, area);
-        RenderSystem.enableBlend();
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        BufferRenderer.drawWithGlobalProgram(builder.end());
+        boolean useSdf = mchorse.bbs_mod.client.BBSShaders.getKeyframeShapeProgram() != null;
+        KeyframeShapeRenderers.sdfPass = useSdf;
+        try
+        {
+            builder.begin(VertexFormat.DrawMode.QUADS, useSdf ? VertexFormats.POSITION_TEXTURE_COLOR : VertexFormats.POSITION_COLOR);
+            this.renderSectionSummaryMarks(context, builder, matrix, area);
+            this.renderSheetsTopmostKeyframes(context, builder, matrix, area);
+            RenderSystem.enableBlend();
+            RenderSystem.defaultBlendFunc();
+            RenderSystem.setShader(useSdf ? mchorse.bbs_mod.client.BBSShaders::getKeyframeShapeProgram : GameRenderer::getPositionColorProgram);
+            BufferRenderer.drawWithGlobalProgram(builder.end());
+        }
+        finally
+        {
+            KeyframeShapeRenderers.sdfPass = false;
+        }
         context.batcher.unclip(context);
     }
 

@@ -114,6 +114,12 @@ public class WorldVideoExportSession extends VideoExportSession
     }
 
     @Override
+    protected boolean shouldFreezePlayerDuringExport()
+    {
+        return this.film != null && this.film.getFirstPersonReplay() == null;
+    }
+
+    @Override
     protected void applyExportTarget()
     {
         /* Keep the export resolution during warm-up too, so the first captured frame is already settled. */

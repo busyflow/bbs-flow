@@ -52,6 +52,18 @@ public class Texture
 
         texture.setFilter(filter);
         texture.uploadTexture(pixels);
+
+        /* Linear-filtered procedural UI masks (such as rounded corner/ring masks) alias
+         * heavily when minified >2x without mipmaps. Cap max level to 4 so a 64x64 mask's
+         * interior opaque texel stays solid while corners downscale smoothly on the GPU. */
+        if (filter == GL11.GL_LINEAR && pixels != null && pixels.width >= 16 && pixels.height >= 16)
+        {
+            texture.generateMipmap();
+            texture.setParameter(GL30.GL_TEXTURE_MAX_LEVEL, 4);
+            texture.setParameter(GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR_MIPMAP_LINEAR);
+            texture.setParameter(GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+        }
+
         texture.unbind();
 
         return texture;

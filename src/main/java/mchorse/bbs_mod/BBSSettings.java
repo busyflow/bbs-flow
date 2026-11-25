@@ -153,6 +153,7 @@ public class BBSSettings {
 	public static ValueBoolean editorLoop;
 	public static ValueBoolean autoKeyframe;
 	public static ValueBoolean liveRecording;
+	public static ValueBoolean hidePositionKeyframes;
 	public static ValueBoolean anchorKeepTransform;
 	public static ValueInt editorJump;
 	public static ValueInt editorGuidesColor;
@@ -240,6 +241,7 @@ public class BBSSettings {
 	public static ValueBoolean previewIconLiveRecording;
 	public static ValueBoolean previewIconShaders;
 	public static ValueBoolean previewIconRecordReplay;
+	public static ValueBoolean previewIconHidePositionKeyframes;
 	public static ValueBoolean previewIconExport;
 
 	public static ValueBoolean editorPreviewSelectionHud;
@@ -274,6 +276,11 @@ public class BBSSettings {
 	public static ValueBoolean interfaceGlow;
 	public static ValueBoolean interfaceBlur;
 	public static ValueInt interfaceBlurRadius;
+	public static ValueBoolean uiCustomFont;
+	public static ValueString uiFont;
+	public static ValueInt uiFontSize;
+	public static ValueBoolean uiTextShadow;
+	public static ValueBoolean uiSmoothIcons;
 
 	public static ValueBoolean shaderCurvesEnabled;
 	public static ValueBoolean translucencyQueue;
@@ -786,6 +793,13 @@ public class BBSSettings {
 		doneData.invisible();
 		builder.register(doneData);
 
+		builder.category("font", Icons.FONT);
+		uiCustomFont = builder.getBoolean("custom_font", true);
+		uiFont = builder.getString("ui_font", "assets:fonts/verdana.ttf");
+		uiFontSize = builder.getInt("ui_font_size", 10, 6, 20);
+		uiTextShadow = builder.getBoolean("text_shadow", false);
+		uiSmoothIcons = builder.getBoolean("smooth_icons", true);
+
 		builder.category("personalization", Icons.COLOR);
 		primaryColor = builder.getInt("primary_color", DEFAULT_PRIMARY_COLOR).color();
 		secondaryColor = builder.getInt("secondary_color", DEFAULT_SECONDARY_COLOR).color();
@@ -911,6 +925,7 @@ public class BBSSettings {
 		previewIconLiveRecording = builder.getBoolean("preview_icon_live_recording", true);
 		previewIconShaders = builder.getBoolean("preview_icon_shaders", true);
 		previewIconRecordReplay = builder.getBoolean("preview_icon_record_replay", true);
+		previewIconHidePositionKeyframes = builder.getBoolean("preview_icon_hide_position_keyframes", true);
 		previewIconExport = builder.getBoolean("preview_icon_export", true);
 
 		editorPreviewSelectionHud = builder.getBoolean("preview_selection_hud", true);
@@ -955,6 +970,7 @@ public class BBSSettings {
 		editorLoop = builder.getBoolean("loop", false);
 		autoKeyframe = builder.getBoolean("auto_keyframe", false);
 		liveRecording = builder.getBoolean("live_recording", true);
+		hidePositionKeyframes = builder.getBoolean("hide_position_keyframes", false);
 		anchorKeepTransform = builder.getBoolean("anchor_keep_transform", false);
 		editorSeconds = builder.getBoolean("seconds", false);
 		editorTimelineGrid = builder.getBoolean("timeline_grid", true);

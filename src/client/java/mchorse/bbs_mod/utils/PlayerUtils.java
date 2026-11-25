@@ -117,17 +117,27 @@ public class PlayerUtils
         double x = keyframes.x.interpolate(replayTick);
         double y = keyframes.y.interpolate(replayTick);
         double z = keyframes.z.interpolate(replayTick);
-        float yaw = keyframes.yaw.interpolate(replayTick).floatValue();
-        float headYaw = keyframes.headYaw.interpolate(replayTick).floatValue();
-        float bodyYaw = keyframes.bodyYaw.interpolate(replayTick).floatValue();
+        /* Use headYaw rather than the hidden yaw channel: the timeline UI only exposes
+         * pitch, headYaw and bodyYaw, so keyframes.yaw can hold stale values after edits
+         * or deletions, and ClientPlayerEntity forces headYaw = yaw on the next tick. */
+        float headYaw = keyframes.headYaw.isEmpty() && !keyframes.yaw.isEmpty()
+            ? keyframes.yaw.interpolate(replayTick).floatValue()
+            : keyframes.headYaw.interpolate(replayTick).floatValue();
+        float bodyYaw = keyframes.bodyYaw.isEmpty()
+            ? headYaw
+            : keyframes.bodyYaw.interpolate(replayTick).floatValue();
         float pitch = keyframes.pitch.interpolate(replayTick).floatValue();
 
-        teleport(x, y, z, headYaw, pitch);
+        teleport(x, y, z, headYaw, bodyYaw, pitch);
 
-        player.setYaw(yaw);
+        player.setYaw(headYaw);
         player.setHeadYaw(headYaw);
         player.setBodyYaw(bodyYaw);
         player.setPitch(pitch);
+        player.prevYaw = headYaw;
+        player.prevHeadYaw = headYaw;
+        player.prevBodyYaw = bodyYaw;
+        player.prevPitch = pitch;
 
         return new Vector3d(x, y, z);
     }

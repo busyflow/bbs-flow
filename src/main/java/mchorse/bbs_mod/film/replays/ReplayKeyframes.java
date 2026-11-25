@@ -4,6 +4,7 @@ import mchorse.bbs_mod.data.types.ListType;
 import mchorse.bbs_mod.forms.entities.EntityState;
 import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.forms.entities.ReplayEntity;
+import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.forms.forms.utils.Anchor;
 import mchorse.bbs_mod.settings.values.base.BaseValue;
 import mchorse.bbs_mod.settings.values.core.ValueGroup;
@@ -230,8 +231,81 @@ public class ReplayKeyframes extends ValueGroup
      * writing it again would put the frame's item into whatever cell is selected at that
      * instant - which, mid-switch, is still the previous one.
      */
+    public void syncFormArmorKeyframes(Form form)
+    {
+        if (form == null)
+        {
+            return;
+        }
+
+        for (EquipmentSlot slot : Form.ARMOR_SLOTS)
+        {
+            ItemStack armor = form.getConfiguredArmor(slot);
+
+            if (!armor.isEmpty())
+            {
+                KeyframeChannel<ItemStack> channel = this.getEquipmentChannel(slot);
+
+                if (channel != null)
+                {
+                    if (channel.isEmpty())
+                    {
+                        channel.insert(0F, armor.copy());
+                    }
+                    else if (channel.getKeyframes().size() == 1 && channel.get(0).getValue().isEmpty())
+                    {
+                        channel.get(0).setValue(armor.copy());
+                    }
+                }
+            }
+        }
+    }
+
+    public void applyFormArmorKeyframes(Form form)
+    {
+        if (form == null)
+        {
+            return;
+        }
+
+        for (EquipmentSlot slot : Form.ARMOR_SLOTS)
+        {
+            ItemStack armor = form.getConfiguredArmor(slot);
+            KeyframeChannel<ItemStack> channel = this.getEquipmentChannel(slot);
+
+            if (channel == null)
+            {
+                continue;
+            }
+
+            if (!armor.isEmpty())
+            {
+                if (channel.isEmpty())
+                {
+                    channel.insert(0F, armor.copy());
+                }
+                else if (channel.getKeyframes().size() == 1)
+                {
+                    Keyframe<ItemStack> kf = channel.get(0);
+
+                    kf.setTick(0F);
+                    kf.setValue(armor.copy());
+                }
+            }
+            else if (channel.getKeyframes().size() == 1 && channel.get(0).getTick() == 0F)
+            {
+                channel.remove(0);
+            }
+        }
+    }
+
     public void applyEquipment(float tick, IEntity entity)
     {
+        if (entity != null && entity.getForm() != null)
+        {
+            this.syncFormArmorKeyframes(entity.getForm());
+        }
+
         if (this.drivesHotbar())
         {
             Hotbar hotbar = this.getHotbar(tick);
@@ -254,6 +328,15 @@ public class ReplayKeyframes extends ValueGroup
             if (channel.hasEnabledKeyframes())
             {
                 entity.setEquipmentStack(slot, channel.interpolate(tick, ItemStack.EMPTY));
+            }
+            else if (slot != EquipmentSlot.OFFHAND && entity != null && entity.getForm() != null)
+            {
+                ItemStack fallback = entity.getForm().getConfiguredArmor(slot);
+
+                if (!fallback.isEmpty())
+                {
+                    entity.setEquipmentStack(slot, fallback.copy());
+                }
             }
         }
     }
@@ -455,10 +538,6 @@ public class ReplayKeyframes extends ValueGroup
         {
             this.hotbar.insert(tick, Hotbar.of(entity::getHotbarStack));
             this.offHand.insert(tick, entity.getEquipmentStack(EquipmentSlot.OFFHAND).copy());
-            this.armorHead.insert(tick, entity.getEquipmentStack(EquipmentSlot.HEAD).copy());
-            this.armorChest.insert(tick, entity.getEquipmentStack(EquipmentSlot.CHEST).copy());
-            this.armorLegs.insert(tick, entity.getEquipmentStack(EquipmentSlot.LEGS).copy());
-            this.armorFeet.insert(tick, entity.getEquipmentStack(EquipmentSlot.FEET).copy());
             this.selectedSlot.insert(tick, entity.getSelectedSlot());
         }
     }

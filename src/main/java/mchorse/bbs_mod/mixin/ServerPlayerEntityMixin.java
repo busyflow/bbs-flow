@@ -1,8 +1,10 @@
 package mchorse.bbs_mod.mixin;
 
 import mchorse.bbs_mod.BBSMod;
+import mchorse.bbs_mod.actions.ExportPlayerGuard;
 import mchorse.bbs_mod.actions.types.item.ItemDropActionClip;
 import net.minecraft.entity.ItemEntity;
+import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.util.math.Vec3d;
 import org.spongepowered.asm.mixin.Mixin;
@@ -13,6 +15,17 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(ServerPlayerEntity.class)
 public class ServerPlayerEntityMixin
 {
+    @Inject(method = "damage", at = @At("HEAD"), cancellable = true)
+    public void onExportDamage(DamageSource source, float amount, CallbackInfoReturnable<Boolean> info)
+    {
+        ServerPlayerEntity player = (ServerPlayerEntity) (Object) this;
+
+        if (ExportPlayerGuard.isGuarded(player))
+        {
+            info.setReturnValue(false);
+        }
+    }
+
     @Inject(method = "dropItem", at = @At("RETURN"))
     public void onDropItem(CallbackInfoReturnable<ItemEntity> info)
     {

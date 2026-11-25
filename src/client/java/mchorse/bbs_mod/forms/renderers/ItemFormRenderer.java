@@ -15,6 +15,7 @@ import mchorse.bbs_mod.utils.joml.Vectors;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.OverlayTexture;
+import net.minecraft.client.render.model.json.ModelTransformationMode;
 import net.minecraft.client.util.math.MatrixStack;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -47,7 +48,10 @@ public class ItemFormRenderer extends FormRenderer<ItemForm>
 
         consumers.setSubstitute(BBSRendering.getColorConsumer(set));
         consumers.setUI(true);
-        MinecraftClient.getInstance().getItemRenderer().renderItem(this.form.stack.get(), this.form.modelTransform.get(), LightmapTextureManager.MAX_BLOCK_LIGHT_COORDINATE, OverlayTexture.DEFAULT_UV, matrices, consumers, MinecraftClient.getInstance().world, 0);
+        ModelTransformationMode mode = this.form.modelTransform.get();
+        boolean leftHanded = mode == ModelTransformationMode.THIRD_PERSON_LEFT_HAND
+            || mode == ModelTransformationMode.FIRST_PERSON_LEFT_HAND;
+        MinecraftClient.getInstance().getItemRenderer().renderItem(null, this.form.stack.get(), mode, leftHanded, matrices, consumers, MinecraftClient.getInstance().world, LightmapTextureManager.MAX_BLOCK_LIGHT_COORDINATE, OverlayTexture.DEFAULT_UV, 0);
         consumers.draw();
         consumers.setUI(false);
         consumers.setSubstitute(null);
@@ -91,7 +95,10 @@ public class ItemFormRenderer extends FormRenderer<ItemForm>
         }
 
         consumers.setSubstitute(BBSRendering.getColorConsumer(BlockFormRenderer.color));
-        MinecraftClient.getInstance().getItemRenderer().renderItem(this.form.stack.get(), this.form.modelTransform.get(), light, context.overlay, context.stack, consumers, context.entity.getWorld(), 0);
+        ModelTransformationMode mode = this.form.modelTransform.get();
+        boolean leftHanded = mode == ModelTransformationMode.THIRD_PERSON_LEFT_HAND
+            || mode == ModelTransformationMode.FIRST_PERSON_LEFT_HAND;
+        MinecraftClient.getInstance().getItemRenderer().renderItem(null, this.form.stack.get(), mode, leftHanded, context.stack, consumers, context.entity != null ? context.entity.getWorld() : MinecraftClient.getInstance().world, light, context.overlay, 0);
         consumers.draw();
         consumers.setSubstitute(null);
         FormTranslucentQueue.setSortOrigin(null);

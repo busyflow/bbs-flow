@@ -290,7 +290,7 @@ public class TrackStyle
         setupItemIcons();
 
         /* Particles */
-        putIcons(Icons.PARTICLE, "user1", "user2", "user3", "user4", "user5", "user6");
+        putIcons(Icons.PARTICLE, "user1", "user2", "user3", "user4", "user5", "user6", "snow_trail", "impact");
         ICONS.put("paused", Icons.TIME);
         ICONS.put("frequency", Icons.STOPWATCH);
         ICONS.put("count", Icons.BUCKET);
@@ -342,6 +342,8 @@ public class TrackStyle
             /* The rig's CEM states; the steps' own tracks are named by the rig itself, see setup() */
             "cem_aggressive", "cem_burning", "cem_climbing", "cem_crawling", "cem_health",
             "cem_in_lava", "cem_on_shoulder", "cem_sitting", "cem_tamed",
+            /* Snowball-only tracks */
+            "snow_trail", "impact",
             /* Splines */
             "curve", "repeatEnabled", "repeatMode", "repeatCount", "repeatDistance", "repeatRotation",
             "repeatStart", "repeatEnd", "repeatOffset");

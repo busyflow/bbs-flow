@@ -23,6 +23,8 @@ public class Animator implements IAnimator
     public ActionPlayback idle;
     public ActionPlayback running;
     public ActionPlayback sprinting;
+    public ActionPlayback turnLeft;
+    public ActionPlayback turnRight;
     public ActionPlayback crouching;
     public ActionPlayback crouchingIdle;
     public ActionPlayback dying;
@@ -55,6 +57,7 @@ public class Animator implements IAnimator
     public double prevZ = Float.MAX_VALUE;
     public double prevMY;
     public float prevHandSwing;
+    public float prevBodyYaw = Float.NaN;
 
     /* States */
     public boolean wasOnGround = true;
@@ -66,7 +69,7 @@ public class Animator implements IAnimator
     public List<String> getActions()
     {
         return Arrays.asList(
-            "idle", "running", "sprinting", "crouching", "crouching_idle", "dying", "falling",
+            "idle", "running", "sprinting", "turn_left", "turn_right", "crouching", "crouching_idle", "dying", "falling",
             "swimming", "swimming_idle", "riding", "riding_idle", "flying", "flying_idle",
             "swipe", "jump", "hurt", "land", "shoot", "consume", "base_pre", "base_post"
         );
@@ -80,6 +83,8 @@ public class Animator implements IAnimator
         this.idle = this.createAction(this.idle, actions.getConfig("idle"), true);
         this.running = this.createAction(this.running, actions.getConfig("running"), true);
         this.sprinting = this.createAction(this.sprinting, actions.getConfig("sprinting"), true);
+        this.turnLeft = this.createAction(this.turnLeft, actions.getConfig("turn_left"), true);
+        this.turnRight = this.createAction(this.turnRight, actions.getConfig("turn_right"), true);
         this.crouching = this.createAction(this.crouching, actions.getConfig("crouching"), true);
         this.crouchingIdle = this.createAction(this.crouchingIdle, actions.getConfig("crouching_idle"), true);
         this.dying = this.createAction(this.dying, actions.getConfig("dying"), false);
@@ -268,6 +273,9 @@ public class Animator implements IAnimator
 
         ActionPlayback state = this.pickState(target, moves);
 
+        float bodyYaw = target.getBodyYaw();
+        float yawDelta = Float.isNaN(this.prevBodyYaw) ? 0F : net.minecraft.util.math.MathHelper.wrapDegrees(bodyYaw - this.prevBodyYaw);
+
         if (state != null)
         {
             this.setActiveAction(state);
@@ -286,6 +294,14 @@ public class Animator implements IAnimator
             else if (target.isSprinting() && this.sprinting != null)
             {
                 this.setActiveAction(this.sprinting);
+            }
+            else if (!moves && yawDelta > 1.8F && this.turnRight != null)
+            {
+                this.setActiveAction(this.turnRight);
+            }
+            else if (!moves && yawDelta < -1.8F && this.turnLeft != null)
+            {
+                this.setActiveAction(this.turnLeft);
             }
             else
             {
@@ -329,6 +345,7 @@ public class Animator implements IAnimator
         this.prevZ = target.getZ();
         this.prevMY = velocity.y;
         this.prevHandSwing = handSwingProgress;
+        this.prevBodyYaw = bodyYaw;
 
         this.wasOnGround = target.isOnGround();
     }

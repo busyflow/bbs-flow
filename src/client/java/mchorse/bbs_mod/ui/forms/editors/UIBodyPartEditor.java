@@ -7,11 +7,14 @@ import mchorse.bbs_mod.cubic.IBoneHierarchy;
 import mchorse.bbs_mod.forms.FormUtilsClient;
 import mchorse.bbs_mod.forms.forms.BodyPart;
 import mchorse.bbs_mod.forms.forms.Form;
+import mchorse.bbs_mod.forms.forms.ItemForm;
 import mchorse.bbs_mod.forms.forms.ModelForm;
+import mchorse.bbs_mod.forms.renderers.FormRenderer;
 import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
+import mchorse.bbs_mod.ui.forms.editors.panels.UIItemFormPanel;
 import mchorse.bbs_mod.ui.framework.elements.UIScrollView;
 import mchorse.bbs_mod.ui.framework.elements.UISection;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIButton;
@@ -22,9 +25,13 @@ import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.bones.UIBonePicker;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.Pair;
+import mchorse.bbs_mod.utils.pose.Transform;
+import net.minecraft.client.render.model.json.ModelTransformationMode;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.Consumer;
 
 public class UIBodyPartEditor extends UIScrollView
@@ -89,8 +96,7 @@ public class UIBodyPartEditor extends UIScrollView
                 return;
             }
 
-            this.part.bone.set(b);
-            this.bone.setLabel(this.boneLabel(b));
+            this.attachBone(b);
         });
         this.bone.menu((picker) ->
         {
@@ -207,12 +213,77 @@ public class UIBodyPartEditor extends UIScrollView
         /* Ctrl + clicking to pick the parent bone to attach to */
         if (this.part != null && !pair.b.isEmpty() && this.part.getManager().getOwner() == pair.a)
         {
-            this.part.bone.set(pair.b);
-            this.bone.setLabel(this.boneLabel(pair.b));
+            this.attachBone(pair.b);
 
             return true;
         }
 
         return false;
+    }
+
+    private void attachBone(String boneName)
+    {
+        this.part.bone.set(boneName);
+        this.bone.setLabel(this.boneLabel(boneName));
+        this.autoSnapItemToHand(boneName);
+    }
+
+    private void autoSnapItemToHand(String boneName)
+    {
+        if (this.part == null || boneName == null || boneName.isEmpty() || !(this.part.getForm() instanceof ItemForm itemForm))
+        {
+            return;
+        }
+
+        String lower = boneName.toLowerCase(Locale.ROOT);
+        boolean isRight = lower.equals("rightarm") || lower.equals("right_arm") || lower.equals("right_arm_item")
+            || lower.equals("rightitem") || lower.equals("right_arm_end") || lower.equals("right_hand")
+            || lower.equals("righthand") || lower.equals("arm_right") || lower.equals("hand_right")
+            || lower.endsWith("_right_arm") || lower.endsWith("_rightarm")
+            || lower.endsWith("_right_hand") || lower.endsWith("_righthand");
+        boolean isLeft = lower.equals("leftarm") || lower.equals("left_arm") || lower.equals("left_arm_item")
+            || lower.equals("leftitem") || lower.equals("left_arm_end") || lower.equals("left_hand")
+            || lower.equals("lefthand") || lower.equals("arm_left") || lower.equals("hand_left")
+            || lower.endsWith("_left_arm") || lower.endsWith("_leftarm")
+            || lower.endsWith("_left_hand") || lower.endsWith("_lefthand");
+
+        if (!isRight && !isLeft)
+        {
+            return;
+        }
+
+        ModelTransformationMode mode = isLeft
+            ? ModelTransformationMode.THIRD_PERSON_LEFT_HAND
+            : ModelTransformationMode.THIRD_PERSON_RIGHT_HAND;
+        itemForm.modelTransform.set(mode);
+
+        if (this.editor != null && this.editor.editor != null && this.editor.editor.view instanceof UIItemFormPanel itemPanel)
+        {
+            itemPanel.modelTransform.label = IKey.constant(mode.asString());
+        }
+
+        FormRenderer ownerRenderer = this.owner == null ? null : FormUtilsClient.getRenderer(this.owner);
+        Vector3f offset = ownerRenderer == null ? null : ownerRenderer.getHandItemOffset(boneName, isLeft);
+
+        if (offset == null)
+        {
+            if (lower.contains("item") || lower.contains("hand") || lower.contains("end"))
+            {
+                offset = new Vector3f(0F, 0F, 0.125F);
+            }
+            else
+            {
+                offset = new Vector3f(isLeft ? 0.0625F : -0.0625F, -0.625F, 0.125F);
+            }
+        }
+
+        Transform t = new Transform();
+        t.translate.set(offset);
+        t.rotationMode = Transform.RotationMode.EULER;
+        t.rotate.set((float) Math.toRadians(-90F), (float) Math.toRadians(180F), 0F);
+        t.scale.set(1F, 1F, 1F);
+
+        this.part.transform.set(t);
+        this.transform.setTransform(this.part.transform.get());
     }
 }

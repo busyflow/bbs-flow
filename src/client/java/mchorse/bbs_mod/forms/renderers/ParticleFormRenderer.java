@@ -32,6 +32,9 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
     private ParticleEmitter emitter;
     private boolean checked;
     private boolean rewind;
+    private boolean pendingBurst;
+    private boolean positioned;
+    private float lastUnpausedKeyTick = Float.NaN;
     private long lastParticleUpdate = lastUpdate;
     private String lastEffect = null;
 
@@ -45,6 +48,13 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
         return this.emitter;
     }
 
+    /** Queues a fresh burst on the next tick while keeping any in-flight particles alive. */
+    public void triggerBurst()
+    {
+        this.pendingBurst = true;
+        this.rewind = false;
+    }
+
     public void ensureEmitter(World world, float transition)
     {
         String currentEffect = this.form.effect.get();
@@ -53,6 +63,7 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
             this.lastEffect = currentEffect;
             this.checked = false;
             this.emitter = null;
+            this.positioned = false;
         }
 
         if (this.lastParticleUpdate < lastUpdate)
@@ -80,9 +91,24 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
 
             this.emitter.paused = this.form.paused.get();
 
-            if (lastPaused != this.emitter.paused && !this.emitter.paused && this.emitter.age > 0 && !this.rewind)
+            if (lastPaused != this.emitter.paused && !this.emitter.paused && (this.emitter.age > 0 || !this.emitter.playing) && !this.rewind)
             {
                 this.rewind = true;
+            }
+
+            if ("snowball_impact".equals(currentEffect))
+            {
+                float keyTick = this.form.unpausedKeyTick;
+
+                if (!this.emitter.paused && !Float.isNaN(keyTick) && Float.compare(keyTick, this.lastUnpausedKeyTick) != 0)
+                {
+                    this.lastUnpausedKeyTick = keyTick;
+                    this.triggerBurst();
+                }
+                else if (this.emitter.paused && Float.isNaN(keyTick))
+                {
+                    this.lastUnpausedKeyTick = Float.NaN;
+                }
             }
         }
     }
@@ -154,6 +180,7 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
             if (displacement != null) context.stack.multiplyPositionMatrix(displacement);
 
             emitter.lastGlobal.set(translation);
+            this.positioned = true;
             emitter.rotation.set(matrix);
             Vector3f scale = matrix.getScale(Vectors.TEMP_3F);
             emitter.renderScale = (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3F;
@@ -193,13 +220,20 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
 
         if (this.emitter != null)
         {
-            /* Rewind the emitter if it was paused and resumed in order to make
-             * particle effects with once emitter */
-            if (this.rewind)
+            /* Wait until render3D has set emitter.lastGlobal so initial/burst particles never spawn at (0, 0, 0). */
+            if (!this.positioned)
+            {
+                return;
+            }
+
+            /* Rewind the emitter if it was paused and resumed (or explicitly triggered for
+             * stacking bursts) in order to spawn particle effects with a once emitter. */
+            if (this.pendingBurst || this.rewind)
             {
                 this.emitter.stop();
                 this.emitter.start();
 
+                this.pendingBurst = false;
                 this.rewind = false;
             }
 
@@ -215,5 +249,8 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
         this.emitter = null;
         this.checked = false;
         this.rewind = false;
+        this.pendingBurst = false;
+        this.positioned = false;
+        this.lastUnpausedKeyTick = Float.NaN;
     }
 }

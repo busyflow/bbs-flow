@@ -76,6 +76,7 @@ public class UISettingsLayout
             .add(BBSSettings.previewIconLiveRecording, Icons.OUTLINE_SPHERE)
             .add(BBSSettings.previewIconShaders, Icons.SUN)
             .add(BBSSettings.previewIconRecordReplay, Icons.SPHERE)
+            .add(BBSSettings.previewIconHidePositionKeyframes, Icons.ALL_DIRECTIONS)
             .add(BBSSettings.previewIconExport, Icons.VIDEO_CAMERA));
 
         register(new UIResolutionRow(BBSSettings.videoWidth, BBSSettings.videoHeight, true));

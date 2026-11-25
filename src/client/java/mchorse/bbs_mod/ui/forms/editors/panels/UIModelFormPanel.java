@@ -37,6 +37,7 @@ public class UIModelFormPanel extends UIFormPanel<ModelForm>
 
     /** Only for a model that carries a CEM program — see {@link mchorse.bbs_mod.cubic.jem.CemStatus}. */
     public UISection cemSection;
+    public UISection snowballSection;
 
     public UIButton pickModel;
     public UIButton pick;
@@ -123,6 +124,16 @@ public class UIModelFormPanel extends UIFormPanel<ModelForm>
         this.options.add(UI.row(this.pickModel, openFolder), this.pick, this.poseEditor);
 
         this.buildCemSection();
+        this.buildSnowballSection();
+    }
+
+    private void buildSnowballSection()
+    {
+        this.snowballSection = this.section(mchorse.bbs_mod.l10n.L10n.lang("bbs.ui.forms.editor.model.snowball"), "model.snowball", true);
+        this.snowballSection.fields.add(
+            UIValues.toggle(mchorse.bbs_mod.l10n.L10n.lang("bbs.ui.forms.editor.model.snowball.trail"), () -> this.form.snowTrail),
+            UIValues.toggle(mchorse.bbs_mod.l10n.L10n.lang("bbs.ui.forms.editor.model.snowball.impact"), () -> this.form.snowballImpact)
+        );
     }
 
     /**
@@ -231,6 +242,13 @@ public class UIModelFormPanel extends UIFormPanel<ModelForm>
         if (model != null && model.cemAnimation != null && model.config.cemAnimation.get())
         {
             this.options.add(this.cemSection);
+        }
+
+        this.snowballSection.removeFromParent();
+
+        if (this.form.isSnowballModel())
+        {
+            this.options.add(this.snowballSection);
         }
 
         this.options.resize();

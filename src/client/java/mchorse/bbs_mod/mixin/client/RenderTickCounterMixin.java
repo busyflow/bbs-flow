@@ -106,6 +106,7 @@ public class RenderTickCounterMixin
         {
             this.heldFrames = 0;
             this.lastFrameTime = 0;
+            BBSRendering.resetExportTime();
         }
     }
 
@@ -115,6 +116,7 @@ public class RenderTickCounterMixin
     private int advance(VideoRecorder videoRecorder, VideoExportSettings settings, long timeMillis, float share)
     {
         this.lastFrameDuration = 20F / (float) settings.getCaptureFrameRate() * share;
+        BBSRendering.addExportTimeSec(share / settings.getCaptureFrameRate());
         this.prevTimeMillis = timeMillis;
         this.tickDelta += this.lastFrameDuration;
 

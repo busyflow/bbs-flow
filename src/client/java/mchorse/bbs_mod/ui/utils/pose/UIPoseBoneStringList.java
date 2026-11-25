@@ -1,5 +1,6 @@
 package mchorse.bbs_mod.ui.utils.pose;
 
+import mchorse.bbs_mod.graphics.window.Window;
 import mchorse.bbs_mod.ui.utils.bones.UIBoneTreeList;
 
 import java.util.List;
@@ -18,5 +19,20 @@ public class UIPoseBoneStringList extends UIBoneTreeList
         super(callback);
 
         this.multi();
+    }
+
+    @Override
+    protected void applySelectionOnClick(int index)
+    {
+        UIPoseEditor editor = this.getParent(UIPoseEditor.class);
+
+        if (this.multi && Window.isCtrlPressed() && editor != null && editor.isAutoDefaultSelection())
+        {
+            this.setIndex(index);
+
+            return;
+        }
+
+        super.applySelectionOnClick(index);
     }
 }

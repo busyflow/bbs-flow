@@ -94,6 +94,12 @@ public class SequenceExportSession extends VideoExportSession
     }
 
     @Override
+    protected boolean shouldFreezePlayerDuringExport()
+    {
+        return true;
+    }
+
+    @Override
     protected String getMovieName()
     {
         return this.name;

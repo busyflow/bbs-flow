@@ -6,6 +6,7 @@ import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.camera.data.Position;
 import mchorse.bbs_mod.camera.utils.TimeUtils;
 import mchorse.bbs_mod.client.BBSRendering;
+import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.entities.MCEntity;
@@ -72,6 +73,16 @@ public class Recorder extends WorldFilmController
      */
     private Vector3d mark;
     private int markWait;
+    private boolean hasMarkRotation;
+    private float markYaw;
+    private float markPitch;
+    private float markHeadYaw;
+    private float markBodyYaw;
+
+    private boolean hasAngleRef;
+    private double lastRecordedYaw;
+    private double lastRecordedHeadYaw;
+    private double lastRecordedBodyYaw;
 
     /** How close to the mark counts as standing on it, in blocks. */
     private static final double MARK_REACHED = 1D;
@@ -176,6 +187,41 @@ public class Recorder extends WorldFilmController
         this.mark = mark;
     }
 
+    public void setMarkRotation(Replay replay, int tick)
+    {
+        if (replay == null || replay.keyframes == null)
+        {
+            return;
+        }
+
+        ReplayKeyframes kf = replay.keyframes;
+
+        if (kf.yaw.isEmpty() && kf.headYaw.isEmpty() && kf.bodyYaw.isEmpty() && kf.pitch.isEmpty())
+        {
+            return;
+        }
+
+        int replayTick = replay.getTick(tick);
+        float headYaw = kf.headYaw.isEmpty() && !kf.yaw.isEmpty()
+            ? kf.yaw.interpolate(replayTick).floatValue()
+            : kf.headYaw.interpolate(replayTick).floatValue();
+        float bodyYaw = kf.bodyYaw.isEmpty()
+            ? headYaw
+            : kf.bodyYaw.interpolate(replayTick).floatValue();
+        float pitch = kf.pitch.interpolate(replayTick).floatValue();
+
+        this.hasMarkRotation = true;
+        this.markYaw = headYaw;
+        this.markPitch = pitch;
+        this.markHeadYaw = headYaw;
+        this.markBodyYaw = bodyYaw;
+
+        this.hasAngleRef = true;
+        this.lastRecordedYaw = headYaw;
+        this.lastRecordedHeadYaw = headYaw;
+        this.lastRecordedBodyYaw = bodyYaw;
+    }
+
     public boolean hasNotStarted()
     {
         return this.countdown > 0 || this.mark != null;
@@ -207,6 +253,14 @@ public class Recorder extends WorldFilmController
 
         if (this.lastPosition == null)
         {
+            if (!this.hasAngleRef)
+            {
+                this.hasAngleRef = true;
+                this.lastRecordedYaw = player.getYaw();
+                this.lastRecordedHeadYaw = player.getHeadYaw();
+                this.lastRecordedBodyYaw = player.getBodyYaw();
+            }
+
             this.lastPosition = new Vector3d(player.getX(), player.getY(), player.getZ());
             this.lastRotation = new Vector4f(player.getYaw(), player.getPitch(), player.getHeadYaw(), player.getBodyYaw());
 
@@ -223,10 +277,45 @@ public class Recorder extends WorldFilmController
             Morph morph = Morph.getMorph(player);
 
             this.keyframes.record(this.tick, morph.entity, null);
+
+            double uYaw = unwrapAngle(morph.entity.getYaw(), this.lastRecordedYaw);
+            double uHeadYaw = unwrapAngle(morph.entity.getHeadYaw(), this.lastRecordedHeadYaw);
+            double uBodyYaw = unwrapAngle(morph.entity.getBodyYaw(), this.lastRecordedBodyYaw);
+
+            this.keyframes.yaw.insert(this.tick, uYaw);
+            this.keyframes.headYaw.insert(this.tick, uHeadYaw);
+            this.keyframes.bodyYaw.insert(this.tick, uBodyYaw);
+
+            this.lastRecordedYaw = uYaw;
+            this.lastRecordedHeadYaw = uHeadYaw;
+            this.lastRecordedBodyYaw = uBodyYaw;
+
             this.recordMobs();
         }
 
         super.update();
+    }
+
+    private void applyMarkRotation(ClientPlayerEntity player)
+    {
+        if (player == null)
+        {
+            return;
+        }
+
+        player.setYaw(this.markYaw);
+        player.setHeadYaw(this.markHeadYaw);
+        player.setBodyYaw(this.markBodyYaw);
+        player.setPitch(this.markPitch);
+        player.prevYaw = this.markYaw;
+        player.prevHeadYaw = this.markHeadYaw;
+        player.prevBodyYaw = this.markBodyYaw;
+        player.prevPitch = this.markPitch;
+    }
+
+    private static double unwrapAngle(double angle, double reference)
+    {
+        return angle + Math.round((reference - angle) / 360.0) * 360.0;
     }
 
     /** Let go of the mark once the player is standing on it: the teleport has landed. */
@@ -240,6 +329,12 @@ public class Recorder extends WorldFilmController
         if (this.distanceToMark() <= MARK_REACHED)
         {
             this.mark = null;
+
+            if (this.hasMarkRotation)
+            {
+                this.applyMarkRotation(MinecraftClient.getInstance().player);
+                this.hasMarkRotation = false;
+            }
         }
     }
 

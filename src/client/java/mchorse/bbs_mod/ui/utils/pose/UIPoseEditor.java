@@ -71,6 +71,7 @@ public class UIPoseEditor extends UIElement
 
     private String group = "";
     private boolean hasBones = true;
+    private boolean autoDefaultSelection;
 
     /** Only the bone list and the transform: for a pose whose material and fix never show (a model's sneaking pose). */
     private boolean poseOnly;
@@ -470,11 +471,19 @@ public class UIPoseEditor extends UIElement
         this.transform.setVisible(hasBones);
         this.material.setVisible(hasBones);
 
+        boolean wasAutoDefault = this.autoDefaultSelection;
         List<String> list = this.groups.list.getList();
-        int i = Math.max(reset ? 0 : list.indexOf(this.boneSelection().get()), 0);
+        int matched = reset ? -1 : list.indexOf(this.boneSelection().get());
+        int i = Math.max(matched, 0);
 
         this.groups.list.setCurrentScroll(CollectionUtils.getSafe(list, i));
         this.pickBones(this.groups.list.getCurrent());
+        this.autoDefaultSelection = !this.groups.list.getCurrent().isEmpty() && (reset || (matched == -1 && i == 0) || wasAutoDefault);
+    }
+
+    public boolean isAutoDefaultSelection()
+    {
+        return this.autoDefaultSelection;
     }
 
     public void selectBone(String bone)
@@ -495,6 +504,12 @@ public class UIPoseEditor extends UIElement
      */
     public void selectBone(String bone, boolean additive)
     {
+        if (additive && this.autoDefaultSelection)
+        {
+            additive = false;
+        }
+
+        this.autoDefaultSelection = false;
         this.boneSelection().set(bone);
 
         if (additive)
@@ -599,6 +614,8 @@ public class UIPoseEditor extends UIElement
 
     public void pickBones(List<String> bones)
     {
+        this.autoDefaultSelection = false;
+
         if (bones == null || bones.isEmpty())
         {
             this.boneSelection().set("");

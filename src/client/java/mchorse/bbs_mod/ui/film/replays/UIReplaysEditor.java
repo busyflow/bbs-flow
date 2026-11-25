@@ -1056,10 +1056,29 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
 
         boolean separateForm = this.isSeparateFormTimeline();
 
+        if (this.allToggle != null)
+        {
+            this.allToggle.setVisible(!separateForm);
+        }
+
+        UIIcon bonesButton = this.tabButtons.get(TrackCategory.BONES);
+
+        if (bonesButton != null)
+        {
+            bonesButton.setVisible(!separateForm);
+        }
+
+        if (separateForm && (this.allMode || this.category == TrackCategory.BONES))
+        {
+            this.allMode = false;
+            this.category = TrackCategory.REPLAY;
+        }
+
         List<UIKeyframeSheet> replaySheets = new ArrayList<>();
         List<UIKeyframeSheet> formSheets = new ArrayList<>();
 
         this.collectCuratedSheets(replaySheets);
+        this.ensureHotbarSheets(replaySheets);
         UIReplaysEditorUtils.buildSheets(catalog, formSheets, this.replay.properties);
 
         List<UIKeyframeSheet> sheets = new ArrayList<>();
@@ -1467,6 +1486,70 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
                     sheets.add(sheet);
                 }
             }
+        }
+    }
+
+    /**
+     * Re-inserts curated hotbar channels if an external mixin (such as BBS-POV) stripped them
+     * during {@link #collectCuratedSheets}, keeping the Hotbar section between States and Equipment.
+     */
+    private void ensureHotbarSheets(List<UIKeyframeSheet> sheets)
+    {
+        Set<String> present = new LinkedHashSet<>();
+        UIKeyframeSheet.Section hotbarSection = null;
+        int insertIndex = -1;
+
+        for (int i = 0; i < sheets.size(); i++)
+        {
+            UIKeyframeSheet existing = sheets.get(i);
+            present.add(existing.id);
+
+            if (existing.section != null)
+            {
+                String secId = existing.section.id();
+                if ("replay_section/hotbar".equals(secId) && hotbarSection == null)
+                {
+                    hotbarSection = existing.section;
+                }
+                if (insertIndex < 0 && ("replay_section/equipment".equals(secId)
+                    || "replay_section/controls".equals(secId)
+                    || "replay_section/velocity".equals(secId)))
+                {
+                    insertIndex = i;
+                }
+            }
+        }
+
+        if (insertIndex < 0)
+        {
+            insertIndex = sheets.size();
+        }
+
+        List<UIKeyframeSheet> missing = new ArrayList<>();
+
+        for (String key : ReplayKeyframes.CURATED_CHANNELS)
+        {
+            if ("hotbar".equals(replaySection(key)) && !present.contains(key))
+            {
+                KeyframeChannel channel = (KeyframeChannel) this.replay.keyframes.get(key);
+                if (channel == null)
+                {
+                    continue;
+                }
+                if (hotbarSection == null)
+                {
+                    hotbarSection = new UIKeyframeSheet.Section("replay_section/hotbar",
+                        L10n.lang("bbs.ui.film.replay.sections.hotbar"), getIcon("hotbar"), 0xfacc15);
+                }
+                UIKeyframeSheet sheet = new UIKeyframeSheet(key, TrackStyle.label(key), getColor(key), channel, null, false).icon(getIcon(key));
+                sheet.section = hotbarSection;
+                missing.add(sheet);
+            }
+        }
+
+        if (!missing.isEmpty())
+        {
+            sheets.addAll(insertIndex, missing);
         }
     }
 

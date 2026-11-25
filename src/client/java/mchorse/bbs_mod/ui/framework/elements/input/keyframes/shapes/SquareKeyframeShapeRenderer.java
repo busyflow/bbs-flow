@@ -23,8 +23,26 @@ public class SquareKeyframeShapeRenderer implements IKeyframeShapeRenderer
     }
 
     @Override
+    public int getSdfShapeId()
+    {
+        return 0;
+    }
+
+    @Override
+    public float getSdfHalfSize(int offset)
+    {
+        return offset;
+    }
+
+    @Override
     public void renderKeyframe(UIContext uiContext, BufferBuilder builder, Matrix4f matrix4f, int x, int y, int offset, int c)
     {
+        if (KeyframeShapeRenderers.sdfPass)
+        {
+            KeyframeShapeRenderers.emitSdfQuad(builder, matrix4f, x, y, this, offset, c);
+            return;
+        }
+
         uiContext.batcher.fillRect(builder, matrix4f, x - offset, y - offset, offset * 2, offset * 2, c, c, c, c);
     }
 }

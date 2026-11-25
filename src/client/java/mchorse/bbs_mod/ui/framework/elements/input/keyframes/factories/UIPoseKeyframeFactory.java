@@ -6,6 +6,8 @@ import mchorse.bbs_mod.film.replays.tracks.TrackId;
 import mchorse.bbs_mod.film.replays.tracks.TrackKind;
 import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.FormUtilsClient;
+import mchorse.bbs_mod.forms.forms.Form;
+import mchorse.bbs_mod.forms.renderers.FormRenderer;
 import mchorse.bbs_mod.forms.renderers.MobFormRenderer;
 import mchorse.bbs_mod.forms.renderers.mob.MobRig;
 import mchorse.bbs_mod.forms.forms.MobForm;
@@ -86,6 +88,31 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
                 /* No flipped-parts table: vanilla part names are already left_/right_, which is
                  * exactly what Pose's own mirror rule matches. */
                 this.poseEditor.fillGroups(rig, null, false, null);
+            }
+        }
+        else
+        {
+            Form posedForm = FormUtils.getForm(sheet.property);
+
+            if (posedForm != null)
+            {
+                FormRenderer renderer = FormUtilsClient.getRenderer(posedForm);
+
+                this.poseEditor.setPose(track.getValue(), posedForm.getFormIdOrName());
+
+                if (renderer != null)
+                {
+                    var hierarchy = renderer.getBoneHierarchy();
+
+                    if (hierarchy != null)
+                    {
+                        this.poseEditor.fillGroups(hierarchy, null, false, null);
+                    }
+                    else
+                    {
+                        this.poseEditor.fillGroups(renderer.getBones(), false);
+                    }
+                }
             }
         }
 

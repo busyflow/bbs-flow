@@ -177,6 +177,10 @@ public class Scale
     public void setZoom(double zoom)
     {
         this.stopZoom();
+        if (!Double.isFinite(zoom) || zoom <= 0D)
+        {
+            return;
+        }
         if (this.lockViewport)
         {
             this.zoom = zoom;
@@ -283,7 +287,7 @@ public class Scale
     public void viewOffset(double min, double max, double length, double offset)
     {
         this.stopZoom();
-        if (length <= 0)
+        if (length <= 0 || !Double.isFinite(min) || !Double.isFinite(max) || max <= min)
         {
             return;
         }

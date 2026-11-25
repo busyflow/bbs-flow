@@ -2,6 +2,7 @@ package mchorse.bbs_mod.ui.sequence;
 
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.film.ExportPlayerLock;
 import mchorse.bbs_mod.camera.Camera;
 import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.data.types.MapType;
@@ -587,13 +588,16 @@ public class UISequencePanel extends UIDataDashboardPanel<Sequence> implements I
 
         /* The same "player follows the camera" as in the film editor, so the world around the
          * shot is loaded here too */
-        if (BBSSettings.editorPlayerFollowsCamera.get() && this.data != null && this.getContext() != null)
+        if (!ExportPlayerLock.isLocked())
         {
-            CameraFollow.follow(this.getCamera());
-        }
-        else
-        {
-            CameraFollow.stop();
+            if (BBSSettings.editorPlayerFollowsCamera.get() && this.data != null && this.getContext() != null)
+            {
+                CameraFollow.follow(this.getCamera());
+            }
+            else
+            {
+                CameraFollow.stop();
+            }
         }
 
         if (this.playing && this.player.isSolo())

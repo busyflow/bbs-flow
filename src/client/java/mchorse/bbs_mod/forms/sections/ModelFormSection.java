@@ -63,6 +63,7 @@ public class ModelFormSection extends SubFormSection
         ModelForm form = new ModelForm();
 
         form.model.set(key);
+        form.ensureSnowballParts();
 
         return form;
     }

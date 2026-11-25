@@ -174,6 +174,12 @@ public class PanelVideoExportSession extends VideoExportSession
     }
 
     @Override
+    protected boolean shouldFreezePlayerDuringExport()
+    {
+        return true;
+    }
+
+    @Override
     protected void teardown(boolean cancelled)
     {
         this.editor.getController().setPaused(this.restorePaused);

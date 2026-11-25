@@ -1435,11 +1435,11 @@ public class UIKeyframes extends UITimelineCanvas
 
         this.graphArea.copy(this.area);
         this.graphArea.x += labelWidth;
-        this.graphArea.w -= labelWidth;
+        this.graphArea.w = Math.max(0, this.graphArea.w - labelWidth);
 
         this.currentGraph.resize();
 
-        if (!Operation.equals(minValue, maxValue))
+        if (Double.isFinite(minValue) && Double.isFinite(maxValue) && minValue < maxValue)
         {
             this.xAxis.view(minValue, maxValue);
         }
@@ -2029,7 +2029,17 @@ public class UIKeyframes extends UITimelineCanvas
 
     public void applyState(KeyframeState state)
     {
-        this.xAxis.view(state.extra.getDouble("x_min"), state.extra.getDouble("x_max"));
+        double xMin = state.extra.getDouble("x_min");
+        double xMax = state.extra.getDouble("x_max");
+
+        if (Double.isFinite(xMin) && Double.isFinite(xMax) && xMin < xMax)
+        {
+            this.xAxis.view(xMin, xMax);
+        }
+        else
+        {
+            this.resetViewX();
+        }
         this.currentGraph = state.extra.getBool("graph") ? this.curveGraph : this.dopeSheet;
         this.dopeSheet.restoreState(state.extra);
         this.curveGraph.restoreState(state.extra);

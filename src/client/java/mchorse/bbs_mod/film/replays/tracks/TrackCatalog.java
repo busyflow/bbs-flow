@@ -225,6 +225,12 @@ public class TrackCatalog
                 continue;
             }
 
+            /* Snowball-only custom keyframes: trail and impact/explode. */
+            if (form instanceof ModelForm modelForm && (name.equals("snow_trail") || name.equals("impact")) && !modelForm.isSnowballModel())
+            {
+                continue;
+            }
+
             /* Only a property that can hold keyframes is a track — the rest of a form's values are
              * static settings. Asked of the value itself, so it holds with or without a replay. */
             if (!(value instanceof BaseKeyframeFactoryValue<?> animated) || !animated.isAnimatable())

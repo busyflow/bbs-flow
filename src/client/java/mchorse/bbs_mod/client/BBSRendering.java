@@ -80,6 +80,12 @@ public class BBSRendering
     public static boolean renderingWorld;
     public static int lastAction;
 
+    /**
+     * Elapsed seconds of the current video export as driven by {@code RenderTickCounterMixin},
+     * advancing only on un-held export subframes by {@code share / captureFrameRate}.
+     */
+    private static double exportTimeSec;
+
     private static boolean customSize;
     private static boolean iris;
     private static boolean sodium;
@@ -554,6 +560,21 @@ public class BBSRendering
     public static boolean isHoldingExportFrame()
     {
         return holdingExportFrame;
+    }
+
+    public static void addExportTimeSec(double deltaSec)
+    {
+        exportTimeSec += deltaSec;
+    }
+
+    public static double getExportTimeSec()
+    {
+        return exportTimeSec;
+    }
+
+    public static void resetExportTime()
+    {
+        exportTimeSec = 0D;
     }
 
     public static void onRenderChunkLayer(MatrixStack stack)

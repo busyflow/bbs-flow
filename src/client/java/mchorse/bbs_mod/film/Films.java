@@ -211,6 +211,11 @@ public class Films
          * manual teleport (the film editor's teleport key) to the spot the replay itself
          * holds at that tick - now the take just begins there. Sent first, because the
          * teleport goes through the server and takes a couple of ticks to land */
+        if (onMark && replay != null)
+        {
+            this.recorder.setMarkRotation(replay, tick);
+        }
+
         Vector3d mark = onMark && replay != null && BBSSettings.recordingTeleport.get()
             ? PlayerUtils.teleportToReplay(replay, tick)
             : null;

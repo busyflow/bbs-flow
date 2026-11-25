@@ -1,12 +1,20 @@
 package mchorse.bbs_mod.ui.forms.editors.panels;
 
+import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.film.replays.tracks.TrackCatalog;
 import mchorse.bbs_mod.film.replays.tracks.TrackDescriptor;
+import mchorse.bbs_mod.forms.CustomVertexConsumerProvider;
+import mchorse.bbs_mod.forms.FormUtilsClient;
 import mchorse.bbs_mod.forms.forms.Form;
+import mchorse.bbs_mod.forms.renderers.FormRenderer;
+import mchorse.bbs_mod.forms.renderers.MobFormRenderer;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.UIKeys;
+import mchorse.bbs_mod.ui.film.UIFilmPanel;
 import mchorse.bbs_mod.ui.film.replays.overlays.UIKeyframeSheetFilterOverlayPanel;
 import mchorse.bbs_mod.ui.forms.editors.forms.UIForm;
+import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.UISection;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIButton;
@@ -18,11 +26,21 @@ import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.UITrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.text.UITextbox;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
+import mchorse.bbs_mod.ui.framework.elements.utils.FontRenderer;
 import mchorse.bbs_mod.ui.utils.UI;
+import mchorse.bbs_mod.ui.utils.context.ContextAction;
+import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.ui.utils.keys.KeyCombo;
 import mchorse.bbs_mod.ui.utils.values.UIValues;
 import mchorse.bbs_mod.utils.colors.Colors;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.item.ArmorItem;
+import net.minecraft.item.ElytraItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
 import org.joml.Vector3f;
 
 import java.util.HashMap;
@@ -55,6 +73,12 @@ public class UIGeneralFormPanel extends UIFormPanel
     public UITrackpad speed;
     public UITrackpad swingSpeed;
     public UITrackpad stepHeight;
+
+    public UISection armorSection;
+    public UIArmorSlot armorHead;
+    public UIArmorSlot armorChest;
+    public UIArmorSlot armorLegs;
+    public UIArmorSlot armorFeet;
 
     public UIGeneralFormPanel(UIForm editor)
     {
@@ -165,13 +189,25 @@ public class UIGeneralFormPanel extends UIFormPanel
             UI.labelRow(UIKeys.FORMS_EDITORS_GENERAL_STEP_HEIGHT, this.stepHeight)
         );
 
+        this.armorHead = new UIArmorSlot(EquipmentSlot.HEAD, Icons.ARMOR_HELMET, IKey.constant("Helmet"));
+        this.armorChest = new UIArmorSlot(EquipmentSlot.CHEST, Icons.ARMOR_CHESTPLATE, IKey.constant("Chestplate"));
+        this.armorLegs = new UIArmorSlot(EquipmentSlot.LEGS, Icons.ARMOR_LEGGINGS, IKey.constant("Leggings"));
+        this.armorFeet = new UIArmorSlot(EquipmentSlot.FEET, Icons.ARMOR_BOOTS, IKey.constant("Boots"));
+
+        UIElement armorRow = UI.row(this.armorHead, this.armorChest, this.armorLegs, this.armorFeet);
+        armorRow.h(24);
+
+        this.armorSection = this.section(IKey.constant("Armor"), "general.armor", false);
+        this.armorSection.fields.add(armorRow);
+
         this.options.add(
             display,
             nameTagSection,
             tracks,
             transform,
             hitbox,
-            movement
+            movement,
+            this.armorSection
         );
     }
 
@@ -186,6 +222,15 @@ public class UIGeneralFormPanel extends UIFormPanel
 
         this.hitboxSneakMultiplier.setValue(form.hitboxSneakMultiplier.get());
         this.hitboxEyeHeight.setValue(form.hitboxEyeHeight.get());
+
+        FormRenderer renderer = FormUtilsClient.getRenderer(form);
+        boolean supportsArmor = renderer != null && renderer.supportsArmor();
+
+        this.armorSection.setVisible(supportsArmor);
+        this.armorHead.syncTooltip();
+        this.armorChest.syncTooltip();
+        this.armorLegs.syncTooltip();
+        this.armorFeet.syncTooltip();
 
         this.options.resize();
     }
@@ -242,5 +287,182 @@ public class UIGeneralFormPanel extends UIFormPanel
         UIOverlay.addOverlay(this.getContext(), panel);
 
         panel.onClose(e -> this.form.disabledTracks.set(disabled));
+    }
+
+    public class UIArmorSlot extends UIElement
+    {
+        public final EquipmentSlot slot;
+        public final Icon placeholder;
+        public final IKey emptyLabel;
+
+        public UIArmorSlot(EquipmentSlot slot, Icon placeholder, IKey emptyLabel)
+        {
+            super();
+
+            this.slot = slot;
+            this.placeholder = placeholder;
+            this.emptyLabel = emptyLabel;
+            this.h(24);
+            this.tooltip(emptyLabel);
+        }
+
+        public void syncTooltip()
+        {
+            ItemStack stack = UIGeneralFormPanel.this.form == null
+                ? ItemStack.EMPTY
+                : UIGeneralFormPanel.this.form.getConfiguredArmor(this.slot);
+
+            this.tooltip(stack.isEmpty() ? this.emptyLabel : IKey.constant(stack.getName().getString()));
+        }
+
+        private void setArmor(ItemStack stack)
+        {
+            Form form = UIGeneralFormPanel.this.form;
+
+            if (form == null)
+            {
+                return;
+            }
+
+            form.getArmorValue(this.slot).set(stack.copy());
+            this.syncTooltip();
+
+            if (UIGeneralFormPanel.this.editor != null && UIGeneralFormPanel.this.editor.editor != null && UIGeneralFormPanel.this.editor.editor.renderer != null)
+            {
+                var entity = UIGeneralFormPanel.this.editor.editor.renderer.getEntity();
+
+                if (entity != null)
+                {
+                    entity.setEquipmentStack(this.slot, stack.copy());
+                }
+            }
+
+            FormRenderer renderer = FormUtilsClient.getRenderer(form);
+
+            if (renderer instanceof MobFormRenderer mobRenderer)
+            {
+                mobRenderer.applyConfiguredArmorToEntity(true);
+            }
+
+            if (form.getParent() != null && form.getParent().getParent() instanceof Replay directReplay)
+            {
+                directReplay.keyframes.applyFormArmorKeyframes(form);
+            }
+            else
+            {
+                UIFilmPanel filmPanel = UIGeneralFormPanel.this.getParent(UIFilmPanel.class);
+
+                if (filmPanel != null && filmPanel.replayEditor != null && filmPanel.replayEditor.getReplay() != null)
+                {
+                    Replay active = filmPanel.replayEditor.getReplay();
+
+                    if (active.form.get() == form)
+                    {
+                        active.keyframes.applyFormArmorKeyframes(form);
+                    }
+                }
+            }
+        }
+
+        private boolean isValidArmorForSlot(Item item)
+        {
+            if (item instanceof ArmorItem armor)
+            {
+                return armor.getSlotType() == this.slot;
+            }
+
+            return this.slot == EquipmentSlot.CHEST && item instanceof ElytraItem;
+        }
+
+        @Override
+        public boolean subMouseClicked(UIContext context)
+        {
+            if (this.area.isInside(context))
+            {
+                if (context.mouseButton == 2)
+                {
+                    this.setArmor(ItemStack.EMPTY);
+
+                    return true;
+                }
+
+                if (context.mouseButton == 0 || context.mouseButton == 1)
+                {
+                    context.replaceContextMenu((menu) ->
+                    {
+                        menu.action(Icons.CLOSE, UIKeys.GENERAL_NONE, () -> this.setArmor(ItemStack.EMPTY));
+
+                        for (Item item : Registries.ITEM)
+                        {
+                            if (this.isValidArmorForSlot(item))
+                            {
+                                ItemStack optionStack = new ItemStack(item);
+
+                                menu.action(new ContextAction(this.placeholder, IKey.constant(optionStack.getName().getString()), () -> this.setArmor(optionStack.copy()))
+                                {
+                                    @Override
+                                    public void render(UIContext ctx, FontRenderer font, int x, int y, int w, int h, boolean hover, boolean selected)
+                                    {
+                                        this.renderBackground(ctx, x, y, w, h, hover, selected);
+
+                                        CustomVertexConsumerProvider consumers = FormUtilsClient.getProvider();
+                                        MatrixStack matrices = ctx.batcher.getContext().getMatrices();
+
+                                        matrices.push();
+                                        consumers.setUI(true);
+                                        ctx.batcher.getContext().drawItem(optionStack, x + 2, y + (h - 16) / 2);
+                                        consumers.setUI(false);
+                                        matrices.pop();
+
+                                        String label = font.limitToWidth(this.label.get(), w - 24);
+
+                                        ctx.batcher.text(label, x + 22, y + (h - font.getHeight()) / 2 + 1, Colors.WHITE, false);
+                                    }
+                                });
+                            }
+                        }
+                    });
+
+                    return true;
+                }
+            }
+
+            return super.subMouseClicked(context);
+        }
+
+        @Override
+        public void render(UIContext context)
+        {
+            boolean hover = this.area.isInside(context);
+            ItemStack stack = UIGeneralFormPanel.this.form == null
+                ? ItemStack.EMPTY
+                : UIGeneralFormPanel.this.form.getConfiguredArmor(this.slot);
+
+            int border = hover ? (Colors.A100 | BBSSettings.primaryColor.get()) : Colors.LIGHTER_GRAY;
+
+            context.batcher.box(this.area.x, this.area.y, this.area.ex(), this.area.ey(), border);
+            context.batcher.box(this.area.x + 1, this.area.y + 1, this.area.ex() - 1, this.area.ey() - 1, hover ? Colors.A75 : Colors.A50);
+
+            int ix = this.area.x + (this.area.w - 16) / 2;
+            int iy = this.area.y + (this.area.h - 16) / 2;
+
+            if (!stack.isEmpty())
+            {
+                CustomVertexConsumerProvider consumers = FormUtilsClient.getProvider();
+                MatrixStack matrices = context.batcher.getContext().getMatrices();
+
+                matrices.push();
+                consumers.setUI(true);
+                context.batcher.getContext().drawItem(stack, ix, iy);
+                consumers.setUI(false);
+                matrices.pop();
+            }
+            else
+            {
+                context.batcher.icon(this.placeholder, Colors.A75 | Colors.WHITE, ix, iy);
+            }
+
+            super.render(context);
+        }
     }
 }

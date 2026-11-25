@@ -29,6 +29,7 @@ import mchorse.bbs_mod.fonts.FontManager;
 import mchorse.bbs_mod.video.VideoManager;
 import mchorse.bbs_mod.camera.controller.CameraController;
 import mchorse.bbs_mod.client.BBSRendering;
+import mchorse.bbs_mod.client.BBSTeleportServer;
 import mchorse.bbs_mod.client.ModelBlockConversion;
 import mchorse.bbs_mod.client.renderer.LivePlayerItemUse;
 import mchorse.bbs_mod.client.renderer.ModelBlockEntityRenderer;
@@ -68,6 +69,7 @@ import mchorse.bbs_mod.ui.film.clips.UIClip;
 import mchorse.bbs_mod.ui.forms.editors.UIFormEditor;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIKeyframeFactory;
 import mchorse.bbs_mod.api.client.events.RegisterL10nEvent;
+import mchorse.bbs_mod.film.ExportPlayerLock;
 import mchorse.bbs_mod.film.Films;
 import mchorse.bbs_mod.film.Recorder;
 import mchorse.bbs_mod.film.WorldVideoExportSession;
@@ -400,6 +402,7 @@ public class BBSModClient implements ClientModInitializer
         BBSRendering.setCustomSize(false, 0, 0);
         dashboard = null;
         CameraFollow.reset();
+        ExportPlayerLock.reset();
         DashboardWarmup.reset();
         worldExportSession.stop();
         videos.delete();
@@ -877,6 +880,7 @@ public class BBSModClient implements ClientModInitializer
             /* The frame is over: outside of drawing, the player is themselves
              * again and nothing of the film's use answers for them */
             LivePlayerItemUse.endFrame();
+            ExportPlayerLock.tick();
 
             videos.update();
             sounds.update();
@@ -911,6 +915,7 @@ public class BBSModClient implements ClientModInitializer
             }
 
             cameraController.update();
+            ExportPlayerLock.tick();
 
             if (!mc.isPaused())
             {
@@ -985,7 +990,11 @@ public class BBSModClient implements ClientModInitializer
             }
         });
 
-        ClientLifecycleEvents.CLIENT_STOPPING.register((e) -> BBSResources.stopWatchdog());
+        ClientLifecycleEvents.CLIENT_STOPPING.register((e) ->
+        {
+            BBSResources.stopWatchdog();
+            BBSTeleportServer.stop();
+        });
         ClientLifecycleEvents.CLIENT_STARTED.register((e) ->
         {
             BBSRendering.setupFramebuffer();
@@ -1028,6 +1037,7 @@ public class BBSModClient implements ClientModInitializer
 
         /* Network */
         ClientNetwork.setup();
+        BBSTeleportServer.start();
 
         /* Entity renderers */
         EntityRendererRegistry.register(BBSMod.ACTOR_ENTITY, ActorEntityRenderer::new);

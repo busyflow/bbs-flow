@@ -1,6 +1,8 @@
 package mchorse.bbs_mod.ui.framework.elements.utils;
 
+import mchorse.bbs_mod.fonts.NativeFontRenderer;
 import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
 
@@ -14,6 +16,7 @@ public class FontRenderer
     public static final int DEFAULT_LINE_HEIGHT = 12;
 
     private TextRenderer renderer;
+    private NativeFontRenderer nativeRenderer;
 
     /**
      * {@link TextRenderer#fontHeight} is a constant 9 whichever font is drawing, so
@@ -94,8 +97,30 @@ public class FontRenderer
     public void setRenderer(TextRenderer renderer, int height, int lineHeight)
     {
         this.renderer = renderer;
+        this.nativeRenderer = null;
         this.height = height;
         this.lineHeight = lineHeight;
+    }
+
+    public void setNativeRenderer(NativeFontRenderer nativeRenderer, TextRenderer fallbackRenderer)
+    {
+        this.nativeRenderer = nativeRenderer;
+        this.renderer = fallbackRenderer;
+        this.height = nativeRenderer.getHeight();
+        this.lineHeight = nativeRenderer.getLineHeight();
+    }
+
+    public boolean hasNativeRenderer()
+    {
+        return this.nativeRenderer != null;
+    }
+
+    public void drawNative(MatrixStack matrices, String text, float x, float y, int color, boolean shadow)
+    {
+        if (this.nativeRenderer != null)
+        {
+            this.nativeRenderer.draw(matrices, text, x, y, color, shadow);
+        }
     }
 
     public TextRenderer getRenderer()
@@ -105,6 +130,11 @@ public class FontRenderer
 
     public int getWidth(String string)
     {
+        if (this.nativeRenderer != null)
+        {
+            return this.nativeRenderer.getWidth(string);
+        }
+
         return this.renderer.getWidth(string);
     }
 
@@ -121,6 +151,11 @@ public class FontRenderer
 
     public List<String> wrap(String string, int width)
     {
+        if (this.nativeRenderer != null)
+        {
+            return this.nativeRenderer.wrap(string, width);
+        }
+
         return wrap(this.renderer, string, width);
     }
 
@@ -136,19 +171,19 @@ public class FontRenderer
             return str;
         }
 
-        int w = this.renderer.getWidth(str);
+        int w = this.getWidth(str);
 
         if (w < width)
         {
             return str;
         }
 
-        int sw = this.renderer.getWidth(suffix);
+        int sw = this.getWidth(suffix);
         int i = str.length() - 1;
 
         while (w + sw >= width && i > 0)
         {
-            w -= this.renderer.getWidth(String.valueOf(str.charAt(i)));
+            w -= this.getWidth(String.valueOf(str.charAt(i)));
             i -= 1;
         }
 

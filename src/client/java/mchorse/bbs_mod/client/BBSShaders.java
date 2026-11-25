@@ -23,6 +23,9 @@ public class BBSShaders
     private static ShaderProgram pixelArtTextIntensity;
     private static ShaderProgram markupOccluded;
     private static ShaderProgram selectionOutline;
+    private static ShaderProgram nativeText;
+    private static ShaderProgram roundedRect;
+    private static ShaderProgram keyframeShape;
 
     private static ShaderProgram pickerPreview;
     private static ShaderProgram pickerBillboard;
@@ -45,6 +48,9 @@ public class BBSShaders
         if (pixelArtTextIntensity != null) pixelArtTextIntensity.close();
         if (markupOccluded != null) markupOccluded.close();
         if (selectionOutline != null) selectionOutline.close();
+        if (nativeText != null) nativeText.close();
+        if (roundedRect != null) roundedRect.close();
+        if (keyframeShape != null) keyframeShape.close();
 
         if (pickerPreview != null) pickerPreview.close();
         if (pickerBillboard != null) pickerBillboard.close();
@@ -123,6 +129,63 @@ public class BBSShaders
 
             e.printStackTrace();
         }
+
+        /* Crisp 1:1 physical-pixel UI text shader */
+        try
+        {
+            ResourceFactory factory = new ProxyResourceFactory(MinecraftClient.getInstance().getResourceManager());
+
+            nativeText = new ShaderProgram(factory, "native_text", VertexFormats.POSITION_TEXTURE_COLOR);
+        }
+        catch (IOException e)
+        {
+            nativeText = null;
+
+            e.printStackTrace();
+        }
+
+        /* Analytical GPU SDF rounded rectangle / border / shadow shader */
+        try
+        {
+            ResourceFactory factory = new ProxyResourceFactory(MinecraftClient.getInstance().getResourceManager());
+
+            roundedRect = new ShaderProgram(factory, "rounded_rect", VertexFormats.POSITION_TEXTURE_COLOR);
+        }
+        catch (IOException e)
+        {
+            roundedRect = null;
+
+            e.printStackTrace();
+        }
+
+        /* Analytical GPU SDF timeline keyframe shape shader */
+        try
+        {
+            ResourceFactory factory = new ProxyResourceFactory(MinecraftClient.getInstance().getResourceManager());
+
+            keyframeShape = new ShaderProgram(factory, "keyframe_shape", VertexFormats.POSITION_TEXTURE_COLOR);
+        }
+        catch (IOException e)
+        {
+            keyframeShape = null;
+
+            e.printStackTrace();
+        }
+    }
+
+    public static ShaderProgram getNativeTextProgram()
+    {
+        return nativeText;
+    }
+
+    public static ShaderProgram getRoundedRectProgram()
+    {
+        return roundedRect;
+    }
+
+    public static ShaderProgram getKeyframeShapeProgram()
+    {
+        return keyframeShape;
     }
 
     /** The outline around the film's selected actor, or null when it didn't compile. */

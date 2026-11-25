@@ -225,7 +225,7 @@ public class UIWorldPreview extends UIElement
      */
     public void applySize()
     {
-        if (this.isSizeLocked())
+        if (this.isSizeLocked() || this.getContext() == null || !this.canBeSeen())
         {
             return;
         }
@@ -339,6 +339,22 @@ public class UIWorldPreview extends UIElement
         return this.icons.isVisible() && this.icons.area.isInside(context);
     }
 
+    protected void applyIconsAnchor(int position)
+    {
+        if (position == 1)
+        {
+            this.icons.relative(this).x(0F, 6).y(0.5F, 0).anchor(0F, 0.5F);
+        }
+        else if (position == 2)
+        {
+            this.icons.relative(this).x(1F, -6).y(0.5F, 0).anchor(1F, 0.5F);
+        }
+        else
+        {
+            this.icons.relative(this).x(0.5F, 0).y(1F, -6).anchor(0.5F, 1F);
+        }
+    }
+
     protected void updateIconsLayout()
     {
         int position = BBSSettings.editorPreviewIconsPosition.get();
@@ -348,33 +364,20 @@ public class UIWorldPreview extends UIElement
             return;
         }
 
-        boolean first = this.iconsPosition == -1;
         this.iconsPosition = position;
 
-        if (first && position == 0)
+        if (position == 1 || position == 2)
         {
-            return;
-        }
-
-        if (position == 1)
-        {
-            this.icons.column(0).vertical().width(20);
+            this.icons.column(1).vertical().width(20);
             this.icons.w(20);
-            this.icons.relative(this).x(0F, 4).y(0.5F, 0).anchor(0F, 0.5F);
-        }
-        else if (position == 2)
-        {
-            this.icons.column(0).vertical().width(20);
-            this.icons.w(20);
-            this.icons.relative(this).x(1F, -4).y(0.5F, 0).anchor(1F, 0.5F);
         }
         else
         {
-            this.icons.row(0).resize();
+            this.icons.row(1).resize();
             this.icons.h(20);
-            this.icons.relative(this).x(0.5F, 0).y(1F, -4).anchor(0.5F, 1F);
         }
 
+        this.applyIconsAnchor(position);
         this.icons.resize();
         this.icons.resize();
     }
@@ -422,8 +425,24 @@ public class UIWorldPreview extends UIElement
 
         this.icons.setVisible(this.iconsVisible);
 
-        if (!wasVisible && this.iconsVisible)
+        /* Keep Left/Right bars locked to their centered edge anchor even if a third-party UI
+         * mixin (e.g. RefreshedUI's bottom-bar slide animation) rewrites icons.y(...) during
+         * hide/show transitions such as video export. */
+        int position = BBSSettings.editorPreviewIconsPosition.get();
+
+        if (position == 1 || position == 2)
         {
+            this.applyIconsAnchor(position);
+
+            if (this.icons.isVisible() && (!wasVisible || Math.abs(this.icons.area.my() - this.area.my()) > 2))
+            {
+                this.icons.resize();
+                this.icons.resize();
+            }
+        }
+        else if (!wasVisible && this.iconsVisible)
+        {
+            this.applyIconsAnchor(0);
             this.icons.resize();
             this.icons.resize();
         }
@@ -532,15 +551,36 @@ public class UIWorldPreview extends UIElement
         if (frame.ex() < viewport.ex()) context.batcher.box(frame.ex(), frame.y, viewport.ex(), frame.ey(), color);
     }
 
-    /** The shade behind the icon bar, while it is up. */
+    /** Minimalistic floating toolbar shell behind the preview icon bar. */
     protected void renderIconBar(UIContext context)
     {
-        if (this.iconsVisible)
+        if (this.iconsVisible && this.icons.area.w > 0 && this.icons.area.h > 0)
         {
             Area a = this.icons.area;
-            int barShade = BBSSettings.lightSurfaces() ? (Colors.A50 | 0xFFFFFF) : Colors.A50;
+            int pad = 2;
+            int x1 = a.x - pad;
+            int y1 = a.y - pad;
+            int x2 = a.ex() + pad;
+            int y2 = a.ey() + pad;
 
-            context.batcher.gradientVBox(a.x, a.y, a.ex(), a.ey(), 0, barShade);
+            boolean light = BBSSettings.lightSurfaces();
+            int shadow = light ? 0x26000000 : 0x55000000;
+            int bg = light ? 0xDCF2F4F8 : 0xCC111318;
+            int border = light ? 0x2A000000 : 0x28FFFFFF;
+            int highlight = light ? 0x44FFFFFF : 0x16FFFFFF;
+
+            /* Subtle drop shadow */
+            context.batcher.box(x1 + 1, y1 + 2, x2 + 1, y2 + 2, shadow);
+
+            /* Main floating pill fill (1px clipped corners) */
+            context.batcher.box(x1 + 1, y1, x2 - 1, y2, bg);
+            context.batcher.box(x1, y1 + 1, x2, y2 - 1, bg);
+
+            /* Crisp 1px subtle border + top sheen */
+            context.batcher.box(x1 + 1, y1, x2 - 1, y1 + 1, highlight);
+            context.batcher.box(x1 + 1, y2 - 1, x2 - 1, y2, border);
+            context.batcher.box(x1, y1 + 1, x1 + 1, y2 - 1, border);
+            context.batcher.box(x2 - 1, y1 + 1, x2, y2 - 1, border);
         }
     }
 

@@ -16,6 +16,9 @@ public class ParticleForm extends Form
     public final ValueBoolean paused = new ValueBoolean("paused", false);
     public final ValueLink texture = new ValueLink("texture", null);
 
+    /** Runtime tick of the latest active "false" (unpaused) keyframe on {@link #paused}, or NaN when none. */
+    public transient float unpausedKeyTick = Float.NaN;
+
     public final ValueFloat user1 = new ValueFloat("user1", 0F);
     public final ValueFloat user2 = new ValueFloat("user2", 0F);
     public final ValueFloat user3 = new ValueFloat("user3", 0F);

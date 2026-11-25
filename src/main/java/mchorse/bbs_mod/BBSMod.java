@@ -4,6 +4,7 @@ import mchorse.bbs_mod.forms.forms.SplineForm;
 
 import mchorse.bbs_mod.actions.ActionHandler;
 import mchorse.bbs_mod.actions.ActionManager;
+import mchorse.bbs_mod.actions.ExportPlayerGuard;
 import mchorse.bbs_mod.actions.types.AttackActionClip;
 import mchorse.bbs_mod.actions.types.DamageActionClip;
 import mchorse.bbs_mod.actions.types.SwipeActionClip;
@@ -607,13 +608,18 @@ public class BBSMod implements ModInitializer
         ServerLifecycleEvents.SERVER_STARTED.register((event) -> worldFolder = event.getSavePath(WorldSavePath.ROOT).toFile());
         ServerPlayConnectionEvents.JOIN.register((a, b, c) -> ServerNetwork.sendHandshake(c, b));
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> actions.stopFor(handler.getPlayer()));
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> ServerNetwork.restoreFollowMode(handler.getPlayer()));
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) ->
+        {
+            ExportPlayerGuard.release(handler.getPlayer(), true);
+            ServerNetwork.restoreFollowMode(handler.getPlayer());
+        });
 
         ActionHandler.registerHandlers(actions);
 
         ServerTickEvents.START_SERVER_TICK.register((server) ->
         {
             actions.tick();
+            ExportPlayerGuard.tick(server);
         });
 
         ServerTickEvents.END_SERVER_TICK.register((server) ->
@@ -630,6 +636,7 @@ public class BBSMod implements ModInitializer
         {
             actions.reset();
             ServerNetwork.reset();
+            ExportPlayerGuard.reset();
         });
 
         EntityTrackingEvents.START_TRACKING.register((trackedEntity, player) ->

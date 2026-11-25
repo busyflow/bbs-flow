@@ -7,6 +7,7 @@ import mchorse.bbs_mod.actions.ActionManager;
 import mchorse.bbs_mod.actions.ActionPlayer;
 import mchorse.bbs_mod.actions.ActionRecorder;
 import mchorse.bbs_mod.actions.ActionState;
+import mchorse.bbs_mod.actions.ExportPlayerGuard;
 import mchorse.bbs_mod.actions.PlayerType;
 import mchorse.bbs_mod.blocks.ModelBlock;
 import mchorse.bbs_mod.blocks.entities.ModelBlockEntity;
@@ -101,6 +102,7 @@ public class ServerNetwork
     public static final Identifier SERVER_CONVERT_MODEL_BLOCK = new Identifier(BBSMod.MOD_ID, "s17");
     public static final Identifier SERVER_PLAYER_FOLLOW_SPECTATOR = new Identifier(BBSMod.MOD_ID, "s18");
     public static final Identifier SERVER_RESTORE_STRUCTURE = new Identifier(BBSMod.MOD_ID, "s19");
+    public static final Identifier SERVER_EXPORT_PLAYER_STATE = new Identifier(BBSMod.MOD_ID, "s20");
 
     /** The game mode each player had before following the camera as a spectator */
     private static final Map<UUID, GameMode> followModes = new HashMap<>();
@@ -133,6 +135,7 @@ public class ServerNetwork
         ServerPlayNetworking.registerGlobalReceiver(SERVER_CONVERT_MODEL_BLOCK, (server, player, handler, buf, responder) -> handleConvertModelBlock(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_PLAYER_FOLLOW_SPECTATOR, (server, player, handler, buf, responder) -> handleFollowSpectator(server, player, buf));
         ServerPlayNetworking.registerGlobalReceiver(SERVER_RESTORE_STRUCTURE, (server, player, handler, buf, responder) -> handleRestoreStructure(server, player, buf));
+        ServerPlayNetworking.registerGlobalReceiver(SERVER_EXPORT_PLAYER_STATE, (server, player, handler, buf, responder) -> handleExportPlayerState(server, player, buf));
     }
 
     /* Handlers */
@@ -625,12 +628,18 @@ public class ServerNetwork
 
         server.execute(() ->
         {
-            player.requestTeleport(x, y, z);
+            if (ExportPlayerGuard.isGuarded(player))
+            {
+                return;
+            }
 
             player.setYaw(yaw);
             player.setHeadYaw(yaw);
             player.setBodyYaw(bodyYaw);
             player.setPitch(pitch);
+            player.requestTeleport(x, y, z);
+            player.setHeadYaw(yaw);
+            player.setBodyYaw(bodyYaw);
         });
     }
 
@@ -645,6 +654,11 @@ public class ServerNetwork
 
         server.execute(() ->
         {
+            if (ExportPlayerGuard.isGuarded(player))
+            {
+                return;
+            }
+
             if (spectate)
             {
                 if (!PermissionUtils.arePanelsAllowed(server, player) || followModes.containsKey(player.getUuid()))
@@ -658,6 +672,30 @@ public class ServerNetwork
             else
             {
                 restoreFollowMode(player);
+            }
+        });
+    }
+
+    private static void handleExportPlayerState(MinecraftServer server, ServerPlayerEntity player, PacketByteBuf buf)
+    {
+        boolean locking = buf.readBoolean();
+
+        server.execute(() ->
+        {
+            if (locking)
+            {
+                if (!PermissionUtils.arePanelsAllowed(server, player))
+                {
+                    return;
+                }
+
+                GameMode followMode = followModes.remove(player.getUuid());
+
+                ExportPlayerGuard.acquire(player, followMode);
+            }
+            else
+            {
+                ExportPlayerGuard.release(player, false);
             }
         });
     }

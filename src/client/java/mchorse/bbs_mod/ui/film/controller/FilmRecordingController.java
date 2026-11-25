@@ -176,6 +176,8 @@ public class FilmRecordingController
 
         if (replay != null && this.recordingOld != null)
         {
+            replay.keyframes.syncFormArmorKeyframes(replay.form.get());
+
             for (KeyframeChannel<?> channel : replay.keyframes.getChannels())
             {
                 channel.simplify();

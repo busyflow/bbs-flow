@@ -132,11 +132,19 @@ public class FontManager implements IWatchDogListener
     public void update()
     {
         long now = System.currentTimeMillis();
+        String uiFont = mchorse.bbs_mod.BBSSettings.uiFont != null ? mchorse.bbs_mod.BBSSettings.uiFont.get() : null;
         Iterator<Map.Entry<FontKey, FontEntry>> it = this.fonts.entrySet().iterator();
 
         while (it.hasNext())
         {
-            FontEntry entry = it.next().getValue();
+            Map.Entry<FontKey, FontEntry> mapEntry = it.next();
+            FontEntry entry = mapEntry.getValue();
+
+            if (uiFont != null && !uiFont.isEmpty() && uiFont.equals(mapEntry.getKey().link.toString()))
+            {
+                entry.lastUsed = now;
+                continue;
+            }
 
             if (now - entry.lastUsed > DELETE_MS)
             {
@@ -217,7 +225,9 @@ public class FontManager implements IWatchDogListener
             }
 
             FontMetrics metrics = FontMetrics.read(info, key.size);
-            TrueTypeFont ttf = new TrueTypeFont(buffer, info, key.size, key.oversample, 0F, 0F, "");
+            /* Positive shiftY nudges TrueType glyphs down to sit vertically centered in BBS buttons/rows. */
+            float shiftY = 1.0F;
+            TrueTypeFont ttf = new TrueTypeFont(buffer, info, key.size, key.oversample, 0F, shiftY, "");
 
             adopted = true;
 

@@ -23,8 +23,26 @@ public class CircleKeyframeShapeRenderer implements IKeyframeShapeRenderer
     }
 
     @Override
+    public int getSdfShapeId()
+    {
+        return 2;
+    }
+
+    @Override
+    public float getSdfHalfSize(int offset)
+    {
+        return offset * 1.25F;
+    }
+
+    @Override
     public void renderKeyframe(UIContext uiContext, BufferBuilder builder, Matrix4f matrix, int x, int y, int offset, int c)
     {
+        if (KeyframeShapeRenderers.sdfPass)
+        {
+            KeyframeShapeRenderers.emitSdfQuad(builder, matrix, x, y, this, offset, c);
+            return;
+        }
+
         final int NUM_SEGMENTS = 32;
 
         for (int i = 0; i < NUM_SEGMENTS; i++)
@@ -59,6 +77,11 @@ public class CircleKeyframeShapeRenderer implements IKeyframeShapeRenderer
     @Override
     public void renderKeyframeBackground(UIContext uiContext, BufferBuilder builder, Matrix4f matrix, int x, int y, int offset, int c)
     {
+        if (KeyframeShapeRenderers.sdfPass)
+        {
+            return;
+        }
+
         float centerSize = offset * 0.2f;
         float half = centerSize * 2;
 

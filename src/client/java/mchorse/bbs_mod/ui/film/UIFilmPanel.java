@@ -17,6 +17,7 @@ import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.client.renderer.MorphRenderer;
 import mchorse.bbs_mod.data.types.BaseType;
 import mchorse.bbs_mod.data.types.MapType;
+import mchorse.bbs_mod.film.ExportPlayerLock;
 import mchorse.bbs_mod.film.Film;
 import mchorse.bbs_mod.film.FrozenFilmController;
 import mchorse.bbs_mod.film.markers.FilmMarker;
@@ -425,7 +426,13 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             .gate(this::hasFilmInCurrentTab)
             .ensure(this::ensureFilmLayoutPanels)
             .onChanged(this::onDockLayoutChanged)
-            .onLayoutSettled(() -> this.preview.applySize());
+            .onLayoutSettled(() ->
+            {
+                if (this.isVisible() && this.getContext() != null)
+                {
+                    this.preview.applySize();
+                }
+            });
         this.poseTimeline = new UIElement()
         {
             @Override
@@ -2151,7 +2158,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             BaseValue.edit(film, (f) ->
             {
                 rp.keyframes.copyOver(recorder.keyframes, 0);
-
+                rp.keyframes.syncFormArmorKeyframes(rp.form.get());
 
                 f.hp.set(recorder.hp);
                 f.hunger.set(recorder.hunger);
@@ -2243,6 +2250,11 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         if (this.queueExporter != null)
         {
             this.queueExporter.cancel();
+        }
+
+        if (this.recorder.isExporting())
+        {
+            this.recorder.cancel();
         }
 
         this.cameraEditor.embedView(null);
@@ -2577,13 +2589,16 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         this.controller.update();
         this.updateRestartOnSeek();
 
-        if (this.playerToCamera && this.data != null && !this.controller.isControlling())
+        if (!ExportPlayerLock.isLocked())
         {
-            CameraFollow.follow(this.getCamera());
-        }
-        else
-        {
-            CameraFollow.stop();
+            if (this.playerToCamera && this.data != null && !this.controller.isControlling())
+            {
+                CameraFollow.follow(this.getCamera());
+            }
+            else
+            {
+                CameraFollow.stop();
+            }
         }
 
         super.update();

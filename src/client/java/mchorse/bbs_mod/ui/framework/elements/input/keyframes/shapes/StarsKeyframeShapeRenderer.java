@@ -32,8 +32,26 @@ public class StarsKeyframeShapeRenderer implements IKeyframeShapeRenderer
     }
 
     @Override
+    public int getSdfShapeId()
+    {
+        return 1 + this.numBranches;
+    }
+
+    @Override
+    public float getSdfHalfSize(int offset)
+    {
+        return offset * 2F;
+    }
+
+    @Override
     public void renderKeyframe(UIContext uiContext, BufferBuilder builder, Matrix4f matrix, int x, int y, int offset, int c)
     {
+        if (KeyframeShapeRenderers.sdfPass)
+        {
+            KeyframeShapeRenderers.emitSdfQuad(builder, matrix, x, y, this, offset, c);
+            return;
+        }
+
         float fOffset = offset * 2F;
         float baseWidth = fOffset * 0.5F;
         float tipWidth = fOffset * 0.16F;
@@ -66,6 +84,11 @@ public class StarsKeyframeShapeRenderer implements IKeyframeShapeRenderer
     @Override
     public void renderKeyframeBackground(UIContext uiContext, BufferBuilder builder, Matrix4f matrix, int x, int y, int offset, int c)
     {
+        if (KeyframeShapeRenderers.sdfPass)
+        {
+            return;
+        }
+
         float centerSize = offset * 0.2F;
         float half = centerSize * 1.25F;
 

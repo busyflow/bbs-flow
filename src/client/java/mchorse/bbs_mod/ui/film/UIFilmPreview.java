@@ -96,6 +96,7 @@ public class UIFilmPreview extends UIWorldPreview
     public UIIcon autoKeyframe;
     public UIIcon liveRecording;
     public UIIcon recordReplay;
+    public UIIcon hidePositionKeyframes;
     public UIIcon recordVideo;
     public UIIcon shaders;
 
@@ -226,6 +227,12 @@ public class UIFilmPreview extends UIWorldPreview
 
             menu.action(Icons.MOVE_TO, UIKeys.FILM_REPLAY_TELEPORT_TO_PLAYER, () -> this.panel.getController().keyframes.insertPlayerFrame());
         });
+        this.hidePositionKeyframes = new UIIcon(Icons.ALL_DIRECTIONS, (b) ->
+        {
+            BBSSettings.hidePositionKeyframes.set(!BBSSettings.hidePositionKeyframes.get());
+        });
+        this.hidePositionKeyframes.highlight(() -> BBSSettings.hidePositionKeyframes.get(), Direction.BOTTOM);
+        this.hidePositionKeyframes.tooltip(mchorse.bbs_mod.l10n.keys.IKey.constant("Hide position keyframes"));
         this.shaders = this.createShadersIcon();
         this.recordVideo = new UIIcon(Icons.VIDEO_CAMERA, (b) ->
         {
@@ -314,6 +321,7 @@ public class UIFilmPreview extends UIWorldPreview
         this.addIcon(this.liveRecording, BBSSettings.previewIconLiveRecording);
         this.addIcon(this.shaders, BBSSettings.previewIconShaders);
         this.addIcon(this.recordReplay, BBSSettings.previewIconRecordReplay);
+        this.addIcon(this.hidePositionKeyframes, BBSSettings.previewIconHidePositionKeyframes);
         this.addIcon(this.recordVideo, BBSSettings.previewIconExport);
 
         for (Function<UIFilmPreview, UIElement> factory : OVERLAYS)

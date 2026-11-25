@@ -23,8 +23,26 @@ public class DiamondKeyframeShapeRenderer implements IKeyframeShapeRenderer
     }
 
     @Override
+    public int getSdfShapeId()
+    {
+        return 1;
+    }
+
+    @Override
+    public float getSdfHalfSize(int offset)
+    {
+        return offset * 1.5F;
+    }
+
+    @Override
     public void renderKeyframe(UIContext uiContext, BufferBuilder builder, Matrix4f matrix, int x, int y, int offset, int c)
     {
+        if (KeyframeShapeRenderers.sdfPass)
+        {
+            KeyframeShapeRenderers.emitSdfQuad(builder, matrix, x, y, this, offset, c);
+            return;
+        }
+
         float fOffset = offset * 1.5F;
 
         builder.vertex(matrix, x, y - fOffset, 0F).color(c).next();

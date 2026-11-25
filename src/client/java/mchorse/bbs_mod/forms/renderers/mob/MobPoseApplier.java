@@ -1,5 +1,7 @@
 package mchorse.bbs_mod.forms.renderers.mob;
 
+import mchorse.bbs_mod.utils.MathUtils;
+import mchorse.bbs_mod.utils.interps.Lerps;
 import mchorse.bbs_mod.utils.pose.Pose;
 import mchorse.bbs_mod.settings.values.core.ValuePose;
 import mchorse.bbs_mod.utils.pose.PoseTransform;
@@ -112,12 +114,25 @@ public class MobPoseApplier
              * decomposed to its euler equivalent here instead of reading the stale rotate triple. */
             Vector3f rotation = poseTransform.getEulerRotation(new Vector3f());
 
+            float fix = MathUtils.clamp(poseTransform.fix, 0F, 1F);
+
             part.pivotX += poseTransform.translate.x;
             part.pivotY += poseTransform.translate.y;
             part.pivotZ += poseTransform.translate.z;
-            part.pitch += rotation.x;
-            part.yaw += rotation.y;
-            part.roll += rotation.z;
+
+            if (fix > 0F)
+            {
+                part.pitch = Lerps.lerp(part.pitch, rotation.x, fix);
+                part.yaw = Lerps.lerp(part.yaw, rotation.y, fix);
+                part.roll = Lerps.lerp(part.roll, rotation.z, fix);
+            }
+            else
+            {
+                part.pitch += rotation.x;
+                part.yaw += rotation.y;
+                part.roll += rotation.z;
+            }
+
             part.xScale += poseTransform.scale.x - 1F;
             part.yScale += poseTransform.scale.y - 1F;
             part.zScale += poseTransform.scale.z - 1F;

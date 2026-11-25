@@ -16,4 +16,14 @@ public interface IKeyframeShapeRenderer
 
     public default void renderKeyframeBackground(UIContext uiContext, BufferBuilder builder, Matrix4f matrix4f, int x, int y, int offset, int c)
     {}
+
+    public default int getSdfShapeId()
+    {
+        return 0;
+    }
+
+    public default float getSdfHalfSize(int offset)
+    {
+        return offset;
+    }
 }

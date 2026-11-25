@@ -87,6 +87,7 @@ public class ActionPlayer
 
         if (this.type == PlayerType.NORMAL && this.serverPlayer != null && fpReplay != null)
         {
+            fpReplay.keyframes.syncFormArmorKeyframes(fpReplay.form.get());
             this.borrowEquipment(fpReplay.keyframes);
 
             Morph morph = Morph.getMorph(this.serverPlayer);
@@ -443,6 +444,7 @@ public class ActionPlayer
         }
         else
         {
+            replay.keyframes.syncFormArmorKeyframes(replay.form.get());
             actor.equipStack(EquipmentSlot.MAINHAND, replay.keyframes.getMainHandStack(tick));
             actor.equipStack(EquipmentSlot.OFFHAND, replay.keyframes.offHand.interpolate(tick, ItemStack.EMPTY));
             actor.equipStack(EquipmentSlot.HEAD, replay.keyframes.armorHead.interpolate(tick, ItemStack.EMPTY));

@@ -55,6 +55,8 @@ public abstract class VideoExportSession
     private double recordingFrameRate;
     /** When the recorder was started - the post pass ignores files older than this. */
     private long recordingStartedAtMs;
+    /** Whether {@link ExportPlayerLock} is held for this session. */
+    private boolean playerLocked;
 
     private FinishedListener finishedListener;
 
@@ -120,6 +122,12 @@ public abstract class VideoExportSession
             this.reset();
 
             return false;
+        }
+
+        if (this.shouldFreezePlayerDuringExport())
+        {
+            ExportPlayerLock.acquire();
+            this.playerLocked = true;
         }
 
         this.applyExportTarget();
@@ -282,6 +290,13 @@ public abstract class VideoExportSession
 
         this.state = State.IDLE;
         this.teardown(cancelled);
+
+        if (this.playerLocked)
+        {
+            this.playerLocked = false;
+            ExportPlayerLock.release();
+        }
+
         this.reset();
 
         FinishedListener listener = this.finishedListener;
@@ -549,6 +564,15 @@ public abstract class VideoExportSession
 
     /** Restore whatever {@link #prepare()}/{@link #applyExportTarget()} changed. */
     protected abstract void teardown(boolean cancelled);
+
+    /**
+     * Whether the local player should be frozen in place, made invulnerable,
+     * and placed in Spectator mode while this export is running.
+     */
+    protected boolean shouldFreezePlayerDuringExport()
+    {
+        return false;
+    }
 
     @FunctionalInterface
     public interface FinishedListener

@@ -178,7 +178,7 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
         List<UIKeyframeSheet> sheets = new ArrayList<>();
         for (UIKeyframeSheet sheet : this.keyframes.getSheets())
         {
-            if (this.keyframes.isGraphTrack(sheet) && KeyframeFactories.isNumeric(sheet.channel.getFactory())) sheets.add(sheet);
+            if (!UIKeyframeDopeSheet.isPositionTrackHidden(sheet) && this.keyframes.isGraphTrack(sheet) && KeyframeFactories.isNumeric(sheet.channel.getFactory())) sheets.add(sheet);
         }
         if (!sheets.isEmpty()) return sheets;
         for (UIKeyframeSheet sheet : this.keyframes.getDopeSheet().getInteractiveSheets())
@@ -830,11 +830,21 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
         Collections.reverse(sheets);
         context.batcher.clip(this.plotArea, context);
         Pair<Keyframe, KeyframeType> hit = this.findKeyframe(context.mouseX, context.mouseY);
-        builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
-        for (UIKeyframeSheet sheet : sheets) this.renderGraphPointShapes(context, builder, matrix, sheet, sheet.channel.getKeyframes(), hit);
-        RenderSystem.enableBlend();
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
-        BufferRenderer.drawWithGlobalProgram(builder.end());
+        boolean useSdf = mchorse.bbs_mod.client.BBSShaders.getKeyframeShapeProgram() != null;
+        mchorse.bbs_mod.ui.framework.elements.input.keyframes.shapes.KeyframeShapeRenderers.sdfPass = useSdf;
+        try
+        {
+            builder.begin(VertexFormat.DrawMode.QUADS, useSdf ? VertexFormats.POSITION_TEXTURE_COLOR : VertexFormats.POSITION_COLOR);
+            for (UIKeyframeSheet sheet : sheets) this.renderGraphPointShapes(context, builder, matrix, sheet, sheet.channel.getKeyframes(), hit);
+            RenderSystem.enableBlend();
+            RenderSystem.defaultBlendFunc();
+            RenderSystem.setShader(useSdf ? mchorse.bbs_mod.client.BBSShaders::getKeyframeShapeProgram : GameRenderer::getPositionColorProgram);
+            BufferRenderer.drawWithGlobalProgram(builder.end());
+        }
+        finally
+        {
+            mchorse.bbs_mod.ui.framework.elements.input.keyframes.shapes.KeyframeShapeRenderers.sdfPass = false;
+        }
         context.batcher.unclip(context);
     }
 

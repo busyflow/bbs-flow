@@ -71,6 +71,11 @@ public abstract class FormRenderer <T extends Form>
         return this.form;
     }
 
+    public boolean supportsArmor()
+    {
+        return false;
+    }
+
     public List<String> getBones()
     {
         return Collections.emptyList();
@@ -83,6 +88,16 @@ public abstract class FormRenderer <T extends Form>
      * a vanilla entity model.
      */
     public IBoneHierarchy getBoneHierarchy()
+    {
+        return null;
+    }
+
+    /**
+     * Offset (in form-space blocks, relative to the bone's body-part frame where +Z is forward,
+     * +Y is up, -X is right, +X is left) where a held third-person item sits on {@code bone}.
+     * Returns null when this form does not provide a custom offset for that bone.
+     */
+    public Vector3f getHandItemOffset(String bone, boolean leftHand)
     {
         return null;
     }
@@ -203,6 +218,11 @@ public abstract class FormRenderer <T extends Form>
 
         u = (int) Lerps.lerp(u, LightmapTextureManager.MAX_BLOCK_LIGHT_COORDINATE, lf);
         context.light = u | v << 16;
+
+        if (context.entity != null)
+        {
+            this.form.applyFormArmorTo(context.entity);
+        }
 
         this.render3D(context);
 

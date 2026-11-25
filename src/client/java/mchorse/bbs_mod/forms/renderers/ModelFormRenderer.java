@@ -19,6 +19,7 @@ import mchorse.bbs_mod.cubic.animation.Animator;
 import mchorse.bbs_mod.cubic.animation.IAnimator;
 import mchorse.bbs_mod.cubic.animation.ItemUsePose;
 import mchorse.bbs_mod.cubic.animation.ProceduralAnimator;
+import mchorse.bbs_mod.cubic.data.animation.Animation;
 import mchorse.bbs_mod.cubic.data.model.Model;
 import mchorse.bbs_mod.cubic.data.model.ModelGroup;
 import mchorse.bbs_mod.cubic.render.CarrierClip;
@@ -44,7 +45,10 @@ import mchorse.bbs_mod.forms.entities.StubEntity;
 import mchorse.bbs_mod.forms.forms.BodyPart;
 import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.forms.forms.ModelForm;
+import mchorse.bbs_mod.forms.forms.ParticleForm;
 import mchorse.bbs_mod.forms.renderers.utils.FormColorBlend;
+import mchorse.bbs_mod.utils.colors.OverlayBlend;
+import mchorse.bbs_mod.utils.interps.Lerps;
 import mchorse.bbs_mod.forms.renderers.utils.FormPbr;
 import mchorse.bbs_mod.forms.renderers.utils.FramebufferDebug;
 import mchorse.bbs_mod.forms.renderers.utils.MatrixCache;
@@ -118,6 +122,9 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
     private IAnimator animator;
     private ModelInstance lastModel;
     private boolean renderingArm;
+    private boolean wasSnowballImpact;
+    private float snowballExplodeTicks;
+    private float lastSnowballImpactKeyTick = Float.NaN;
 
 
     private IEntity entity = new StubEntity();
@@ -234,6 +241,57 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         return model == null ? null : model.model;
     }
 
+    @Override
+    public Vector3f getHandItemOffset(String bone, boolean leftHand)
+    {
+        if (bone == null || bone.isEmpty())
+        {
+            return null;
+        }
+
+        ModelInstance model = this.getModel();
+
+        if (model != null && model.model instanceof Model cubic)
+        {
+            List<ArmorSlot> slots = leftHand ? model.getItemsOff() : model.getItemsMain();
+            ModelGroup clickedGroup = cubic.getGroup(bone);
+
+            if (!slots.isEmpty() && clickedGroup != null)
+            {
+                for (ArmorSlot slot : slots)
+                {
+                    ModelGroup itemGroup = cubic.getGroup(slot.group);
+
+                    if (itemGroup != null)
+                    {
+                        float dx = -(itemGroup.initial.translate.x - clickedGroup.initial.translate.x) / 16F;
+                        float dy = (itemGroup.initial.translate.y - clickedGroup.initial.translate.y) / 16F;
+                        float dz = -(itemGroup.initial.translate.z - clickedGroup.initial.translate.z) / 16F;
+
+                        return new Vector3f(dx, dy, dz + 0.125F);
+                    }
+                }
+            }
+        }
+
+        String lower = bone.toLowerCase(java.util.Locale.ROOT);
+
+        if (lower.contains("item") || lower.contains("hand") || lower.contains("end"))
+        {
+            return new Vector3f(0F, 0F, 0.125F);
+        }
+
+        return new Vector3f(0F, -0.625F, 0.125F);
+    }
+
+    @Override
+    public boolean supportsArmor()
+    {
+        ModelInstance model = this.getModel();
+
+        return model != null && !model.getArmorSlots().isEmpty();
+    }
+
     public Pose getPose()
     {
         this.form.syncOverlayTracks();
@@ -305,12 +363,28 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
                     poseTransform.translate.lerp(value.translate, value.fix);
                     poseTransform.scale.lerp(value.scale, value.fix);
                     poseTransform.lerpRotation(value, value.fix);
+                    poseTransform.color.set(
+                        Lerps.lerp(poseTransform.color.r, value.color.r, value.fix),
+                        Lerps.lerp(poseTransform.color.g, value.color.g, value.fix),
+                        Lerps.lerp(poseTransform.color.b, value.color.b, value.fix),
+                        Lerps.lerp(poseTransform.color.a, value.color.a, value.fix)
+                    );
+                    poseTransform.overlay.set(
+                        Lerps.lerp(poseTransform.overlay.r, value.overlay.r, value.fix),
+                        Lerps.lerp(poseTransform.overlay.g, value.overlay.g, value.fix),
+                        Lerps.lerp(poseTransform.overlay.b, value.overlay.b, value.fix),
+                        Lerps.lerp(poseTransform.overlay.a, value.overlay.a, value.fix)
+                    );
+                    poseTransform.lighting = Lerps.lerp(poseTransform.lighting, value.lighting, value.fix);
                 }
                 else
                 {
                     poseTransform.translate.set(value.translate);
                     poseTransform.scale.set(value.scale);
                     poseTransform.copyRotation(value);
+                    poseTransform.color.copy(value.color);
+                    poseTransform.overlay.copy(value.overlay);
+                    poseTransform.lighting = value.lighting;
                 }
 
                 poseTransform.fix = Math.max(poseTransform.fix, value.fix);
@@ -320,6 +394,9 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
                 poseTransform.translate.add(value.translate);
                 poseTransform.scale.add(value.scale).sub(1, 1, 1);
                 poseTransform.addRotation(value);
+                poseTransform.color.mul(value.color);
+                OverlayBlend.stack(poseTransform.overlay, value.overlay);
+                poseTransform.lighting += value.lighting;
             }
         }
     }
@@ -328,6 +405,9 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
     {
         this.animator = null;
         this.lastModel = null;
+        this.wasSnowballImpact = false;
+        this.snowballExplodeTicks = 0F;
+        this.lastSnowballImpactKeyTick = Float.NaN;
     }
 
     public void setRest(boolean rest)
@@ -382,6 +462,23 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         }
 
         this.animator.applyActions(entity, model, transition);
+
+        if (this.form.isSnowballModel())
+        {
+            this.syncSnowballParts();
+
+            if (this.form.snowballImpact.get() && model.getAnimations() != null)
+            {
+                Animation explode = model.getAnimations().get("explode");
+
+                if (explode != null)
+                {
+                    float explodeTick = Math.min(this.snowballExplodeTicks + (this.wasSnowballImpact ? transition : 0F), explode.getLengthInTicks());
+
+                    model.model.apply(entity, explode, explodeTick, 1F, transition, false, false);
+                }
+            }
+        }
 
         /* The config's default pose sits under the form's, the same additive layer: the posture the
          * model has before anything of the form is applied, whichever animator drove it. */
@@ -540,6 +637,11 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
             Supplier<ShaderProgram> mainShader = BBSRendering.isIrisWorldShadersEnabled() || !model.isVAORendered()
                 ? GameRenderer::getRenderTypeEntityTranslucentCullProgram
                 : BBSShaders::getModel;
+
+            for (EquipmentSlot slot : Form.ARMOR_SLOTS)
+            {
+                this.entity.setEquipmentStack(slot, this.form.getConfiguredArmor(slot).copy());
+            }
 
             this.renderModel(this.entity, mainShader, stack, model, LightmapTextureManager.pack(15, 15), OverlayTexture.DEFAULT_UV, contextColor, formColor, true, null, context.getTransition(), null);
 
@@ -1514,6 +1616,54 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         return result;
     }
 
+    private void syncSnowballParts()
+    {
+        if (!this.form.isSnowballModel())
+        {
+            return;
+        }
+
+        this.form.ensureSnowballParts();
+
+        boolean trailActive = this.form.snowTrail.get() && !this.form.snowballImpact.get();
+        boolean impactActive = this.form.snowballImpact.get();
+
+        for (BodyPart part : this.form.parts.getAllTyped())
+        {
+            if (part.getForm() instanceof ParticleForm particle)
+            {
+                String effect = particle.effect.get();
+
+                if ("snowball_trail".equals(effect))
+                {
+                    particle.paused.set(!trailActive);
+                }
+                else if ("snowball_impact".equals(effect) && impactActive)
+                {
+                    particle.paused.set(false);
+                }
+            }
+        }
+    }
+
+    private void triggerSnowballImpact()
+    {
+        this.form.ensureSnowballParts();
+
+        for (BodyPart part : this.form.parts.getAllTyped())
+        {
+            if (part.getForm() instanceof ParticleForm particle && "snowball_impact".equals(particle.effect.get()))
+            {
+                particle.paused.set(false);
+
+                if (FormUtilsClient.getRenderer(particle) instanceof ParticleFormRenderer renderer)
+                {
+                    renderer.triggerBurst();
+                }
+            }
+        }
+    }
+
     @Override
     public void tick(IEntity entity)
     {
@@ -1522,6 +1672,49 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         if (this.animator != null)
         {
             this.animator.update(entity);
+        }
+
+        if (this.form.isSnowballModel())
+        {
+            float keyTick = this.form.snowballImpactKeyTick;
+            boolean impactActive = this.form.snowballImpact.get();
+            boolean keyTriggered = impactActive && !Float.isNaN(keyTick) && Float.compare(keyTick, this.lastSnowballImpactKeyTick) != 0;
+            boolean edgeTriggered = impactActive && Float.isNaN(keyTick) && !this.wasSnowballImpact;
+
+            if (keyTriggered || edgeTriggered)
+            {
+                this.wasSnowballImpact = true;
+                this.lastSnowballImpactKeyTick = keyTick;
+                this.snowballExplodeTicks = 0F;
+                this.triggerSnowballImpact();
+            }
+            else if (impactActive)
+            {
+                this.wasSnowballImpact = true;
+                ModelInstance model = this.getModel();
+
+                if (model != null && model.getAnimations() != null)
+                {
+                    Animation explode = model.getAnimations().get("explode");
+
+                    if (explode != null)
+                    {
+                        this.snowballExplodeTicks = Math.min(this.snowballExplodeTicks + 1F, explode.getLengthInTicks());
+                    }
+                }
+            }
+            else
+            {
+                this.wasSnowballImpact = false;
+                this.snowballExplodeTicks = 0F;
+
+                if (Float.isNaN(keyTick))
+                {
+                    this.lastSnowballImpactKeyTick = Float.NaN;
+                }
+            }
+
+            this.syncSnowballParts();
         }
     }
 }
