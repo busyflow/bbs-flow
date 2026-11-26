@@ -210,6 +210,13 @@ public class UIFormUndoHandler
     {
         this.handleTimers();
 
+        /* Hold undo sealing & server sync while a gizmo drag is actively running so dragging
+         * doesn't serialize the entire keyframe tree twice per frame. Releases immediately on drop. */
+        if (!force && mchorse.bbs_mod.ui.utils.Gizmo.INSTANCE.getTrackedGesture() != null)
+        {
+            return;
+        }
+
         boolean batched = this.batching;
 
         if (this.batching)

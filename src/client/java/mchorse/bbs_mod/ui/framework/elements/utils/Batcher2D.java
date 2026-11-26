@@ -133,9 +133,19 @@ public class Batcher2D
      * BufferBuilder's native memory is never freed, so a buffer per batcher leaked 1.5 MB each
      * time until the game crashed with OutOfMemoryError. Only one batcher holds it at a time -
      * starting a batch flushes the previous holder first, so the draw order stays the same. */
+    private enum BatchMode
+    {
+        NONE, SOLID, TEXTURED, NATIVE_TEXT
+    }
+
     private static BufferBuilder batchBuilder;
     private static Batcher2D batchOwner;
-    private boolean batching;
+    private static BatchMode batchMode = BatchMode.NONE;
+    private static int batchTextureId = -1;
+    private static ShaderProgram batchShader;
+    private static float batchTextGamma = Float.NaN;
+    private int batchDepth;
+    private boolean hasPendingContextText;
 
     public Batcher2D(DrawContext context)
     {
@@ -145,37 +155,120 @@ public class Batcher2D
 
     public boolean isBatching()
     {
-        return this.batching;
+        return this.batchDepth > 0;
     }
 
     /** Open a quad batch. Nested calls are folded into the outermost scope. */
     public void beginBatch()
     {
-        this.batching = true;
+        this.batchDepth += 1;
     }
 
     /** Close the scope opened by {@link #beginBatch()} and draw the collected quads. */
     public void endBatch()
     {
-        this.batching = false;
-        this.flushBatch();
+        if (this.batchDepth > 0)
+        {
+            this.batchDepth -= 1;
+        }
+
+        if (this.batchDepth == 0)
+        {
+            this.flushBatch();
+        }
     }
 
-    private void flushBatch()
+    private void flushPendingContextText()
     {
+        if (!this.hasPendingContextText)
+        {
+            return;
+        }
+
+        this.hasPendingContextText = false;
+        BBSProfiler.count(BBSProfiler.Section.UI_DRAW_CALLS);
+        this.context.draw();
+        RenderSystem.depthFunc(GL11.GL_ALWAYS);
+    }
+
+    public void flushBatch()
+    {
+        this.flushPendingContextText();
+
         if (batchOwner != this)
         {
             return;
         }
 
+        BatchMode mode = batchMode;
+        int texId = batchTextureId;
+        ShaderProgram shader = batchShader;
+        float textGamma = batchTextGamma;
+
         batchOwner = null;
+        batchMode = BatchMode.NONE;
+        batchTextureId = -1;
+        batchShader = null;
+        batchTextGamma = Float.NaN;
 
         RenderSystem.enableBlend();
-        RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+
+        if (mode == BatchMode.NATIVE_TEXT)
+        {
+            RenderSystem.defaultBlendFunc();
+            RenderSystem.setShaderTexture(0, texId);
+
+            if (shader != null)
+            {
+                mchorse.bbs_mod.fonts.NativeFontRenderer.applyContrastGamma(shader, textGamma);
+                RenderSystem.setShader(() -> shader);
+            }
+            else
+            {
+                RenderSystem.setShader(GameRenderer::getPositionTexColorProgram);
+            }
+        }
+        else if (mode == BatchMode.TEXTURED && shader != null)
+        {
+            RenderSystem.setShaderTexture(0, texId);
+            RenderSystem.setShader(() -> shader);
+        }
+        else
+        {
+            RenderSystem.setShader(GameRenderer::getPositionColorProgram);
+        }
+
         BBSProfiler.count(BBSProfiler.Section.UI_DRAW_CALLS);
         BufferRenderer.drawWithGlobalProgram(batchBuilder.end());
+    }
 
-        this.context.draw();
+    /** Ensure a NATIVE_TEXT batch is open for the given font atlas texture and gamma. */
+    private BufferBuilder beginNativeTextQuad(int texId, ShaderProgram shader, float gamma)
+    {
+        this.flushPendingContextText();
+
+        if (batchOwner != this || batchMode != BatchMode.NATIVE_TEXT || batchTextureId != texId
+            || batchShader != shader || Float.compare(batchTextGamma, gamma) != 0)
+        {
+            if (batchOwner != null)
+            {
+                batchOwner.flushBatch();
+            }
+
+            if (batchBuilder == null)
+            {
+                batchBuilder = new BufferBuilder(262144);
+            }
+
+            batchBuilder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
+            batchOwner = this;
+            batchMode = BatchMode.NATIVE_TEXT;
+            batchTextureId = texId;
+            batchShader = shader;
+            batchTextGamma = gamma;
+        }
+
+        return batchBuilder;
     }
 
     public DrawContext getContext()
@@ -273,9 +366,14 @@ public class Batcher2D
 
         /* The matrix bakes into the vertices right here, so quads from different matrix
          * contexts share one batch safely. */
-        if (this.batching)
+        if (this.batchDepth > 0)
         {
-            if (batchOwner != this)
+            if (this.hasPendingContextText)
+            {
+                this.flushPendingContextText();
+            }
+
+            if (batchOwner != this || batchMode != BatchMode.SOLID)
             {
                 if (batchOwner != null)
                 {
@@ -289,6 +387,7 @@ public class Batcher2D
 
                 batchBuilder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);
                 batchOwner = this;
+                batchMode = BatchMode.SOLID;
             }
 
             this.fillRect(batchBuilder, matrix4f, x, y, w, h, color1, color2, color3, color4);
@@ -654,6 +753,12 @@ public class Batcher2D
         this.icon(icon, Colors.WHITE, x, y, ax, ay);
     }
 
+    private static ShaderProgram cachedSdfShader;
+    private static net.minecraft.client.gl.GlUniform cachedSdfSize;
+    private static net.minecraft.client.gl.GlUniform cachedSdfRadius;
+    private static net.minecraft.client.gl.GlUniform cachedSdfBorder;
+    private static net.minecraft.client.gl.GlUniform cachedSdfFeather;
+
     /**
      * Draw an analytical GPU SDF rounded rectangle (fill, border, or feathered shadow).
      * Returns false if the shader is unavailable so callers can fall back cleanly.
@@ -669,6 +774,15 @@ public class Batcher2D
 
         this.flushBatch();
 
+        if (shader != cachedSdfShader)
+        {
+            cachedSdfShader = shader;
+            cachedSdfSize = shader.getUniform("RectSize");
+            cachedSdfRadius = shader.getUniform("CornerRadius");
+            cachedSdfBorder = shader.getUniform("BorderWidth");
+            cachedSdfFeather = shader.getUniform("Feather");
+        }
+
         float pad = feather > 0F ? feather : 0F;
         float x1 = x - pad;
         float y1 = y - pad;
@@ -681,17 +795,12 @@ public class Batcher2D
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
 
-        net.minecraft.client.gl.GlUniform uSize = shader.getUniform("RectSize");
-        net.minecraft.client.gl.GlUniform uRadius = shader.getUniform("CornerRadius");
-        net.minecraft.client.gl.GlUniform uBorder = shader.getUniform("BorderWidth");
-        net.minecraft.client.gl.GlUniform uFeather = shader.getUniform("Feather");
+        if (cachedSdfSize != null) cachedSdfSize.set(w, h);
+        if (cachedSdfRadius != null) cachedSdfRadius.set(radius);
+        if (cachedSdfBorder != null) cachedSdfBorder.set(borderWidth);
+        if (cachedSdfFeather != null) cachedSdfFeather.set(feather);
 
-        if (uSize != null) uSize.set(w, h);
-        if (uRadius != null) uRadius.set(radius);
-        if (uBorder != null) uBorder.set(borderWidth);
-        if (uFeather != null) uFeather.set(feather);
-
-        RenderSystem.setShader(() -> shader);
+        RenderSystem.setShader(BBSShaders::getRoundedRectProgram);
 
         builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_TEXTURE_COLOR);
         builder.vertex(matrix4f, x1, y2, 0F).texture(-pad, h + pad).color(color).next();
@@ -817,23 +926,7 @@ public class Batcher2D
 
     public void texturedBox(Texture texture, int color, float x, float y, float w, float h, float u1, float v1, float u2, float v2, int textureW, int textureH)
     {
-        this.flushBatch();
-
-        RenderSystem.setShaderTexture(0, texture.id);
-
-        Matrix4f matrix = this.context.getMatrices().peek().getPositionMatrix();
-        BufferBuilder builder = Tessellator.getInstance().getBuffer();
-
-        /* The colour carries an alpha and the caller means it, so blending is turned on here
-         * rather than borrowed from whatever was drawn before - see the note above box() */
-        RenderSystem.enableBlend();
-        RenderSystem.setShader(texturedProgram(texture));
-
-        builder.begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_TEXTURE_COLOR);
-        this.fillTexturedBox(builder, matrix, color, x, y, w, h, u1, v1, u2, v2, textureW, textureH);
-
-        BBSProfiler.count(BBSProfiler.Section.UI_DRAW_CALLS);
-        BufferRenderer.drawWithGlobalProgram(builder.end());
+        this.texturedBox(texturedProgram(texture), texture.id, color, x, y, w, h, u1, v1, u2, v2, textureW, textureH);
     }
 
     public void texturedBox(int texture, int color, float x, float y, float w, float h, float u1, float v1, float u2, float v2, int textureW, int textureH)
@@ -843,11 +936,48 @@ public class Batcher2D
 
     public void texturedBox(Supplier<ShaderProgram> shader, int texture, int color, float x, float y, float w, float h, float u1, float v1, float u2, float v2, int textureW, int textureH)
     {
+        Matrix4f matrix = this.context.getMatrices().peek().getPositionMatrix();
+
+        if (this.batchDepth > 0)
+        {
+            ShaderProgram program = shader.get();
+
+            if (program != null)
+            {
+                if (this.hasPendingContextText)
+                {
+                    this.flushPendingContextText();
+                }
+
+                if (batchOwner != this || batchMode != BatchMode.TEXTURED || batchTextureId != texture || batchShader != program)
+                {
+                    if (batchOwner != null)
+                    {
+                        batchOwner.flushBatch();
+                    }
+
+                    if (batchBuilder == null)
+                    {
+                        batchBuilder = new BufferBuilder(262144);
+                    }
+
+                    batchBuilder.begin(VertexFormat.DrawMode.TRIANGLES, VertexFormats.POSITION_TEXTURE_COLOR);
+                    batchOwner = this;
+                    batchMode = BatchMode.TEXTURED;
+                    batchTextureId = texture;
+                    batchShader = program;
+                }
+
+                this.fillTexturedBox(batchBuilder, matrix, color, x, y, w, h, u1, v1, u2, v2, textureW, textureH);
+
+                return;
+            }
+        }
+
         this.flushBatch();
 
         RenderSystem.setShaderTexture(0, texture);
 
-        Matrix4f matrix = this.context.getMatrices().peek().getPositionMatrix();
         BufferBuilder builder = Tessellator.getInstance().getBuffer();
 
         RenderSystem.enableBlend();
@@ -943,16 +1073,44 @@ public class Batcher2D
     /** Actual text draw (theming is applied by the public text() before calling this). */
     private void drawTextDirect(String label, float x, float y, int color, boolean shadow)
     {
-        this.flushBatch();
+        if (label == null || label.isEmpty())
+        {
+            return;
+        }
 
         if (Colors.getA(color) <= 0F)
         {
             color = Colors.opaque(color);
         }
 
-        BBSProfiler.count(BBSProfiler.Section.UI_DRAW_CALLS);
         boolean drawShadow = shadow && (BBSSettings.uiTextShadow == null || BBSSettings.uiTextShadow.get());
         FontRenderer activeFont = this.getFont();
+
+        if (this.batchDepth > 0)
+        {
+            if (activeFont.hasNativeRenderer())
+            {
+                activeFont.drawNativeBatched(this.context.getMatrices(), label, x, y, color, drawShadow, this::beginNativeTextQuad);
+
+                return;
+            }
+            else
+            {
+                if (batchOwner != null)
+                {
+                    batchOwner.flushBatch();
+                }
+
+                this.context.drawText(activeFont.getRenderer(), label, (int) x, (int) y, color, drawShadow);
+                this.hasPendingContextText = true;
+
+                return;
+            }
+        }
+
+        this.flushBatch();
+
+        BBSProfiler.count(BBSProfiler.Section.UI_DRAW_CALLS);
 
         if (activeFont.hasNativeRenderer())
         {

@@ -12,9 +12,26 @@ public class MatrixStackUtils
 {
     private static Matrix3f normal = new Matrix3f();
 
-    private static Matrix4f oldProjection = new Matrix4f();
-    private static Matrix4f oldMV = new Matrix4f();
-    private static Matrix3f oldInverse = new Matrix3f();
+    private static final int MATRIX_STACK_DEPTH = 8;
+    private static final Matrix4f[] oldProjections = new Matrix4f[MATRIX_STACK_DEPTH];
+    private static final Matrix4f[] oldMVs = new Matrix4f[MATRIX_STACK_DEPTH];
+    private static final Matrix3f[] oldInverses = new Matrix3f[MATRIX_STACK_DEPTH];
+    private static final VertexSorter[] oldSorters = new VertexSorter[MATRIX_STACK_DEPTH];
+    private static int matrixStackTop = 0;
+
+    static
+    {
+        for (int i = 0; i < MATRIX_STACK_DEPTH; i++)
+        {
+            oldProjections[i] = new Matrix4f();
+            oldMVs[i] = new Matrix4f();
+            oldInverses[i] = new Matrix3f();
+        }
+    }
+
+    private static Matrix4f oldProjection = oldProjections[0];
+    private static Matrix4f oldMV = oldMVs[0];
+    private static Matrix3f oldInverse = oldInverses[0];
 
     public static void scaleStack(MatrixStack stack, float x, float y, float z)
     {
@@ -37,10 +54,14 @@ public class MatrixStackUtils
      */
     public static void cacheMatrices()
     {
+        int slot = Math.min(matrixStackTop, MATRIX_STACK_DEPTH - 1);
+        matrixStackTop += 1;
+
         /* Cache the global stuff */
-        oldProjection.set(RenderSystem.getProjectionMatrix());
-        oldMV.set(RenderSystem.getModelViewMatrix());
-        oldInverse.set(RenderSystem.getInverseViewRotationMatrix());
+        oldProjections[slot].set(RenderSystem.getProjectionMatrix());
+        oldMVs[slot].set(RenderSystem.getModelViewMatrix());
+        oldInverses[slot].set(RenderSystem.getInverseViewRotationMatrix());
+        oldSorters[slot] = RenderSystem.getVertexSorting();
 
         MatrixStack renderStack = RenderSystem.getModelViewStack();
 
@@ -51,9 +72,17 @@ public class MatrixStackUtils
 
     public static void restoreMatrices()
     {
-        /* Return back to orthographic projection */
-        RenderSystem.setProjectionMatrix(oldProjection, VertexSorter.BY_Z);
-        RenderSystem.setInverseViewRotationMatrix(oldInverse);
+        if (matrixStackTop > 0)
+        {
+            matrixStackTop -= 1;
+        }
+
+        int slot = Math.min(matrixStackTop, MATRIX_STACK_DEPTH - 1);
+        VertexSorter sorter = oldSorters[slot] != null ? oldSorters[slot] : VertexSorter.BY_Z;
+
+        /* Return back to saved projection */
+        RenderSystem.setProjectionMatrix(oldProjections[slot], sorter);
+        RenderSystem.setInverseViewRotationMatrix(oldInverses[slot]);
 
         MatrixStack renderStack = RenderSystem.getModelViewStack();
 
@@ -63,7 +92,7 @@ public class MatrixStackUtils
          * it goes back through a temporary level rather than a plain apply of the top. */
         renderStack.push();
         renderStack.loadIdentity();
-        MatrixStackUtils.multiply(renderStack, oldMV);
+        MatrixStackUtils.multiply(renderStack, oldMVs[slot]);
         RenderSystem.applyModelViewMatrix();
         renderStack.pop();
     }

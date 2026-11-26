@@ -683,6 +683,10 @@ public class ScreenOverlay
         {
             context.batcher.clip(viewport, context);
         }
+        else
+        {
+            context.batcher.flush();
+        }
 
         Matrix4f matrix = context.batcher.getContext().getMatrices().peek().getPositionMatrix();
         BufferBuilder builder = Tessellator.getInstance().getBuffer();

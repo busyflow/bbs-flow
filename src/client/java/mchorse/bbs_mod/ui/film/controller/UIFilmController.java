@@ -107,6 +107,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
     {
         if ((context.mouseButton != 0 && context.mouseButton != 1) || this.isCovered() || this.isRecording() || this.panel.isFlying()
             || this.picker.isPickingTarget() || !this.panel.preview.getViewport().isInside(context)) return false;
+        this.getGizmoStencil().finishAsyncPick();
         int stencil = this.getGizmoStencil().getIndex();
         if (context.mouseButton == 0 && this.canShowGizmo() && stencil >= Gizmo.STENCIL_X && stencil <= Gizmo.STENCIL_MAX) return false;
         if (this.shapeOverlay.click(context)) return true;
@@ -234,6 +235,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
     {
         if ((context.mouseButton != 0 && context.mouseButton != 1) || this.isCovered() || this.isRecording() || this.panel.isFlying()
             || !this.panel.preview.getViewport().isInside(context)) return false;
+        this.getGizmoStencil().finishAsyncPick();
         int stencil = this.getGizmoStencil().getIndex();
         if (context.mouseButton == 0 && this.canShowGizmo() && stencil >= Gizmo.STENCIL_X && stencil <= Gizmo.STENCIL_MAX) return false;
         var hit = this.splineOverlay.pick(context.mouseX, context.mouseY);
@@ -885,7 +887,7 @@ public class UIFilmController extends UIElement implements GizmoViewport
     {
         /* The controller gets the click before the preview does: leave the icon bar's to its buttons */
         if (this.panel.preview.isOverIcons(context)) return false;
-        if (this.clickMarkup(context)) return true;
+        if (!Window.isAltPressed() && this.clickMarkup(context)) return true;
         for (var tool : this.addonTools) if (tool.click(context)) return true;
 
         if (this.canControl())
@@ -911,11 +913,21 @@ public class UIFilmController extends UIElement implements GizmoViewport
         }
 
         /* Alt pick the replay */
-        if (context.mouseButton == 0 && this.picker.getHoveredReplayIndex() >= 0)
+        if (context.mouseButton == 0)
         {
-            this.pickReplay(this.picker.getHoveredReplayIndex());
+            int hoveredReplay = this.picker.getHoveredReplayIndex();
 
-            return true;
+            if (hoveredReplay < 0 && Window.isAltPressed() && !this.picker.isPickingTarget())
+            {
+                hoveredReplay = this.picker.resolveHoveredReplayIndex();
+            }
+
+            if (hoveredReplay >= 0)
+            {
+                this.pickReplay(hoveredReplay);
+
+                return true;
+            }
         }
 
         if (gizmoShown && this.gizmo.mouseClickedSphere(context))

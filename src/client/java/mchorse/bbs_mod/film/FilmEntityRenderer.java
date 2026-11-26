@@ -55,6 +55,9 @@ import java.util.Map;
  */
 public class FilmEntityRenderer
 {
+    private static final BlockPos.Mutable TEMP_POS = new BlockPos.Mutable();
+    private static final Matrix4f TEMP_TARGET_WORLD = new Matrix4f();
+
     public static void renderEntity(FilmControllerContext context)
     {
         FormPoseEvents.ACTOR_BEFORE.invoker().prepare(context);
@@ -74,28 +77,37 @@ public class FilmEntityRenderer
         );
 
         boolean relative = context.replay != null && context.relative;
-        Vector3d origin = relative
-            ? context.replay.getRelativeOrigin()
-            : new Vector3d(camera.getPos().x, camera.getPos().y, camera.getPos().z);
+        double cx;
+        double cy;
+        double cz;
 
-        double cx = origin.x;
-        double cy = origin.y;
-        double cz = origin.z;
+        if (relative)
+        {
+            Vector3d origin = context.replay.getRelativeOrigin();
+            cx = origin.x;
+            cy = origin.y;
+            cz = origin.z;
+        }
+        else
+        {
+            cx = camera.getPos().x;
+            cy = camera.getPos().y;
+            cz = camera.getPos().z;
+        }
 
         Matrix4f target = null;
         Matrix4f defaultMatrix = FilmMatrices.getMatrixForRenderWithRotation(entity, cx, cy, cz, transition);
         float opacity = 1F;
 
-        /* The anchor is resolved twice below — once against the camera and once against the world origin —
-         * and the pose evaluation inside is identical for both (it is camera-independent). Only pure matrix
-         * math separates the two calls, so one evaluation covers them; see FormFrameCache on why the scope
-         * is this narrow and not the whole frame. Deliberately dropped before the form renders: rendering
-         * applies the form's animation states, which move the pose. */
-        FormFrameCache anchorFrame = relative ? null : new FormFrameCache();
+        /* Most actors have no anchor: skip FormFrameCache allocation, double getTotalMatrix, and getCarrier. */
+        mchorse.bbs_mod.forms.forms.utils.Anchor anchor = relative ? null : FilmMatrices.getAnchor(entity, context.replay);
+        boolean hasAnchor = anchor != null && (anchor.hasTarget() || !anchor.transform.isDefault()
+            || (anchor.previous != null && (anchor.previous.hasTarget() || !anchor.previous.transform.isDefault())));
+        FormFrameCache anchorFrame = hasAnchor ? new FormFrameCache() : null;
 
-        if (!relative)
+        if (hasAnchor)
         {
-            Pair<Matrix4f, Float> pair = FilmMatrices.getTotalMatrix(entities, FilmMatrices.getAnchor(entity, context.replay), defaultMatrix, cx, cy, cz, transition, 0, false, anchorFrame);
+            Pair<Matrix4f, Float> pair = FilmMatrices.getTotalMatrix(entities, anchor, defaultMatrix, cx, cy, cz, transition, 0, false, anchorFrame);
 
             target = pair.a;
             opacity = pair.b;
@@ -133,24 +145,34 @@ public class FilmEntityRenderer
         {
             targetWorld = new Matrix4f(target);
         }
+        else if (!hasAnchor)
+        {
+            /* defaultMatrix is translate(ex - cx, ey - cy, ez - cz) * rotateY(-bodyYaw), so shifting
+             * its translation column by +(cx, cy, cz) yields the exact world-origin matrix. */
+            targetWorld = TEMP_TARGET_WORLD.set(defaultMatrix);
+            targetWorld.m30(targetWorld.m30() + (float) cx);
+            targetWorld.m31(targetWorld.m31() + (float) cy);
+            targetWorld.m32(targetWorld.m32() + (float) cz);
+        }
         else
         {
             Matrix4f defaultWorldMatrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, transition);
-            Pair<Matrix4f, Float> pairWorld = FilmMatrices.getTotalMatrix(entities, FilmMatrices.getAnchor(entity, context.replay), defaultWorldMatrix, 0D, 0D, 0D, transition, 0, false, anchorFrame);
+            Pair<Matrix4f, Float> pairWorld = FilmMatrices.getTotalMatrix(entities, anchor, defaultWorldMatrix, 0D, 0D, 0D, transition, 0, false, anchorFrame);
 
             targetWorld = pairWorld.a != null ? pairWorld.a : defaultWorldMatrix;
-            carrier = FilmMatrices.getCarrier(entities, FilmMatrices.getAnchor(entity, context.replay), defaultWorldMatrix, transition, anchorFrame);
+            carrier = FilmMatrices.getCarrier(entities, anchor, defaultWorldMatrix, transition, anchorFrame);
         }
 
         RenderFrame.setCarrier(form, carrier);
 
-        BlockPos pos = BlockPos.ofFloored(position.x, position.y + 0.5D, position.z);
+        TEMP_POS.set(Math.floor(position.x), Math.floor(position.y + 0.5D), Math.floor(position.z));
+        boolean chunkLoaded = entity.getWorld() != null && entity.getWorld().isChunkLoaded(TEMP_POS);
         int light;
 
-        if (entity.getWorld() != null && entity.getWorld().isChunkLoaded(pos))
+        if (chunkLoaded)
         {
-            int sky = entity.getWorld().getLightLevel(LightType.SKY, pos);
-            int torch = entity.getWorld().getLightLevel(LightType.BLOCK, pos);
+            int sky = entity.getWorld().getLightLevel(LightType.SKY, TEMP_POS);
+            int torch = entity.getWorld().getLightLevel(LightType.BLOCK, TEMP_POS);
             light = LightmapTextureManager.pack(torch, sky);
         }
         else if (BBSSettings.unlimitedReplayRenderDistance.get())
@@ -159,8 +181,8 @@ public class FilmEntityRenderer
         }
         else
         {
-            int sky = entity.getWorld().getLightLevel(LightType.SKY, pos);
-            int torch = entity.getWorld().getLightLevel(LightType.BLOCK, pos);
+            int sky = entity.getWorld().getLightLevel(LightType.SKY, TEMP_POS);
+            int torch = entity.getWorld().getLightLevel(LightType.BLOCK, TEMP_POS);
             light = LightmapTextureManager.pack(torch, sky);
         }
 
@@ -221,9 +243,12 @@ public class FilmEntityRenderer
          * gizmo and the preview resolve the very same form and entity, which in the editor is every frame,
          * in both the visible and the stencil-picking pass. It must stay separate from `anchorFrame` above,
          * which was taken before the states moved the pose. */
-        FormFrameCache gizmoFrame = UIBaseMenu.shouldRenderAxes() ? new FormFrameCache() : null;
-
         FilmTarget gizmoTarget = context.gizmoTarget;
+        boolean needsGizmoFrame = UIBaseMenu.shouldRenderAxes()
+            && (gizmoTarget.boneOrNull() != null
+                || (context.bone2 != null && context.map == null)
+                || gizmoTarget.is(FilmTarget.Kind.ANCHOR));
+        FormFrameCache gizmoFrame = needsGizmoFrame ? new FormFrameCache() : null;
 
         if (UIBaseMenu.shouldRenderAxes())
         {
@@ -249,7 +274,6 @@ public class FilmEntityRenderer
             }
         }
 
-        boolean chunkLoaded = entity.getWorld() != null && entity.getWorld().isChunkLoaded(pos);
         /* With a shader pack, the films are drawn again in Iris' shadow pass, but into the main
          * entity buffers: the shadow and the name tag batched there would be flushed in the main
          * pass with vertices posed for the sun, as a skewed ghost floating next to the replay. */

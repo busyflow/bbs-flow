@@ -50,18 +50,10 @@ public class UIKeyframeParameters extends UIElement
         });
         this.duration = new UITrackpad((v) -> this.setDuration(v.floatValue()));
         this.duration.limit(0, Float.MAX_VALUE).tooltip(UIKeys.KEYFRAMES_FORCED_DURATION);
-        this.interp = new UIIcon(Icons.GRAPH, (b) ->
-        {
-            if (this.keyframe == null) return;
-            Interpolation interp = new Interpolation("", this.keyframe.getInterpolation().getMap());
-            interp.fromData(this.keyframe.getInterpolation().toData());
-            UIInterpolationContextMenu menu = new UIInterpolationContextMenu(interp);
-
-            this.getContext().replaceContextMenu(menu.callback(() -> this.editor.getGraph().setInterpolation(interp)));
-        });
+        this.interp = new UIIcon(Icons.GRAPH, (b) -> this.openInterpolationMenu());
         this.interp.wh(UIConstants.CONTROL_HEIGHT, UIConstants.CONTROL_HEIGHT);
         this.interp.tooltip(new InterpolationTooltip(0F, 0.5F, () -> this.keyframe == null ? null : this.keyframe.getInterpolation()));
-        this.interp.keys().register(Keys.KEYFRAMES_INTERP, this.interp::clickItself).category(UIKeys.KEYFRAMES_KEYS_CATEGORY);
+        this.interp.keys().register(Keys.KEYFRAMES_INTERP, this::openInterpolationMenu).category(UIKeys.KEYFRAMES_KEYS_CATEGORY);
 
         this.motionShift = new UITrackpad(v -> this.editor.getGraph().setMotionShift(v.floatValue() / 100F, !this.draggingMotionShift));
         this.motionShift.limit(-49, 49).tooltip(UIKeys.KEYFRAMES_MOTION_SHIFT);
@@ -87,6 +79,16 @@ public class UIKeyframeParameters extends UIElement
         }
 
         this.setKeyframe(null);
+    }
+
+    private void openInterpolationMenu()
+    {
+        if (this.keyframe == null) return;
+        Interpolation interp = new Interpolation("", this.keyframe.getInterpolation().getMap());
+        interp.fromData(this.keyframe.getInterpolation().toData());
+        UIInterpolationContextMenu menu = new UIInterpolationContextMenu(interp);
+
+        this.getContext().replaceContextMenu(menu.callback(() -> this.editor.getGraph().setInterpolation(interp)));
     }
 
     public void setKeyframe(Keyframe keyframe)

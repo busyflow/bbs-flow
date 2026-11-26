@@ -446,6 +446,10 @@ public class Gizmo
     /* What the hover mask currently holds, so a still sphere is not re-drawn every hovered
      * frame — the mask used to be a window-sized clear plus a full-viewport composite per
      * frame; now it is the sphere's own rectangle, re-drawn only when that moved. */
+    private static ShaderProgram cachedSpherePreviewShader;
+    private static GlUniform cachedSpherePreviewTarget;
+    private static GlUniform cachedSpherePreviewHighlight;
+
     private final Matrix4f lastMaskMatrix = new Matrix4f();
     private final Matrix4f lastMaskProjection = new Matrix4f();
     private int lastMaskX;
@@ -516,14 +520,7 @@ public class Gizmo
 
         if (moved)
         {
-            context.batcher.flush();
-
-            boolean scissor = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
-
-            if (scissor)
-            {
-                GlStateManager._disableScissorTest();
-            }
+            context.batcher.flushBatch();
 
             this.sphereHighlight.getFramebuffer().bind();
             this.sphereHighlight.getFramebuffer().clear();
@@ -546,11 +543,6 @@ public class Gizmo
             this.sphereHighlight.unbind();
             mc.getFramebuffer().beginWrite(true);
 
-            if (scissor)
-            {
-                GlStateManager._enableScissorTest();
-            }
-
             this.lastMaskMatrix.set(this.lastSphereMatrix);
             this.lastMaskProjection.set(projection);
             this.lastMaskX = rectX;
@@ -561,20 +553,24 @@ public class Gizmo
         }
 
         ShaderProgram previewProgram = BBSShaders.getPickerPreviewProgram();
-        GlUniform target = previewProgram.getUniform("Target");
 
-        if (target != null)
+        if (previewProgram != cachedSpherePreviewShader)
         {
-            target.set(STENCIL_TRACKBALL);
+            cachedSpherePreviewShader = previewProgram;
+            cachedSpherePreviewTarget = previewProgram == null ? null : previewProgram.getUniform("Target");
+            cachedSpherePreviewHighlight = previewProgram == null ? null : previewProgram.getUniform("HighlightColor");
         }
 
-        GlUniform highlight = previewProgram.getUniform("HighlightColor");
+        if (cachedSpherePreviewTarget != null)
+        {
+            cachedSpherePreviewTarget.set(STENCIL_TRACKBALL);
+        }
 
-        if (highlight != null)
+        if (cachedSpherePreviewHighlight != null)
         {
             int color = BBSSettings.stencilHighlightColor.get();
 
-            highlight.set(Colors.getR(color), Colors.getG(color), Colors.getB(color), Colors.getA(color));
+            cachedSpherePreviewHighlight.set(Colors.getR(color), Colors.getG(color), Colors.getB(color), Colors.getA(color));
         }
 
         RenderSystem.enableBlend();
@@ -761,7 +757,7 @@ public class Gizmo
 
         this.setViewportHeight(area.h);
 
-        context.batcher.flush();
+        context.batcher.flushBatch();
 
         MatrixStackUtils.cacheMatrices();
         RenderSystem.setProjectionMatrix(projection, VertexSorter.BY_Z);
@@ -769,13 +765,13 @@ public class Gizmo
         /* Map the UI area to a framebuffer-pixel viewport, exactly as the form
          * editor's model pass does, so the gizmo renders into the preview and is
          * clipped to it by the view frustum. */
-        UIUtils.viewportArea(area);
+        int[] vp = UIUtils.viewportArea(area);
 
         MatrixStack stack = new MatrixStack();
         MatrixStackUtils.multiply(stack, this.lastRenderMatrix);
 
         RenderSystem.disableDepthTest();
-        this.drawSmoothGizmo(stack);
+        this.drawSmoothGizmo(stack, vp);
         RenderSystem.enableDepthTest();
 
         RenderSystem.viewport(0, 0, mc.getWindow().getFramebufferWidth(), mc.getWindow().getFramebufferHeight());
@@ -786,10 +782,19 @@ public class Gizmo
         RenderSystem.depthFunc(GL11.GL_ALWAYS);
     }
 
-    /** {@link #drawGizmo} through an {@link AntialiasedLayer} over the viewport the caller set. */
+    private final Matrix4f tempGizmoMvp = new Matrix4f();
+    private final Vector4f tempGizmoClip = new Vector4f();
+    private final int[] tempGizmoViewport = new int[4];
+
+    /** {@link #drawGizmo} through an {@link AntialiasedLayer} scoped to the gizmo's tight screen bounds. */
     private void drawSmoothGizmo(MatrixStack stack)
     {
-        boolean layer = AntialiasedLayer.begin();
+        this.drawSmoothGizmo(stack, null);
+    }
+
+    private void drawSmoothGizmo(MatrixStack stack, int[] knownViewport)
+    {
+        boolean layer = this.beginGizmoAntialiasedLayer(stack, knownViewport);
 
         try
         {
@@ -802,6 +807,67 @@ public class Gizmo
                 AntialiasedLayer.end();
             }
         }
+    }
+
+    /**
+     * Scope the MSAA resolve/composite rectangle tightly around the gizmo's projected screen position
+     * instead of resolving the entire 1080p viewport every frame (~10x fewer MSAA pixels).
+     * Falls back to the full viewport while dragging or when the gizmo sits behind/very near the camera.
+     */
+    private boolean beginGizmoAntialiasedLayer(MatrixStack stack, int[] knownViewport)
+    {
+        if (this.getTrackedGesture() != null)
+        {
+            return knownViewport != null
+                ? AntialiasedLayer.begin(knownViewport[0], knownViewport[1], knownViewport[2], knownViewport[3], knownViewport[0], knownViewport[1], knownViewport[2], knownViewport[3])
+                : AntialiasedLayer.begin();
+        }
+
+        int[] vp = knownViewport;
+
+        if (vp == null)
+        {
+            vp = this.tempGizmoViewport;
+            GL11.glGetIntegerv(GL11.GL_VIEWPORT, vp);
+        }
+
+        if (vp[2] <= 0 || vp[3] <= 0)
+        {
+            return false;
+        }
+
+        this.tempGizmoMvp.set(RenderSystem.getProjectionMatrix()).mul(stack.peek().getPositionMatrix());
+        this.tempGizmoClip.set(0F, 0F, 0F, 1F).mul(this.tempGizmoMvp);
+
+        if (this.tempGizmoClip.w <= 1e-4F)
+        {
+            return AntialiasedLayer.begin(vp[0], vp[1], vp[2], vp[3], vp[0], vp[1], vp[2], vp[3]);
+        }
+
+        float ndcX = this.tempGizmoClip.x / this.tempGizmoClip.w;
+        float ndcY = this.tempGizmoClip.y / this.tempGizmoClip.w;
+
+        if (ndcX < -1.5F || ndcX > 1.5F || ndcY < -1.5F || ndcY > 1.5F)
+        {
+            return AntialiasedLayer.begin(vp[0], vp[1], vp[2], vp[3], vp[0], vp[1], vp[2], vp[3]);
+        }
+
+        float cx = vp[0] + (ndcX * 0.5F + 0.5F) * vp[2];
+        float cy = vp[1] + (ndcY * 0.5F + 0.5F) * vp[3];
+        float scale = Math.max(1F, BBSSettings.axesScale.get());
+        int pad = Math.max(160, Math.round(vp[3] * 0.24F * scale));
+
+        int x0 = Math.max(vp[0], (int) Math.floor(cx - pad));
+        int y0 = Math.max(vp[1], (int) Math.floor(cy - pad));
+        int x1 = Math.min(vp[0] + vp[2], (int) Math.ceil(cx + pad));
+        int y1 = Math.min(vp[1] + vp[3], (int) Math.ceil(cy + pad));
+
+        if (x1 <= x0 || y1 <= y0)
+        {
+            return false;
+        }
+
+        return AntialiasedLayer.begin(x0, y0, x1 - x0, y1 - y0, vp[0], vp[1], vp[2], vp[3]);
     }
 
     private void drawGizmo(MatrixStack stack)

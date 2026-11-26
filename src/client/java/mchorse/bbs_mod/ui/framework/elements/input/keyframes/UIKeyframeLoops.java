@@ -418,6 +418,7 @@ public class UIKeyframeLoops
         double lastTick = Math.min(end, this.view.fromGraphX(this.view.graphArea.ex() + 6));
         double pixelPeriod = Math.abs(this.view.toGraphX(loop.sourceEnd()) - this.view.toGraphX(loop.start()));
         double stride = Math.max(1, Math.ceil(8 / Math.max(0.001, pixelPeriod)));
+        context.batcher.flush();
         BufferBuilder builder = Tessellator.getInstance().getBuffer();
         Matrix4f matrix = context.batcher.getContext().getMatrices().peek().getPositionMatrix();
         builder.begin(VertexFormat.DrawMode.QUADS, VertexFormats.POSITION_COLOR);

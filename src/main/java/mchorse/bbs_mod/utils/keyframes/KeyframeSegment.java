@@ -107,8 +107,10 @@ public class KeyframeSegment <T>
 
         double duration = IInterp.context.duration;
         double startTick = IInterp.context.startTick;
+        boolean isStart = IInterp.context.isStart;
+        boolean isEnd = IInterp.context.isEnd;
 
-        IInterp.context.segment(this.duration, this.a.getTick());
+        IInterp.context.segment(this.duration, this.a.getTick(), this.preA == this.a, this.postB == this.b);
 
         try
         {
@@ -117,13 +119,21 @@ public class KeyframeSegment <T>
         }
         finally
         {
-            IInterp.context.segment(duration, startTick);
+            IInterp.context.segment(duration, startTick, isStart, isEnd);
         }
     }
 
     private Keyframe<T> resolved(Keyframe<T> key, T defaults)
     {
-        return defaults == null ? key : new Keyframe<>(key.getId(), key.getFactory(), key.getTick(), key.getFactory().withDefaults(key.getValue(), defaults));
+        if (defaults == null)
+        {
+            return key;
+        }
+
+        T value = key.getValue();
+        T resolved = key.getFactory().withDefaults(value, defaults);
+
+        return resolved == value ? key : new Keyframe<>(key.getId(), key.getFactory(), key.getTick(), resolved);
     }
 
     public float getInterpolationProgress()

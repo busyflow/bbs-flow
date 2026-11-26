@@ -32,6 +32,25 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
     private IKeyframeFactory<T> factory;
     private final List<KeyframeLoop> loops = new ArrayList<>();
     private final List<KeyframeLoop> loopsView = Collections.unmodifiableList(this.loops);
+    private int version;
+
+    public int getVersion()
+    {
+        return this.version;
+    }
+
+    public void bumpVersion()
+    {
+        this.version += 1;
+    }
+
+    @Override
+    public void postNotify(BaseValue value, int flag)
+    {
+        this.version += 1;
+
+        super.postNotify(value, flag);
+    }
 
     public List<KeyframeLoop> getLoops()
     {
@@ -380,28 +399,60 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
         return shifted;
     }
 
+    private int lastSegmentLeft = -1;
+
     private KeyframeSegment<T> findRawSegment(float ticks)
     {
-        int first = this.nextEnabledIndex(0);
-        if (first >= this.list.size()) return null;
+        int size = this.list.size();
+        if (size == 0) return null;
 
-        int last = this.previousEnabledIndex(this.list.size() - 1);
+        int first = this.nextEnabledIndex(0);
+        if (first >= size) return null;
+
+        int last = this.previousEnabledIndex(size - 1);
         if (first == last || ticks < this.list.get(first).getTick())
         {
+            this.lastSegmentLeft = first;
             return new KeyframeSegment<>(this.list.get(first), this.list.get(first), first);
         }
         if (ticks >= this.list.get(last).getTick())
         {
+            this.lastSegmentLeft = last;
             return new KeyframeSegment<>(this.list.get(last), this.list.get(last), last);
         }
 
-        int right = this.nextEnabledIndex(this.lowerBound(ticks));
+        /* O(1) temporal locality fast path for sequential playback and smooth scrubbing:
+         * when ticks is strictly inside (tA, tB), floor(ticks) < tB is guaranteed, so the
+         * segment matches binary search identically without searching or re-scanning. */
+        int hint = this.lastSegmentLeft;
+        int left;
+        int right;
+
+        if (hint >= first && hint < last && this.list.get(hint).isEnabled())
+        {
+            Keyframe<T> hintA = this.list.get(hint);
+
+            if (ticks > hintA.getTick())
+            {
+                int nextIdx = this.nextEnabledIndex(hint + 1);
+
+                if (nextIdx <= last && ticks < this.list.get(nextIdx).getTick())
+                {
+                    KeyframeSegment<T> segment = new KeyframeSegment<>(hintA, this.list.get(nextIdx), hint);
+                    segment.setup(ticks);
+                    return segment;
+                }
+            }
+        }
+
+        right = this.nextEnabledIndex(this.lowerBound(ticks));
         if (this.list.get(right).getTick() == Math.floor(ticks) && right < last)
         {
             right = this.nextEnabledIndex(right + 1);
         }
-        int left = this.previousEnabledIndex(right - 1);
+        left = this.previousEnabledIndex(right - 1);
         if (left < first) left = right;
+        this.lastSegmentLeft = left;
         KeyframeSegment<T> segment = new KeyframeSegment<>(this.list.get(left), this.list.get(right), left);
         segment.setup(ticks);
         return segment;
@@ -723,6 +774,7 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
         {
             if (entry.isMap()) this.putLoop(KeyframeLoop.fromData(entry.asMap()));
         }
+        this.version += 1;
     }
 
     public void copyKeyframes(KeyframeChannel<T> channel)
@@ -740,6 +792,7 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
         this.sort();
         this.loops.clear();
         this.loops.addAll(channel.loops);
+        this.version += 1;
     }
 
     @Override

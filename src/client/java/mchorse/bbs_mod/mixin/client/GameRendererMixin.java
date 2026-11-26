@@ -101,9 +101,21 @@ public class GameRendererMixin
      * the other versions do it, because this one reads the FOV before it
      * updates the camera.
      */
-    @Inject(at = @At("HEAD"), method = "renderWorld")
+    @Inject(at = @At("HEAD"), method = "renderWorld", cancellable = true)
     private void onWorldRenderBegin(float tickDelta, long limitTime, MatrixStack matrices, CallbackInfo callbackInfo)
     {
+        mchorse.bbs_mod.ui.framework.UIBaseMenu menu = mchorse.bbs_mod.ui.framework.UIScreen.getCurrentMenu();
+
+        if (menu != null && menu.isWorldOccluded()
+            && !BBSModClient.getVideoRecorder().isRecording()
+            && !BBSRendering.isHoldingExportFrame())
+        {
+            BBSRendering.onWorldRenderSkipped();
+            callbackInfo.cancel();
+
+            return;
+        }
+
         BBSRendering.onWorldRenderBegin();
 
         CameraController controller = BBSModClient.getCameraController();

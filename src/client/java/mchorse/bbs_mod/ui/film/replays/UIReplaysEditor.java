@@ -1856,8 +1856,17 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         }
 
         /* A bone's tracks are Form's: another tab is left for it first, so the part's owner opens
-         * on the timeline that shows it. */
-        if (!this.allMode && this.category != TrackCategory.FORM && (!(form instanceof IPosedForm) || (bone != null && !bone.isEmpty())))
+         * on the timeline that shows it. In dual-timeline mode the form timeline is already mounted
+         * separately (while this.category stays REPLAY), so switching category here would rebuild
+         * poseKeyframeEditor from scratch and wipe multi-bone selection on every Ctrl+click. */
+        if (this.isSeparateFormTimeline())
+        {
+            if (this.filmPanel != null)
+            {
+                this.filmPanel.showPoseTimeline();
+            }
+        }
+        else if (!this.allMode && this.category != TrackCategory.FORM && (!(form instanceof IPosedForm) || (bone != null && !bone.isEmpty())))
         {
             this.setCategory(TrackCategory.FORM);
         }
@@ -1907,6 +1916,7 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         }
 
         StencilFormFramebuffer stencil = this.filmPanel.getController().getStencil();
+        stencil.finishAsyncPick();
 
         /* In orbit mode left-drag rotates the camera anywhere, even over a form.
          * The form selection is deferred to release, so a click still selects but a

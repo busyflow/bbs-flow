@@ -130,8 +130,8 @@ public class TimelineRulerRenderer
 
         long first = Math.max(0, (long) Math.floor(startTick / (double) minor) * minor - step);
 
-        /* One batch for the notches: a label in between flushes what is pending and the batch
-         * picks back up, so ~300 draw calls collapse to one per label gap. */
+        /* Two homogeneous passes: all notches in one SOLID draw call, then all labels in one
+         * NATIVE_TEXT draw call — eliminates ~15-20 mid-ruler batch flushes per timeline. */
         context.batcher.beginBatch();
 
         try
@@ -145,14 +145,25 @@ public class TimelineRulerRenderer
                     break;
                 }
 
-                boolean major = tick % step == 0;
-
                 if (x >= area.x)
                 {
+                    boolean major = tick % step == 0;
                     context.batcher.box(x, major ? majorTop : minorTop, x + 1, lineBottom, major ? majorColor : minorColor);
                 }
+            }
 
-                if (major && x > area.x - labelMargin)
+            long firstMajor = ((first + step - 1) / step) * step;
+
+            for (long tick = firstMajor, i = 0; i < ITERATION_CAP; tick += step, i++)
+            {
+                int x = toGraphX.applyAsInt((int) tick);
+
+                if (x >= visibleEx)
+                {
+                    break;
+                }
+
+                if (x > area.x - labelMargin)
                 {
                     context.batcher.textShadow(labelFormatter.apply((int) tick), x + 4, area.y + 2, labelColor);
                 }

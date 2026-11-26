@@ -233,7 +233,14 @@ public class FormUtilsClient
 
         if (renderer != null)
         {
-            renderer.renderUI(context, x1, y1, x2, y2);
+            if (FormThumbnailCache.renderCached(form, renderer, context, x1, y1, x2, y2))
+            {
+                renderer.renderUIOverlays(context, x1, y1, x2, y2);
+            }
+            else
+            {
+                renderer.renderUI(context, x1, y1, x2, y2);
+            }
         }
 
         BBSProfiler.end(BBSProfiler.Timer.UI_PREVIEWS);
@@ -249,7 +256,10 @@ public class FormUtilsClient
 
         if (renderer != null)
         {
-            renderer.renderPreview(context, x1, y1, x2, y2);
+            if (!FormThumbnailCache.renderCached(form, renderer, context, x1, y1, x2, y2))
+            {
+                renderer.renderPreview(context, x1, y1, x2, y2);
+            }
         }
 
         BBSProfiler.end(BBSProfiler.Timer.UI_PREVIEWS);

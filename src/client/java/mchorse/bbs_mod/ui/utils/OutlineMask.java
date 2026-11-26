@@ -37,6 +37,9 @@ import java.util.function.BiPredicate;
  */
 public class OutlineMask
 {
+    private static final float[] CLEAR_COLOR = {0F, 0F, 0F, 0F};
+    private static final float[] CLEAR_DEPTH = {1F};
+
     public final StencilMap stencilMap = new StencilMap();
 
     private int fbo;
@@ -46,6 +49,15 @@ public class OutlineMask
     private int height;
     private boolean failed;
     private boolean drawn;
+
+    private ShaderProgram cachedProgram;
+    private GlUniform uOutlineColor;
+    private GlUniform uTexel;
+    private GlUniform uMaskDepth;
+    private GlUniform uSceneDepth;
+    private GlUniform uSceneViewport;
+    private GlUniform uUseScene;
+    private GlUniform uSelectedIndex;
 
     /* What begin() found, put back by end() */
     private final int[] viewport = new int[4];
@@ -151,17 +163,25 @@ public class OutlineMask
         float[] sceneViewport = SceneDepth.getViewport();
         int outline = BBSSettings.primaryColor(Colors.A100);
 
-        set(program, "OutlineColor", Colors.getR(outline), Colors.getG(outline), Colors.getB(outline), 1F);
-        set(program, "Texel", 1F / this.width, 1F / this.height);
-        set(program, "MaskDepth", scene ? projection.m22() : 0F, scene ? projection.m32() : 0F);
-        set(program, "SceneDepth", SceneDepth.getA(), SceneDepth.getB());
-        set(program, "SceneViewport", sceneViewport[0], sceneViewport[1], sceneViewport[2], sceneViewport[3]);
+        if (this.cachedProgram != program)
+        {
+            this.cachedProgram = program;
+            this.uOutlineColor = program.getUniform("OutlineColor");
+            this.uTexel = program.getUniform("Texel");
+            this.uMaskDepth = program.getUniform("MaskDepth");
+            this.uSceneDepth = program.getUniform("SceneDepth");
+            this.uSceneViewport = program.getUniform("SceneViewport");
+            this.uUseScene = program.getUniform("UseScene");
+            this.uSelectedIndex = program.getUniform("SelectedIndex");
+        }
 
-        GlUniform useScene = program.getUniform("UseScene");
-        GlUniform selected = program.getUniform("SelectedIndex");
-
-        if (useScene != null) useScene.set(scene ? 1F : 0F);
-        if (selected != null) selected.set(index);
+        if (this.uOutlineColor != null) this.uOutlineColor.set(Colors.getR(outline), Colors.getG(outline), Colors.getB(outline), 1F);
+        if (this.uTexel != null) this.uTexel.set(1F / this.width, 1F / this.height);
+        if (this.uMaskDepth != null) this.uMaskDepth.set(scene ? projection.m22() : 0F, scene ? projection.m32() : 0F);
+        if (this.uSceneDepth != null) this.uSceneDepth.set(SceneDepth.getA(), SceneDepth.getB());
+        if (this.uSceneViewport != null) this.uSceneViewport.set(sceneViewport[0], sceneViewport[1], sceneViewport[2], sceneViewport[3]);
+        if (this.uUseScene != null) this.uUseScene.set(scene ? 1F : 0F);
+        if (this.uSelectedIndex != null) this.uSelectedIndex.set(index);
 
         context.batcher.flush();
 

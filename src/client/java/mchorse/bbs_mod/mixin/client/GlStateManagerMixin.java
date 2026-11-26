@@ -38,4 +38,10 @@ public class GlStateManagerMixin
     {
         return AntialiasedLayer.isActive() ? GL11.GL_ONE_MINUS_SRC_ALPHA : dstFactorAlpha;
     }
+
+    @Inject(method = "_glUseProgram", at = @At("HEAD"))
+    private static void bbs$trackProgramChange(int program, CallbackInfo info)
+    {
+        mchorse.bbs_mod.cubic.render.vao.ModelVAORenderer.onProgramChange(program);
+    }
 }

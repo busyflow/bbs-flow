@@ -394,6 +394,13 @@ public class UIBoneTreeList extends UIStringList
         return INDENT;
     }
 
+    private int cachedMeasureCount = -1;
+    private int cachedMeasureAreaW = -1;
+    private boolean cachedMeasureFlat;
+    private boolean cachedMeasureFiltering;
+    private int cachedMeasureScrollWidth;
+    private int cachedMeasuredWidth;
+
     @Override
     public void render(UIContext context)
     {
@@ -407,29 +414,141 @@ public class UIBoneTreeList extends UIStringList
     /**
      * How wide the rows run — indent, name, and the marks at the right edge, which the name
      * must stop short of — against the room the list has; the difference is the sideways scroll.
-     * Measured every frame over all rows, not only those on screen, so scrolling up and down
-     * doesn't change how far it goes sideways.
+     * Cached when list size, layout width, and filter mode haven't changed.
      */
     private void measureWidth(UIContext context)
     {
         List<String> visible = this.visible();
-        int width = 0;
+        int count = visible.size();
+        boolean filtering = this.isFiltering();
+        int sbW = this.scroll.hasScrollbar() ? this.scroll.getScrollbarWidth() : 0;
 
-        for (int i = 0; i < visible.size(); i++)
+        if (count != this.cachedMeasureCount || this.area.w != this.cachedMeasureAreaW
+            || this.flat != this.cachedMeasureFlat || filtering != this.cachedMeasureFiltering
+            || sbW != this.cachedMeasureScrollWidth || this.describer != null && this.roles.getLinks().size() > 0)
         {
-            String element = visible.get(i);
-            Meta meta = this.shownMeta(element);
-            int cells = this.markCells(element, meta != null);
-            int tail = cells == 0 ? ROW_PADDING : 2 + 3 + cells * (MARK + MARK_GAP);
-            int label = context.batcher.getFont().getWidth(this.rowLabel(context, i, element, meta));
+            int width = 0;
 
-            width = Math.max(width, this.rowContentX(element) + label + tail);
+            for (int i = 0; i < count; i++)
+            {
+                String element = visible.get(i);
+                Meta meta = this.shownMeta(element);
+                int cells = this.markCells(element, meta != null);
+                int tail = cells == 0 ? ROW_PADDING : 2 + 3 + cells * (MARK + MARK_GAP);
+                int label = context.batcher.getFont().getWidth(this.rowLabel(context, i, element, meta));
+
+                width = Math.max(width, this.rowContentX(element) + label + tail);
+            }
+
+            this.cachedMeasureCount = count;
+            this.cachedMeasureAreaW = this.area.w;
+            this.cachedMeasureFlat = this.flat;
+            this.cachedMeasureFiltering = filtering;
+            this.cachedMeasureScrollWidth = sbW;
+            this.cachedMeasuredWidth = width;
         }
 
         this.horizontal.area.copy(this.area);
-        this.horizontal.area.w -= this.scroll.hasScrollbar() ? this.scroll.getScrollbarWidth() : 0;
-        this.horizontal.scrollSize = width;
+        this.horizontal.area.w -= sbW;
+        this.horizontal.scrollSize = this.cachedMeasuredWidth;
         this.horizontal.clamp();
+    }
+
+    @Override
+    public void renderList(UIContext context)
+    {
+        List<String> visible = this.visible();
+        int count = visible.size();
+
+        if (count == 0)
+        {
+            return;
+        }
+
+        int s = this.scroll.scrollItemSize;
+        int scrollY = (int) this.scroll.getScroll();
+        int low = this.area.y;
+        int high = this.area.ey();
+        int x = this.area.x;
+        int w = this.area.w;
+        int sx = x - (int) this.horizontal.getScroll();
+        int mouseX = context.mouseX;
+        int mouseY = context.mouseY;
+        boolean filtering = this.isFiltering();
+
+        int first = Math.max(0, (scrollY - s) / s);
+        int last = Math.min(count, (scrollY + this.area.h) / s + 1);
+
+        if (first >= last)
+        {
+            return;
+        }
+
+        /* Pass 1: all row backgrounds, drop targets, tree/chain guides, and role marks in ONE SOLID draw call. */
+        for (int i = first; i < last; i++)
+        {
+            String element = filtering ? this.filtered.get(i).a : visible.get(i);
+            int index = filtering ? this.filtered.get(i).b : i;
+            int y = this.area.y + i * s - scrollY;
+
+            if (y + s < low || (!filtering && this.drag.isDragging(element))) continue;
+            if (y >= high) break;
+
+            boolean hover = mouseX >= x && mouseY >= y && mouseX < x + w && mouseY < y + s;
+            boolean selected = this.current.contains(index);
+
+            RowStyle.row(context.batcher, x, y, w, s, this.rowColor(element), this.isHeader(element), hover, selected);
+
+            if (this.drag.isTarget(element))
+            {
+                RowStyle.dropTarget(context.batcher, x, y, w, s);
+            }
+
+            Meta meta = this.shownMeta(element);
+            int depth = meta == null ? 0 : meta.depth;
+            int textX = sx + this.rowContentX(element);
+
+            if (meta != null)
+            {
+                this.renderTreeGuides(context, sx, y, depth, meta.lines, meta.last, textX);
+                this.renderChainGuides(context, element, sx, y, depth, textX);
+            }
+
+            this.renderMarks(context, element, meta != null, x, y, s, hover);
+        }
+
+        /* Pass 2: all row text labels in ONE NATIVE_TEXT draw call. */
+        int textOffY = (s - context.batcher.getFont().getHeight()) / 2;
+
+        for (int i = first; i < last; i++)
+        {
+            String element = filtering ? this.filtered.get(i).a : visible.get(i);
+            int index = filtering ? this.filtered.get(i).b : i;
+            int y = this.area.y + i * s - scrollY;
+
+            if (y + s < low || (!filtering && this.drag.isDragging(element))) continue;
+            if (y >= high) break;
+
+            boolean hover = mouseX >= x && mouseY >= y && mouseX < x + w && mouseY < y + s;
+            boolean selected = this.current.contains(index);
+            Meta meta = this.shownMeta(element);
+            int textX = sx + this.rowContentX(element);
+            String label = this.rowLabel(context, index, element, meta);
+            int cells = this.markCells(element, meta != null);
+
+            if (cells > 0)
+            {
+                int right = x + w - 3 - this.scroll.getScrollbarArea().w - cells * (MARK + MARK_GAP);
+                label = context.batcher.getFont().limitToWidth(label, right - textX - 2);
+            }
+
+            context.batcher.textShadow(label, textX, y + textOffY, this.labelColor(element, hover || selected));
+
+            if (this.isDone(element))
+            {
+                context.batcher.icon(mchorse.bbs_mod.ui.utils.icons.Icons.CHECKMARK, Colors.A100 | Colors.POSITIVE, x + w - 2, y + s / 2F, 1F, 0.5F);
+            }
+        }
     }
 
     @Override

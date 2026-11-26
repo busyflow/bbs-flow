@@ -336,6 +336,7 @@ public class OrbitViewGizmo
 
     private void fillCircle(Batcher2D batcher, float x, float y, float radius, int color)
     {
+        batcher.flush();
         Matrix4f matrix = batcher.getContext().getMatrices().peek().getPositionMatrix();
         BufferBuilder builder = Tessellator.getInstance().getBuffer();
 
@@ -354,6 +355,7 @@ public class OrbitViewGizmo
 
     private void annulus(Batcher2D batcher, float x, float y, float inner, float outer, int color)
     {
+        batcher.flush();
         Matrix4f matrix = batcher.getContext().getMatrices().peek().getPositionMatrix();
         BufferBuilder builder = Tessellator.getInstance().getBuffer();
 
@@ -397,6 +399,7 @@ public class OrbitViewGizmo
         float nx = -dy / length * width / 2F;
         float ny = dx / length * width / 2F;
 
+        batcher.flush();
         Matrix4f matrix = batcher.getContext().getMatrices().peek().getPositionMatrix();
         BufferBuilder builder = Tessellator.getInstance().getBuffer();
 

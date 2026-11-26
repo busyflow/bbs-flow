@@ -282,14 +282,54 @@ public abstract class Form extends ValueGroup
         }
     }
 
+    private int lastSyncedTransformOverlays = -1;
+    private int lastSyncedPoseOverlays = -1;
+    private int lastSyncedShapeKeyOverlays = -1;
+    private boolean hasPoseChild;
+    private boolean hasShapeKeysChild;
+
+    @Override
+    public void add(BaseValue value)
+    {
+        super.add(value);
+
+        if (value != null)
+        {
+            String id = value.getId();
+
+            if ("pose".equals(id))
+            {
+                this.hasPoseChild = true;
+                this.lastSyncedPoseOverlays = -1;
+            }
+            else if ("shape_keys".equals(id))
+            {
+                this.hasShapeKeysChild = true;
+                this.lastSyncedShapeKeyOverlays = -1;
+            }
+        }
+    }
+
     /** Apply the global overlay counts to existing forms as well as newly created ones. */
     public final void syncOverlayTracks()
     {
         int transforms = BBSSettings.recordingTransformOverlays == null ? 0 : BBSSettings.recordingTransformOverlays.get();
-        int poses = this instanceof IPosedForm && super.get("pose") != null && BBSSettings.recordingPoseOverlays != null
+        int poses = this.hasPoseChild && this instanceof IPosedForm && BBSSettings.recordingPoseOverlays != null
             ? BBSSettings.recordingPoseOverlays.get() : 0;
-        int shapes = super.get("shape_keys") != null && BBSSettings.recordingShapeKeyOverlays != null
+        int shapes = this.hasShapeKeysChild && BBSSettings.recordingShapeKeyOverlays != null
             ? BBSSettings.recordingShapeKeyOverlays.get() : 0;
+
+        if (transforms == this.lastSyncedTransformOverlays
+            && poses == this.lastSyncedPoseOverlays
+            && shapes == this.lastSyncedShapeKeyOverlays)
+        {
+            return;
+        }
+
+        this.lastSyncedTransformOverlays = transforms;
+        this.lastSyncedPoseOverlays = poses;
+        this.lastSyncedShapeKeyOverlays = shapes;
+
         boolean changed = this.additionalTransforms.size() != transforms || this.additionalOverlays.size() != poses
             || this.additionalShapeKeys.size() != shapes;
 

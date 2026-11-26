@@ -267,9 +267,13 @@ public class UIFilmKeyframes extends UIKeyframes
     {
         if (this.editor != null)
         {
-            float cursor = this.getPlayheadTick(context);
-            int cx = this.toGraphX(cursor);
-            String label = TimeUtils.formatCursorTime(cursor) + "/" + TimeUtils.formatTime(this.getDuration());
+            boolean running = this.editor.isRunning();
+            float displayCursor = this.getPlayheadTick(context);
+            float targetCursor = running
+                ? this.editor.getCursor(context.getTransition()) - this.getClipOffset()
+                : displayCursor;
+            float cx = this.toGraphXF(this.smoothPlayhead(targetCursor, running));
+            String label = TimeUtils.formatCursorTime(displayCursor) + "/" + TimeUtils.formatTime(this.getDuration());
 
             /* Without a ruler of their own the markers are read off the timeline right above */
             if (this.getTopMargin() > 0)
@@ -278,7 +282,7 @@ public class UIFilmKeyframes extends UIKeyframes
             }
 
             context.batcher.clip(this.graphArea, context);
-            UITimelineCanvas.renderCursor(context, label, this.area, cx - 1);
+            UITimelineCanvas.renderCursor(context, label, this.area, cx - 1F);
             context.batcher.unclip(context);
         }
 

@@ -46,8 +46,6 @@ public class InterpContext
         this.b = b;
         this.b0 = b0;
         this.x = x;
-        this.isStart = false;
-        this.isEnd = false;
 
         this.args.v1 = this.args.v2 = this.args.v3 = this.args.v4 = 0D;
         this.w0 = this.w1 = this.w2 = this.w3 = 1.0D;
@@ -57,8 +55,15 @@ public class InterpContext
 
     public InterpContext segment(double duration, double startTick)
     {
+        return this.segment(duration, startTick, false, false);
+    }
+
+    public InterpContext segment(double duration, double startTick, boolean isStart, boolean isEnd)
+    {
         this.duration = duration;
         this.startTick = startTick;
+        this.isStart = isStart;
+        this.isEnd = isEnd;
 
         return this;
     }

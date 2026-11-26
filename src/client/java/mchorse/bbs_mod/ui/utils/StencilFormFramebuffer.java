@@ -18,10 +18,12 @@ import net.minecraft.client.gl.ShaderProgram;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
+import org.lwjgl.opengl.GL15;
+import org.lwjgl.opengl.GL21;
 import org.lwjgl.opengl.GL30;
 import org.lwjgl.system.MemoryStack;
 
-import java.nio.FloatBuffer;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -33,7 +35,14 @@ public class StencilFormFramebuffer
     private Map<Integer, Pair<Form, String>> indexMap = new HashMap<>();
 
     /** Reused readback buffer for the tolerance region pick (grows as needed). */
-    private FloatBuffer pickBuffer;
+    private ByteBuffer pickBuffer;
+
+    /** Async PBO readback for freshly-rendered stencil passes (avoids synchronous glReadPixels stalls). */
+    private int asyncPbo = -1;
+    private int asyncPboCapacity;
+    private boolean asyncPending;
+    private int asyncX0, asyncY0, asyncW, asyncH;
+    private int asyncX, asyncY, asyncRadius, asyncHandleMax;
 
     public Framebuffer getFramebuffer()
     {
@@ -50,25 +59,33 @@ public class StencilFormFramebuffer
         this.renderPreview(context, area, this.getIndex());
     }
 
+    private static ShaderProgram cachedPreviewShader;
+    private static GlUniform cachedPreviewTarget;
+    private static GlUniform cachedPreviewHighlight;
+
     /** Same, lighting up {@code index} instead of what is under the cursor — a host pointing at a bone from a list. */
     public void renderPreview(UIContext context, Area area, int index)
     {
         Texture texture = this.getFramebuffer().getMainTexture();
         ShaderProgram program = BBSShaders.getPickerPreviewProgram();
-        GlUniform target = program.getUniform("Target");
 
-        if (target != null)
+        if (program != cachedPreviewShader)
         {
-            target.set(index);
+            cachedPreviewShader = program;
+            cachedPreviewTarget = program == null ? null : program.getUniform("Target");
+            cachedPreviewHighlight = program == null ? null : program.getUniform("HighlightColor");
         }
 
-        GlUniform highlight = program.getUniform("HighlightColor");
+        if (cachedPreviewTarget != null)
+        {
+            cachedPreviewTarget.set(index);
+        }
 
-        if (highlight != null)
+        if (cachedPreviewHighlight != null)
         {
             int color = BBSSettings.stencilHighlightColor.get();
 
-            highlight.set(Colors.getR(color), Colors.getG(color), Colors.getB(color), Colors.getA(color));
+            cachedPreviewHighlight.set(Colors.getR(color), Colors.getG(color), Colors.getB(color), Colors.getA(color));
         }
 
         RenderSystem.enableBlend();
@@ -175,17 +192,63 @@ public class StencilFormFramebuffer
     {
         try (MemoryStack stack = MemoryStack.stackPush())
         {
-            FloatBuffer floats = stack.mallocFloat(4);
+            ByteBuffer bytes = stack.malloc(4);
 
-            GL11.glReadPixels(x, y, 1, 1, GL11.GL_RGBA, GL11.GL_FLOAT, floats);
+            GL11.glReadPixels(x, y, 1, 1, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, bytes);
 
-            /* TODO: make other channels work */
-            int r = (int) (floats.get() * 255F);
-            int g = (int) (floats.get() * 255F);
-            int b = (int) (floats.get() * 255F);
-            int a = (int) (floats.get() * 255F);
+            int r = bytes.get(0) & 0xFF;
+            int g = bytes.get(1) & 0xFF;
+            int b = bytes.get(2) & 0xFF;
+            int a = bytes.get(3) & 0xFF;
 
-            this.index = a < 1F ? 0 : r | (g << 8) | (b << 16);
+            this.index = a < 1 ? 0 : r | (g << 8) | (b << 16);
+        }
+    }
+
+    /**
+     * Pick directly from the existing framebuffer without re-rendering the scene.
+     */
+    public void repickFromBuffer(int x, int y, int radius, int handleMax)
+    {
+        if (this.framebuffer == null)
+        {
+            return;
+        }
+
+        int prevRead = GL30.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, this.framebuffer.id);
+
+        try
+        {
+            this.pick(x, y, radius, handleMax);
+        }
+        finally
+        {
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevRead);
+        }
+    }
+
+    /**
+     * Non-blocking variant of {@link #repickFromBuffer} for hover preview: queues an async PBO
+     * readback from the cached stencil FBO without stalling the GPU pipeline with synchronous glReadPixels.
+     */
+    public void repickFromBufferAsync(int x, int y, int radius, int handleMax)
+    {
+        if (this.framebuffer == null)
+        {
+            return;
+        }
+
+        int mainFbo = net.minecraft.client.MinecraftClient.getInstance().getFramebuffer().fbo;
+        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, this.framebuffer.id);
+
+        try
+        {
+            this.pickAsync(x, y, radius, handleMax);
+        }
+        finally
+        {
+            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, mainFbo);
         }
     }
 
@@ -224,63 +287,177 @@ public class StencilFormFramebuffer
 
         int needed = w * h * 4;
 
-        /* A large tolerance × GUI scale can make this region far bigger than the
-         * LWJGL frame stack holds, so read into a cached heap buffer instead. */
+        /* UNSIGNED_BYTE readback uses 4x less bandwidth and avoids slow GPU RGBA8->float conversion. */
         if (this.pickBuffer == null || this.pickBuffer.capacity() < needed)
         {
-            this.pickBuffer = BufferUtils.createFloatBuffer(needed);
+            this.pickBuffer = BufferUtils.createByteBuffer(needed);
         }
 
-        FloatBuffer floats = this.pickBuffer;
+        ByteBuffer bytes = this.pickBuffer;
 
-        floats.clear();
-        GL11.glReadPixels(x0, y0, w, h, GL11.GL_RGBA, GL11.GL_FLOAT, floats);
+        bytes.clear();
+        GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
+        GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
+        GL11.glReadPixels(x0, y0, w, h, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, bytes);
 
+        this.asyncPending = false;
+        this.resolvePickFromBuffer(bytes, x0, y0, w, h, x, y, radius, handleMax);
+    }
+
+    /**
+     * Queue a non-blocking PBO DMA readback right after rendering the stencil pass so the GPU
+     * never stalls the CPU waiting for the render to finish. Harvested on the next frame via
+     * {@link #finishAsyncPick()}.
+     */
+    public void pickAsync(int x, int y, int radius, int handleMax)
+    {
+        if (this.framebuffer == null)
         {
-            int centerId = 0;
-            int nearestHandle = 0;
-            long nearestDist = Long.MAX_VALUE;
-            long radiusSq = (long) radius * radius;
+            return;
+        }
 
-            for (int py = 0; py < h; py++)
+        /* Harvest any completed previous pass before reusing the PBO. */
+        if (this.asyncPending)
+        {
+            this.finishAsyncPick();
+        }
+
+        Texture texture = this.framebuffer.getMainTexture();
+        int r = Math.max(0, radius);
+        int x0 = Math.max(0, x - r);
+        int y0 = Math.max(0, y - r);
+        int x1 = Math.min(texture.width - 1, x + r);
+        int y1 = Math.min(texture.height - 1, y + r);
+        int w = x1 - x0 + 1;
+        int h = y1 - y0 + 1;
+
+        if (w <= 0 || h <= 0)
+        {
+            this.index = 0;
+            this.asyncPending = false;
+
+            return;
+        }
+
+        int needed = w * h * 4;
+
+        if (this.asyncPbo <= 0)
+        {
+            this.asyncPbo = GL15.glGenBuffers();
+        }
+
+        try
+        {
+            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, this.asyncPbo);
+
+            if (this.asyncPboCapacity < needed)
             {
-                for (int px = 0; px < w; px++)
+                GL15.glBufferData(GL21.GL_PIXEL_PACK_BUFFER, needed, GL15.GL_STREAM_READ);
+                this.asyncPboCapacity = needed;
+            }
+
+            GL11.glPixelStorei(GL11.GL_PACK_ALIGNMENT, 1);
+            GL11.glReadPixels(x0, y0, w, h, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, 0L);
+
+            this.asyncX0 = x0;
+            this.asyncY0 = y0;
+            this.asyncW = w;
+            this.asyncH = h;
+            this.asyncX = x;
+            this.asyncY = y;
+            this.asyncRadius = r;
+            this.asyncHandleMax = handleMax;
+            this.asyncPending = true;
+        }
+        finally
+        {
+            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
+        }
+    }
+
+    /**
+     * Harvest the result of the previous frame's {@link #pickAsync} call (already finished on the GPU).
+     */
+    public boolean finishAsyncPick()
+    {
+        if (!this.asyncPending || this.asyncPbo <= 0)
+        {
+            return false;
+        }
+
+        this.asyncPending = false;
+
+        int needed = this.asyncW * this.asyncH * 4;
+
+        if (this.pickBuffer == null || this.pickBuffer.capacity() < needed)
+        {
+            this.pickBuffer = BufferUtils.createByteBuffer(needed);
+        }
+
+        ByteBuffer bytes = this.pickBuffer;
+        bytes.clear();
+        bytes.limit(needed);
+
+        try
+        {
+            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, this.asyncPbo);
+            GL15.glGetBufferSubData(GL21.GL_PIXEL_PACK_BUFFER, 0L, bytes);
+        }
+        finally
+        {
+            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
+        }
+
+        this.resolvePickFromBuffer(bytes, this.asyncX0, this.asyncY0, this.asyncW, this.asyncH, this.asyncX, this.asyncY, this.asyncRadius, this.asyncHandleMax);
+
+        return true;
+    }
+
+    private void resolvePickFromBuffer(ByteBuffer bytes, int x0, int y0, int w, int h, int x, int y, int radius, int handleMax)
+    {
+        int centerId = 0;
+        int nearestHandle = 0;
+        long nearestDist = Long.MAX_VALUE;
+        long radiusSq = (long) radius * radius;
+
+        for (int py = 0; py < h; py++)
+        {
+            for (int px = 0; px < w; px++)
+            {
+                int base = (py * w + px) * 4;
+
+                if ((bytes.get(base + 3) & 0xFF) < 1)
                 {
-                    int base = (py * w + px) * 4;
+                    continue;
+                }
 
-                    if ((int) (floats.get(base + 3) * 255F) < 1)
+                int id = (bytes.get(base) & 0xFF)
+                    | ((bytes.get(base + 1) & 0xFF) << 8)
+                    | ((bytes.get(base + 2) & 0xFF) << 16);
+                int fx = x0 + px;
+                int fy = y0 + py;
+
+                if (fx == x && fy == y)
+                {
+                    centerId = id;
+                }
+
+                if (radius > 0 && id >= 1 && id <= handleMax)
+                {
+                    long dx = fx - x;
+                    long dy = fy - y;
+                    long dist = dx * dx + dy * dy;
+
+                    if (dist <= radiusSq && dist < nearestDist)
                     {
-                        continue;
-                    }
-
-                    int id = (int) (floats.get(base) * 255F)
-                        | ((int) (floats.get(base + 1) * 255F) << 8)
-                        | ((int) (floats.get(base + 2) * 255F) << 16);
-                    int fx = x0 + px;
-                    int fy = y0 + py;
-
-                    if (fx == x && fy == y)
-                    {
-                        centerId = id;
-                    }
-
-                    if (id >= 1 && id <= handleMax)
-                    {
-                        long dx = fx - x;
-                        long dy = fy - y;
-                        long dist = dx * dx + dy * dy;
-
-                        if (dist <= radiusSq && dist < nearestDist)
-                        {
-                            nearestDist = dist;
-                            nearestHandle = id;
-                        }
+                        nearestDist = dist;
+                        nearestHandle = id;
                     }
                 }
             }
-
-            this.index = nearestHandle != 0 ? nearestHandle : centerId;
         }
+
+        this.index = nearestHandle != 0 ? nearestHandle : centerId;
     }
 
     public void unbind(StencilMap map)
@@ -299,6 +476,7 @@ public class StencilFormFramebuffer
     public void clearPicking()
     {
         this.index = 0;
+        this.asyncPending = false;
         this.indexMap.clear();
     }
 
@@ -306,6 +484,7 @@ public class StencilFormFramebuffer
     public void clearIndex()
     {
         this.index = 0;
+        this.asyncPending = false;
     }
 
     public boolean hasPicked()

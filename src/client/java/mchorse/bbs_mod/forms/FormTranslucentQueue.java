@@ -121,10 +121,29 @@ public class FormTranslucentQueue
      * queue scope (UI previews, first-person arm), during picking (the stencil needs every pixel),
      * and on shaders without the PassMode uniform (vanilla programs — the Iris path).
      */
+    private static ShaderProgram cachedPassModeShader;
+    private static GlUniform cachedPassModeUniform;
+
+    private static GlUniform getPassModeUniform(ShaderProgram shader)
+    {
+        if (shader == null)
+        {
+            return null;
+        }
+
+        if (shader != cachedPassModeShader)
+        {
+            cachedPassModeShader = shader;
+            cachedPassModeUniform = shader.getUniform("PassMode");
+        }
+
+        return cachedPassModeUniform;
+    }
+
     public static boolean needsSplit(ShaderProgram shader, StencilMap stencilMap, Texture texture, float alpha)
     {
         return alpha >= 1F && texture != null && texture.hasTranslucency()
-            && isActive() && stencilMap == null && shader.getUniform("PassMode") != null;
+            && isActive() && stencilMap == null && getPassModeUniform(shader) != null;
     }
 
     /**
@@ -138,12 +157,12 @@ public class FormTranslucentQueue
      */
     public static boolean needsWholeDefer(ShaderProgram shader, StencilMap stencilMap, float alpha)
     {
-        return alpha < 1F && isActive() && stencilMap == null && shader.getUniform("PassMode") != null;
+        return alpha < 1F && isActive() && stencilMap == null && getPassModeUniform(shader) != null;
     }
 
     public static void setPassMode(ShaderProgram shader, int mode)
     {
-        GlUniform uniform = shader.getUniform("PassMode");
+        GlUniform uniform = getPassModeUniform(shader);
 
         if (uniform != null)
         {

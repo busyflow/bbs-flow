@@ -146,7 +146,7 @@ public abstract class UIList <T> extends UIItems<T>
      * group, or a plain click, which narrows the pick to that row. -1 when there is none.
      */
     private int pendingNarrow = -1;
-    private List<Pair<T, Integer>> filtered = new ArrayList<>();
+    protected List<Pair<T, Integer>> filtered = new ArrayList<>();
 
     /* The filtered rows without their indices, for the geometry that only wants items */
     private List<T> filteredItems = new ArrayList<>();

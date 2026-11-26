@@ -359,6 +359,37 @@ public abstract class UIBaseMenu
         this.closeMenu();
     }
 
+    /**
+     * True when a full-screen opaque child (such as the Forms picker or non-immersive Form Editor)
+     * covers the entire world viewport (above the 20px dashboard taskbar), making the 3D Minecraft
+     * world and underlying dashboard panels completely invisible.
+     */
+    public boolean isWorldOccluded()
+    {
+        if (!this.root.isVisible())
+        {
+            return false;
+        }
+
+        java.util.List<mchorse.bbs_mod.ui.forms.UIFormPalette> palettes = this.root.getChildren(mchorse.bbs_mod.ui.forms.UIFormPalette.class);
+
+        for (int i = palettes.size() - 1; i >= 0; i--)
+        {
+            mchorse.bbs_mod.ui.forms.UIFormPalette palette = palettes.get(i);
+
+            if (palette.isFullScreenOpaque()
+                && palette.area.x <= this.viewport.x
+                && palette.area.y <= this.viewport.y
+                && palette.area.ex() >= this.viewport.ex()
+                && palette.area.ey() >= this.viewport.ey() - 24)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public void renderMenu(UIRenderingContext context, int mouseX, int mouseY)
     {
         RenderSystem.depthFunc(GL11.GL_ALWAYS);
@@ -368,7 +399,12 @@ public abstract class UIBaseMenu
         this.context.resetCursor();
         InterfaceBlur.beginFrame();
 
-        this.preRenderMenu(context);
+        boolean worldOccluded = this.isWorldOccluded();
+
+        if (!worldOccluded)
+        {
+            this.preRenderMenu(context);
+        }
 
         this.context.flushLayout();
 
@@ -378,8 +414,17 @@ public abstract class UIBaseMenu
             this.context.pushViewport(this.viewport);
 
             BBSProfiler.begin(BBSProfiler.Timer.UI_TOTAL);
-            this.root.render(this.context);
-            BBSProfiler.end(BBSProfiler.Timer.UI_TOTAL);
+            this.context.batcher.beginBatch();
+
+            try
+            {
+                this.root.render(this.context);
+            }
+            finally
+            {
+                this.context.batcher.endBatch();
+                BBSProfiler.end(BBSProfiler.Timer.UI_TOTAL);
+            }
 
             this.context.popViewport();
             this.context.postRender();

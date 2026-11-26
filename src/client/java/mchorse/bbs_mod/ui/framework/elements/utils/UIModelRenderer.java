@@ -178,6 +178,18 @@ public abstract class UIModelRenderer extends UIElement
         return this.dragging != 0;
     }
 
+    /** True while actively dragging or still coasting under camera smoothing. */
+    public boolean isMoving()
+    {
+        float dx = this.camera.rotation.x - this.targetRotation.x;
+        float dy = this.camera.rotation.y - this.targetRotation.y;
+
+        return this.dragging != 0
+            || dx * dx + dy * dy > 1e-6F
+            || this.pos.distanceSquared(this.targetPos) > 1e-6F
+            || Math.abs(this.distance - this.targetDistance) > 1e-3F;
+    }
+
     public boolean isDraggingPosition()
     {
         return this.dragging == 2;

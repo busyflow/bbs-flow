@@ -734,7 +734,8 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
      */
     public boolean isReplayEditorSelected()
     {
-        return this.selectedMainEditorPanel == this.replayEditor;
+        return this.selectedMainEditorPanel == this.replayEditor
+            || (this.isSeparateCameraTimeline() && this.replayEditor != null && this.replayEditor.isVisible());
     }
 
     public UIElement getSelectedMainEditorPanel()

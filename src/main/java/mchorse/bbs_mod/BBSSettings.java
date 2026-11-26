@@ -230,6 +230,7 @@ public class BBSSettings {
 	public static ValueBoolean editorClipPaletteIcons;
 	public static ValueBoolean editorPreviewIconsAutoHide;
 	public static ValueInt editorPreviewIconsPosition;
+	public static ValueInt editorPreviewIconsSize;
 	public static ValueBoolean previewIconOnionSkin;
 	public static ValueBoolean previewIconMotionPath;
 	public static ValueBoolean previewIconTeleport;
@@ -914,6 +915,8 @@ public class BBSSettings {
 		editorClipPreview = builder.getBoolean("clip_preview", true);
 		editorPreviewIconsAutoHide = builder.getBoolean("preview_icons_auto_hide", false);
 		editorPreviewIconsPosition = builder.getInt("preview_icons_position", 0, 0, 2);
+		editorPreviewIconsSize = builder.getInt("preview_icons_size", 20, 12, 36);
+		editorPreviewIconsSize.slider();
 		previewIconOnionSkin = builder.getBoolean("preview_icon_onion_skin", true);
 		previewIconMotionPath = builder.getBoolean("preview_icon_motion_path", true);
 		previewIconTeleport = builder.getBoolean("preview_icon_teleport", true);

@@ -120,11 +120,20 @@ public class FilmControllerHud
                 hud.backdrop(thumbnail);
                 hud.include(PreviewHud.Anchor.TOP_RIGHT, thumbnail, (c) ->
                 {
-                    c.batcher.clip(thumbnail.x, thumbnail.y, thumbnail.w, thumbnail.h, c);
-                    /* renderPreview, not renderUI: the form's own name card would repeat the
-                     * replay's name standing right beside it. */
-                    FormUtilsClient.renderPreview(form, c, thumbnail.x, thumbnail.y, thumbnail.ex(), thumbnail.ey());
-                    c.batcher.unclip(c);
+                    mchorse.bbs_mod.forms.renderers.FormRenderer<?> r = FormUtilsClient.getRenderer(form);
+
+                    if (r != null && mchorse.bbs_mod.forms.FormThumbnailCache.renderCached(form, r, c, thumbnail.x, thumbnail.y, thumbnail.ex(), thumbnail.ey()))
+                    {
+                        BBSProfiler.count(BBSProfiler.Section.UI_PREVIEW_RENDERS);
+                    }
+                    else
+                    {
+                        c.batcher.clip(thumbnail.x, thumbnail.y, thumbnail.w, thumbnail.h, c);
+                        /* renderPreview, not renderUI: the form's own name card would repeat the
+                         * replay's name standing right beside it. */
+                        FormUtilsClient.renderPreview(form, c, thumbnail.x, thumbnail.y, thumbnail.ex(), thumbnail.ey());
+                        c.batcher.unclip(c);
+                    }
                 });
             }
         }

@@ -95,8 +95,30 @@ public class ModelInstance implements IModelInstance
     private Object channelsEntity;
     private float channelsTransition;
     private long channelsEpoch;
+    private long channelsInvalidateEpoch;
     private int channelsPoseVersion;
+    private int channelsEntityAge;
+    private Float channelsFilmTick;
     private boolean channelsValid;
+
+    private String cachedRestAnchorName;
+    private Vector3f cachedRestAnchorOrigin;
+
+    public Vector3f getCachedRestAnchorOrigin(String anchor)
+    {
+        if (anchor != null && anchor.equals(this.cachedRestAnchorName) && this.cachedRestAnchorOrigin != null)
+        {
+            return new Vector3f(this.cachedRestAnchorOrigin);
+        }
+
+        return null;
+    }
+
+    public void cacheRestAnchorOrigin(String anchor, Vector3f origin)
+    {
+        this.cachedRestAnchorName = anchor;
+        this.cachedRestAnchorOrigin = origin == null ? null : new Vector3f(origin);
+    }
 
     public boolean matchesChannels(Object form, Object entity, float transition, long epoch, int poseVersion)
     {
@@ -108,13 +130,49 @@ public class ModelInstance implements IModelInstance
             && this.channelsPoseVersion == poseVersion;
     }
 
+    /**
+     * Extended channels cache check: matches within the same frame (like the 5-arg overload),
+     * and ALSO matches across frames when a film is paused (non-null constant filmTick, transition == 0,
+     * unchanged entityAge, poseVersion, and RenderFrame invalidateEpoch).
+     */
+    public boolean matchesChannels(Object form, Object entity, float transition, long epoch, long invalidateEpoch, int poseVersion, int entityAge, Float filmTick)
+    {
+        if (!this.channelsValid
+            || this.channelsForm != form
+            || this.channelsEntity != entity
+            || Float.compare(this.channelsTransition, transition) != 0
+            || this.channelsPoseVersion != poseVersion)
+        {
+            return false;
+        }
+
+        if (this.channelsEpoch == epoch)
+        {
+            return true;
+        }
+
+        return filmTick != null
+            && Float.compare(transition, 0F) == 0
+            && this.channelsInvalidateEpoch == invalidateEpoch
+            && this.channelsEntityAge == entityAge
+            && filmTick.equals(this.channelsFilmTick);
+    }
+
     public void stampChannels(Object form, Object entity, float transition, long epoch, int poseVersion)
+    {
+        this.stampChannels(form, entity, transition, epoch, -1L, poseVersion, Integer.MIN_VALUE, null);
+    }
+
+    public void stampChannels(Object form, Object entity, float transition, long epoch, long invalidateEpoch, int poseVersion, int entityAge, Float filmTick)
     {
         this.channelsForm = form;
         this.channelsEntity = entity;
         this.channelsTransition = transition;
         this.channelsEpoch = epoch;
+        this.channelsInvalidateEpoch = invalidateEpoch;
         this.channelsPoseVersion = poseVersion;
+        this.channelsEntityAge = entityAge;
+        this.channelsFilmTick = filmTick;
         this.channelsValid = true;
     }
 
@@ -1088,7 +1146,16 @@ public class ModelInstance implements IModelInstance
                     renderProcessor.setMeshes(meshes, ModelVAORenderer.captureModelView(stack), new Matrix3f(stack.peek().getNormalMatrix()));
                 }
 
-                CubicRenderer.processRenderModel(renderProcessor, null, stack, model);
+                ModelVAORenderer.beginPass(shader);
+
+                try
+                {
+                    CubicRenderer.processRenderModel(renderProcessor, null, stack, model);
+                }
+                finally
+                {
+                    ModelVAORenderer.endPass();
+                }
             }
             else
             {

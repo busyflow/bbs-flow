@@ -2276,6 +2276,174 @@ public class UIReplayList extends UIList<ReplayListEntry>
     }
 
     @Override
+    public void renderList(UIContext context)
+    {
+        List<ReplayListEntry> visible = this.visible();
+        int count = visible.size();
+
+        if (count == 0)
+        {
+            return;
+        }
+
+        int s = this.scroll.scrollItemSize;
+        int scrollY = (int) this.scroll.getScroll();
+        int low = this.area.y;
+        int high = this.area.ey();
+        int x = this.area.x;
+        int w = this.area.w;
+        int mouseX = context.mouseX;
+        int mouseY = context.mouseY;
+        boolean filtering = this.isFiltering();
+
+        int first = Math.max(0, (scrollY - s) / s);
+        int last = Math.min(count, (scrollY + this.area.h) / s + 1);
+
+        if (first >= last)
+        {
+            return;
+        }
+
+        /* Pass 1: all row backgrounds, drop highlights, and tree guides in ONE SOLID draw call. */
+        for (int i = first; i < last; i++)
+        {
+            ReplayListEntry element = filtering ? this.filtered.get(i).a : visible.get(i);
+            int index = filtering ? this.filtered.get(i).b : i;
+            int y = this.area.y + i * s - scrollY;
+
+            if (y + s < low || (!filtering && this.drag.isDragging(element))) continue;
+            if (y >= high) break;
+
+            boolean hover = mouseX >= x && mouseY >= y && mouseX < x + w && mouseY < y + s;
+            boolean selected = this.current.contains(index);
+
+            RowStyle.row(context.batcher, x, y, w, s, this.rowColor(element), this.isHeader(element), hover, selected);
+
+            if (this.drag.isTarget(element))
+            {
+                RowStyle.dropTarget(context.batcher, x, y, w, s);
+            }
+
+            if (element.isFolder())
+            {
+                int iconX = x + this.rowContentX(element) + ARROW_SLOT;
+                this.renderTreeGuides(context, x, y, element.depth, element.lines, element.last, iconX);
+            }
+            else
+            {
+                this.renderTreeGuides(context, x, y, element.depth, element.lines, element.last, x + this.rowContentX(element));
+            }
+        }
+
+        /* Pass 2: all folder arrows and folder icons in ONE TEXTURED draw call. */
+        for (int i = first; i < last; i++)
+        {
+            ReplayListEntry element = filtering ? this.filtered.get(i).a : visible.get(i);
+            int index = filtering ? this.filtered.get(i).b : i;
+            int y = this.area.y + i * s - scrollY;
+
+            if (y + s < low || (!filtering && this.drag.isDragging(element))) continue;
+            if (y >= high) break;
+
+            if (element.isFolder())
+            {
+                boolean hover = mouseX >= x && mouseY >= y && mouseX < x + w && mouseY < y + s;
+                boolean selected = this.current.contains(index);
+                int iconX = x + this.rowContentX(element) + ARROW_SLOT;
+
+                this.renderArrow(context, element, x, y, hover || selected);
+                context.batcher.icon(Icons.FOLDER, RowStyle.iconColor(hover || selected), iconX, y + (s - 16) / 2);
+            }
+        }
+
+        /* Pass 3: all row text labels and folder counts in ONE NATIVE_TEXT draw call. */
+        int fontH = context.batcher.getFont().getHeight();
+        int textOffY = (s - fontH) / 2;
+
+        for (int i = first; i < last; i++)
+        {
+            ReplayListEntry element = filtering ? this.filtered.get(i).a : visible.get(i);
+            int index = filtering ? this.filtered.get(i).b : i;
+            int y = this.area.y + i * s - scrollY;
+
+            if (y + s < low || (!filtering && this.drag.isDragging(element))) continue;
+            if (y >= high) break;
+
+            boolean hover = mouseX >= x && mouseY >= y && mouseX < x + w && mouseY < y + s;
+            boolean selected = this.current.contains(index);
+            int textY = y + textOffY;
+
+            if (element.isFolder())
+            {
+                int textX = x + iconRowTextX(this.rowContentX(element));
+                context.batcher.textShadow(this.elementToString(context, index, element), textX, textY, RowStyle.textColor(hover || selected));
+
+                String countStr = String.valueOf(element.count);
+                context.batcher.textShadow(countStr, this.area.ex() - ROW_PADDING - context.batcher.getFont().getWidth(countStr), textY, Colors.GRAY);
+            }
+            else
+            {
+                int textX = x + this.rowContentX(element);
+                int textColor = element.replay.enabled.get()
+                    ? RowStyle.textColor(hover || selected)
+                    : RowStyle.textColor(hover || selected, Colors.GRAY);
+                context.batcher.textShadow(this.elementToString(context, index, element), textX, textY, textColor);
+            }
+        }
+
+        /* Pass 4: all replay form thumbnails, fp markers, and done icons (same Z-order as before). */
+        boolean showPreview = BBSSettings.listModelPreview.get();
+
+        for (int i = first; i < last; i++)
+        {
+            ReplayListEntry element = filtering ? this.filtered.get(i).a : visible.get(i);
+            int y = this.area.y + i * s - scrollY;
+
+            if (y + s < low || (!filtering && this.drag.isDragging(element))) continue;
+            if (y >= high) break;
+
+            if (!element.isFolder())
+            {
+                Replay replay = element.replay;
+                Form form = replay.form.get();
+
+                if (form != null)
+                {
+                    int formX = this.area.x + this.area.w - 30;
+                    int my = y + s / 2;
+                    int formY = my - PREVIEW / 2;
+
+                    if (showPreview)
+                    {
+                        mchorse.bbs_mod.forms.renderers.FormRenderer<?> renderer = FormUtilsClient.getRenderer(form);
+
+                        if (renderer != null && mchorse.bbs_mod.forms.FormThumbnailCache.renderCachedClipped(form, renderer, context, formX, formY, formX + PREVIEW, formY + PREVIEW, y, y + s))
+                        {
+                            mchorse.bbs_mod.utils.profiler.BBSProfiler.count(mchorse.bbs_mod.utils.profiler.BBSProfiler.Section.UI_PREVIEW_RENDERS);
+                        }
+                        else
+                        {
+                            context.batcher.clip(formX, y, PREVIEW, s, context);
+                            FormUtilsClient.renderUI(form, context, formX, formY, formX + PREVIEW, formY + PREVIEW);
+                            context.batcher.unclip(context);
+                        }
+                    }
+
+                    if (replay.fp.get())
+                    {
+                        context.batcher.outlinedIcon(Icons.ARROW_UP, formX, my, 0.5F, 0.5F);
+                    }
+                }
+            }
+
+            if (this.isDone(element))
+            {
+                context.batcher.icon(Icons.CHECKMARK, Colors.A100 | Colors.POSITIVE, x + w - 2, y + s / 2F, 1F, 0.5F);
+            }
+        }
+    }
+
+    @Override
     protected void renderElementPart(UIContext context, ReplayListEntry element, int i, int x, int y, boolean hover, boolean selected)
     {
         int rowHeight = this.scroll.scrollItemSize;

@@ -48,6 +48,34 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
         return this.emitter;
     }
 
+    /**
+     * Syncs the emitter's world-space position, rotation, and scale from a resolved world matrix
+     * (including any replay anchor, attached limb, anchor transform, and form transform).
+     */
+    public void syncWorldTransform(Matrix4f worldMatrix)
+    {
+        if (this.emitter == null || worldMatrix == null)
+        {
+            return;
+        }
+
+        Vector3f pos = worldMatrix.getTranslation(Vectors.TEMP_3F);
+        this.emitter.lastGlobal.set(pos.x, pos.y, pos.z);
+        this.positioned = true;
+        this.emitter.rotation.set(worldMatrix);
+
+        Vector3f scale = worldMatrix.getScale(Vectors.TEMP_3F);
+        float avgScale = (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3F;
+        String effect = this.form.effect.get();
+
+        if (avgScale <= 1e-4F && ("snowball_trail".equals(effect) || "snowball_impact".equals(effect)))
+        {
+            avgScale = 1F;
+        }
+
+        this.emitter.renderScale = avgScale;
+    }
+
     /** Queues a fresh burst on the next tick while keeping any in-flight particles alive. */
     public void triggerBurst()
     {
@@ -183,7 +211,15 @@ public class ParticleFormRenderer extends FormRenderer<ParticleForm> implements 
             this.positioned = true;
             emitter.rotation.set(matrix);
             Vector3f scale = matrix.getScale(Vectors.TEMP_3F);
-            emitter.renderScale = (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3F;
+            float avgScale = (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3F;
+            String effect = this.form.effect.get();
+
+            if (avgScale <= 1e-4F && ("snowball_trail".equals(effect) || "snowball_impact".equals(effect)))
+            {
+                avgScale = 1F;
+            }
+
+            emitter.renderScale = avgScale;
 
             if (!BBSRendering.isIrisShadowPass())
             {

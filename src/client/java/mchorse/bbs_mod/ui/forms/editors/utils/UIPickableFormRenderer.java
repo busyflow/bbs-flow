@@ -11,11 +11,13 @@ import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.forms.renderers.FormRenderType;
 import mchorse.bbs_mod.forms.renderers.FormRenderingContext;
 import mchorse.bbs_mod.graphics.Draw;
+import mchorse.bbs_mod.graphics.texture.Texture;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.forms.editors.UIFormEditor;
 import mchorse.bbs_mod.ui.framework.UIBaseMenu;
 import mchorse.bbs_mod.ui.framework.UIContext;
+import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
 import mchorse.bbs_mod.ui.framework.elements.utils.StencilMap;
 import mchorse.bbs_mod.ui.utils.Gizmo;
 import mchorse.bbs_mod.ui.utils.GizmoInteraction;
@@ -32,6 +34,7 @@ import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.OverlayTexture;
 import net.minecraft.client.util.math.MatrixStack;
 import org.joml.Matrix4f;
+import org.joml.Vector3d;
 import org.lwjgl.opengl.GL11;
 
 import java.util.function.Supplier;
@@ -52,6 +55,35 @@ public class UIPickableFormRenderer extends UIFormRenderer implements GizmoViewp
 
     private IEntity target;
     private Supplier<Boolean> renderForm;
+
+    /* Stencil pass cache: skip 3D scene re-render + readback when camera/pose/gizmo haven't moved. */
+    private static final int CACHE_HEARTBEAT = 120;
+    private final Matrix4f lastStencilView = new Matrix4f();
+    private final Matrix4f lastStencilProj = new Matrix4f();
+    private final Vector3d lastStencilEye = new Vector3d();
+    private final Matrix4f lastStencilOrigin = new Matrix4f();
+    private boolean lastStencilHasOrigin;
+    private Form lastStencilForm;
+    private int lastStencilPoseVersion;
+    private int lastStencilEntityAge;
+    private boolean lastStencilHideGizmo;
+    private Gizmo.HandleMask lastStencilGizmoMask;
+    private TransformSpace lastStencilGizmoSpace;
+    private int lastStencilMouseX = Integer.MIN_VALUE;
+    private int lastStencilMouseY;
+    private boolean stencilSceneValid;
+    private int framesSinceStencil;
+
+    /* Outline mask cache: skip full-screen 3D form re-render while view & pose are unchanged. */
+    private final Matrix4f lastOutlineView = new Matrix4f();
+    private final Matrix4f lastOutlineProj = new Matrix4f();
+    private final Vector3d lastOutlineEye = new Vector3d();
+    private Form lastOutlineForm;
+    private int lastOutlinePoseVersion;
+    private int lastOutlineEntityAge;
+    private int lastOutlineW;
+    private int lastOutlineH;
+    private int framesSinceOutline;
 
     public UIPickableFormRenderer(UIFormEditor formEditor)
     {
@@ -92,7 +124,16 @@ public class UIPickableFormRenderer extends UIFormRenderer implements GizmoViewp
     private void ensureFramebuffer()
     {
         this.stencil.setup(Link.bbs("stencil_form"));
-        this.stencil.resizeGUI(this.area.w, this.area.h);
+
+        Texture mainTexture = this.stencil.getFramebuffer().getMainTexture();
+        int w = Math.max(2, Math.min(960, this.area.w));
+        int h = Math.max(2, Math.min(540, this.area.h));
+
+        if (mainTexture.width != w || mainTexture.height != h)
+        {
+            this.stencil.resize(w, h);
+            this.stencilSceneValid = false;
+        }
     }
 
     @Override
@@ -208,52 +249,151 @@ public class UIPickableFormRenderer extends UIFormRenderer implements GizmoViewp
         this.renderOutlineMask(formContext);
         this.renderAxes(context);
 
-        if (this.area.isInside(context))
+        if (this.area.isInside(context) && !this.isMoving() && Gizmo.INSTANCE.getTrackedGesture() == null)
         {
-            GlStateManager._disableScissorTest();
+            this.ensureFramebuffer();
 
-            this.stencilMap.setup();
-            this.stencil.apply();
+            Matrix4f originMatrix = this.formEditor.getOrigin(context.getTransition());
+            boolean hideGizmo = UIBaseMenu.isHideGizmoHeld();
+            Gizmo.HandleMask gizmoMask = this.formEditor.getGizmoHandleMask();
+            TransformSpace gizmoSpace = this.formEditor.getGizmoSpace();
+            boolean sceneChanged = this.needsStencilRedraw(originMatrix, hideGizmo, gizmoMask, gizmoSpace);
+            boolean mouseMoved = context.mouseX != this.lastStencilMouseX || context.mouseY != this.lastStencilMouseY;
 
-            FormUtilsClient.render(this.form, formContext.stencilMap(this.stencilMap));
-
-            Matrix4f matrix = this.formEditor.getOrigin(context.getTransition());
-            MatrixStack stack = context.render.batcher.getContext().getMatrices();
-
-            stack.push();
-
-            if (matrix != null)
+            if (!sceneChanged)
             {
-                MatrixStackUtils.multiply(stack, MatrixStackUtils.stripScale(matrix));
+                this.stencil.finishAsyncPick();
+
+                if (mouseMoved && this.stencilSceneValid && this.stencil.getFramebuffer() != null)
+                {
+                    this.lastStencilMouseX = context.mouseX;
+                    this.lastStencilMouseY = context.mouseY;
+
+                    Texture mainTexture = this.stencil.getFramebuffer().getMainTexture();
+                    int x = (int) ((context.mouseX - this.area.x) / (float) this.area.w * mainTexture.width);
+                    int y = (int) ((1F - (context.mouseY - this.area.y) / (float) this.area.h) * mainTexture.height);
+                    int radius = Math.round(BBSSettings.gizmoHoverTolerance.get() * mainTexture.width / (float) this.area.w);
+
+                    this.stencil.repickFromBuffer(x, y, radius, Gizmo.STENCIL_MAX);
+                }
             }
-
-            /* Reorient the pick stencil into the active space to match the visual
-             * (below), so hovering a ring lands where it's drawn. */
-            Gizmo.INSTANCE.reorientForSpace(stack, this.formEditor.getGizmoSpace(), this.camera.view, this.getSceneAxes());
-
-            /* Skip the gizmo's pick stencil while the hide-gizmo key is held, so its handles can't be
-             * clicked when hidden. Form-part picking (the stencil rendered above) is left intact, and
-             * the F8 axes toggle is untouched here on purpose. */
-            if (!UIBaseMenu.isHideGizmoHeld())
+            else
             {
-                Gizmo.INSTANCE.renderStencil(context.batcher.getContext().getMatrices(), this.formEditor.getGizmoHandleMask());
+                this.lastStencilMouseX = context.mouseX;
+                this.lastStencilMouseY = context.mouseY;
+
+                BBSProfiler.count(BBSProfiler.Section.STENCIL_PASS);
+                BBSProfiler.begin(BBSProfiler.Timer.STENCIL_PASS);
+
+                GlStateManager._disableScissorTest();
+
+                this.stencilMap.setup();
+                this.stencil.apply();
+
+                FormUtilsClient.render(this.form, formContext.stencilMap(this.stencilMap));
+                formContext.stencilMap(null);
+
+                MatrixStack stack = context.render.batcher.getContext().getMatrices();
+
+                stack.push();
+
+                if (originMatrix != null)
+                {
+                    MatrixStackUtils.multiply(stack, MatrixStackUtils.stripScale(originMatrix));
+                }
+
+                /* Reorient the pick stencil into the active space to match the visual
+                 * (below), so hovering a ring lands where it's drawn. */
+                Gizmo.INSTANCE.reorientForSpace(stack, gizmoSpace, this.camera.view, this.getSceneAxes());
+
+                /* Skip the gizmo's pick stencil while the hide-gizmo key is held, so its handles can't be
+                 * clicked when hidden. Form-part picking (the stencil rendered above) is left intact, and
+                 * the F8 axes toggle is untouched here on purpose. */
+                if (!hideGizmo)
+                {
+                    Gizmo.INSTANCE.renderStencil(context.batcher.getContext().getMatrices(), gizmoMask);
+                }
+
+                stack.pop();
+
+                Texture mainTexture = this.stencil.getFramebuffer().getMainTexture();
+                int x = (int) ((context.mouseX - this.area.x) / (float) this.area.w * mainTexture.width);
+                int y = (int) ((1F - (context.mouseY - this.area.y) / (float) this.area.h) * mainTexture.height);
+                int radius = Math.round(BBSSettings.gizmoHoverTolerance.get() * mainTexture.width / (float) this.area.w);
+
+                this.stencil.pickAsync(x, y, radius, Gizmo.STENCIL_MAX);
+                this.stencil.unbind(this.stencilMap);
+                this.stencilSceneValid = true;
+
+                MinecraftClient.getInstance().getFramebuffer().beginWrite(true);
+
+                GlStateManager._enableScissorTest();
+
+                BBSProfiler.end(BBSProfiler.Timer.STENCIL_PASS);
             }
-
-            stack.pop();
-
-            this.stencil.pickGUI(context, this.area, BBSSettings.gizmoHoverTolerance.get(), Gizmo.STENCIL_MAX);
-            this.stencil.unbind(this.stencilMap);
-
-            MinecraftClient.getInstance().getFramebuffer().beginWrite(true);
-
-            GlStateManager._enableScissorTest();
+        }
+        else if (this.isMoving() || Gizmo.INSTANCE.getTrackedGesture() != null)
+        {
+            this.stencil.clearIndex();
+            this.stencilSceneValid = false;
+            this.lastStencilMouseX = Integer.MIN_VALUE;
         }
         else
         {
             this.stencil.clearPicking();
+            this.stencilSceneValid = false;
+            this.lastStencilMouseX = Integer.MIN_VALUE;
         }
 
         this.gizmo.update(context);
+    }
+
+    private boolean needsStencilRedraw(Matrix4f originMatrix, boolean hideGizmo, Gizmo.HandleMask gizmoMask, TransformSpace gizmoSpace)
+    {
+        this.framesSinceStencil += 1;
+
+        int poseVersion = this.form.getPoseVersion();
+        int entityAge = this.getTargetEntity().getAge();
+        boolean hasOrigin = originMatrix != null;
+
+        boolean unchanged = this.stencilSceneValid
+            && this.framesSinceStencil < CACHE_HEARTBEAT
+            && this.form == this.lastStencilForm
+            && poseVersion == this.lastStencilPoseVersion
+            && entityAge == this.lastStencilEntityAge
+            && hideGizmo == this.lastStencilHideGizmo
+            && java.util.Objects.equals(gizmoMask, this.lastStencilGizmoMask)
+            && gizmoSpace == this.lastStencilGizmoSpace
+            && hasOrigin == this.lastStencilHasOrigin
+            && (!hasOrigin || originMatrix.equals(this.lastStencilOrigin))
+            && this.camera.view.equals(this.lastStencilView)
+            && this.camera.projection.equals(this.lastStencilProj)
+            && this.camera.position.equals(this.lastStencilEye);
+
+        if (unchanged)
+        {
+            return false;
+        }
+
+        this.framesSinceStencil = 0;
+        this.lastStencilForm = this.form;
+        this.lastStencilPoseVersion = poseVersion;
+        this.lastStencilEntityAge = entityAge;
+        this.lastStencilHideGizmo = hideGizmo;
+        this.lastStencilGizmoMask = gizmoMask;
+        this.lastStencilGizmoSpace = gizmoSpace;
+        this.lastStencilHasOrigin = hasOrigin;
+
+        if (hasOrigin)
+        {
+            this.lastStencilOrigin.set(originMatrix);
+        }
+
+        this.lastStencilView.set(this.camera.view);
+        this.lastStencilProj.set(this.camera.projection);
+        this.lastStencilEye.set(this.camera.position);
+
+        return true;
     }
 
     /**
@@ -270,11 +410,30 @@ public class UIPickableFormRenderer extends UIFormRenderer implements GizmoViewp
             return;
         }
 
-        BBSProfiler.begin(BBSProfiler.Timer.OUTLINE);
-
         float scale = BBSModClient.getGUIScale();
         int w = Math.max(1, Math.round(this.area.w * scale));
         int h = Math.max(1, Math.round(this.area.h * scale));
+        int poseVersion = this.form.getPoseVersion();
+        int entityAge = this.getTargetEntity().getAge();
+
+        this.framesSinceOutline += 1;
+
+        if (this.outline.isDrawn()
+            && this.framesSinceOutline < CACHE_HEARTBEAT
+            && this.form == this.lastOutlineForm
+            && poseVersion == this.lastOutlinePoseVersion
+            && entityAge == this.lastOutlineEntityAge
+            && w == this.lastOutlineW
+            && h == this.lastOutlineH
+            && this.camera.view.equals(this.lastOutlineView)
+            && this.camera.projection.equals(this.lastOutlineProj)
+            && this.camera.position.equals(this.lastOutlineEye))
+        {
+            return;
+        }
+
+        BBSProfiler.begin(BBSProfiler.Timer.OUTLINE);
+
         boolean scissor = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
 
         /* The interface's scissor is in window pixels, not the mask's */
@@ -291,6 +450,16 @@ public class UIPickableFormRenderer extends UIFormRenderer implements GizmoViewp
                 this.outline.end();
                 formContext.stencilMap(null);
             }
+
+            this.framesSinceOutline = 0;
+            this.lastOutlineForm = this.form;
+            this.lastOutlinePoseVersion = poseVersion;
+            this.lastOutlineEntityAge = entityAge;
+            this.lastOutlineW = w;
+            this.lastOutlineH = h;
+            this.lastOutlineView.set(this.camera.view);
+            this.lastOutlineProj.set(this.camera.projection);
+            this.lastOutlineEye.set(this.camera.position);
         }
 
         if (scissor)

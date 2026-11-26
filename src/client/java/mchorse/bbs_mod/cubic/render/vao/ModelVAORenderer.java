@@ -22,11 +22,113 @@ public class ModelVAORenderer
     private static final Matrix4f TEMP_MODEL_VIEW = new Matrix4f();
 
     private static ShaderProgram passShader;
+    private static GlUniform passNormalUniform;
     private static boolean passShaderBound;
     private static int passSavedVAO;
     private static int passSavedEBO;
+    private static int worldBatchDepth;
+    private static int worldSavedVAO;
+    private static int worldSavedEBO;
+    private static ShaderProgram worldBoundShader;
+    private static boolean internalProgramChange;
     private static int passTex0 = -1;
     private static int passTex1 = -1;
+
+    /**
+     * Called from GlStateManagerMixin whenever any code switches GL shader programs.
+     * Drops the world-batch persistent shader binding if external rendering (vanilla mobs,
+     * items, shadows, particles) took over the active program.
+     */
+    public static void onProgramChange(int program)
+    {
+        if (!internalProgramChange && worldBoundShader != null)
+        {
+            worldBoundShader = null;
+            passShaderBound = false;
+        }
+    }
+
+    private static void unbindWorldShader()
+    {
+        ShaderProgram shader = worldBoundShader;
+
+        if (shader != null)
+        {
+            worldBoundShader = null;
+            internalProgramChange = true;
+
+            try
+            {
+                shader.unbind();
+            }
+            finally
+            {
+                internalProgramChange = false;
+            }
+        }
+    }
+
+    /**
+     * Bracket a batch of model draws (such as a film's world actor loop) so GL_VERTEX_ARRAY_BINDING
+     * and GL_ELEMENT_ARRAY_BUFFER_BINDING are queried and restored once instead of per actor,
+     * and consecutive VAO actors sharing BBSShaders.getModel() keep the shader program bound.
+     */
+    public static void beginWorldBatch()
+    {
+        if (worldBatchDepth == 0)
+        {
+            worldSavedVAO = GL30.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
+            worldSavedEBO = GL30.glGetInteger(GL30.GL_ELEMENT_ARRAY_BUFFER_BINDING);
+            worldBoundShader = null;
+        }
+
+        worldBatchDepth += 1;
+    }
+
+    public static void endWorldBatch()
+    {
+        if (worldBatchDepth <= 0)
+        {
+            return;
+        }
+
+        worldBatchDepth -= 1;
+
+        if (worldBatchDepth == 0)
+        {
+            unbindWorldShader();
+            GL30.glBindVertexArray(worldSavedVAO);
+            GL30.glBindBuffer(GL30.GL_ELEMENT_ARRAY_BUFFER, worldSavedEBO);
+            net.minecraft.client.render.BufferRenderer.resetCurrentVertexBuffer();
+        }
+    }
+
+    private static ShaderProgram cachedNormalShader;
+    private static GlUniform cachedNormalUniform;
+
+    private static ShaderProgram lastGlobalShader;
+    private static long lastGlobalFrame = Long.MIN_VALUE;
+    private static final Matrix4f lastGlobalProjection = new Matrix4f();
+    private static final Matrix3f lastGlobalViewRot = new Matrix3f();
+    private static float lastGlobalFogStart = Float.NaN;
+    private static float lastGlobalFogEnd = Float.NaN;
+    private static boolean lastGlobalUnlimited;
+
+    private static GlUniform getNormalUniform(ShaderProgram shader)
+    {
+        if (shader == passShader)
+        {
+            return passNormalUniform;
+        }
+
+        if (shader != cachedNormalShader)
+        {
+            cachedNormalShader = shader;
+            cachedNormalUniform = shader == null ? null : shader.getUniform("NormalMat");
+        }
+
+        return cachedNormalUniform;
+    }
 
     public static void beginPass(ShaderProgram shader)
     {
@@ -36,13 +138,67 @@ public class ModelVAORenderer
         }
 
         passShader = shader;
+        passNormalUniform = getNormalUniform(shader);
         passShaderBound = false;
-        passSavedVAO = GL30.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
-        passSavedEBO = GL30.glGetInteger(GL30.GL_ELEMENT_ARRAY_BUFFER_BINDING);
+        if (worldBatchDepth == 0)
+        {
+            passSavedVAO = GL30.glGetInteger(GL30.GL_VERTEX_ARRAY_BINDING);
+            passSavedEBO = GL30.glGetInteger(GL30.GL_ELEMENT_ARRAY_BUFFER_BINDING);
+        }
         passTex0 = RenderSystem.getShaderTexture(0);
         passTex1 = RenderSystem.getShaderTexture(1);
+        int tex2 = RenderSystem.getShaderTexture(2);
 
-        setupGlobalUniforms(shader);
+        long frame = mchorse.bbs_mod.forms.renderers.utils.RenderFrame.getFrame();
+        boolean unlimited = mchorse.bbs_mod.BBSSettings.unlimitedReplayRenderDistance.get();
+        float fogStart = unlimited ? 1_000_000F : RenderSystem.getShaderFogStart();
+        float fogEnd = unlimited ? 1_001_000F : RenderSystem.getShaderFogEnd();
+        Matrix4f proj = RenderSystem.getProjectionMatrix();
+        Matrix3f viewRot = RenderSystem.getInverseViewRotationMatrix();
+
+        boolean reuseGlobals = !BBSRendering.isIrisShadersEnabled()
+            && shader == lastGlobalShader
+            && frame == lastGlobalFrame
+            && unlimited == lastGlobalUnlimited
+            && fogStart == lastGlobalFogStart
+            && fogEnd == lastGlobalFogEnd
+            && proj.equals(lastGlobalProjection)
+            && viewRot.equals(lastGlobalViewRot);
+
+        if (worldBoundShader != null && (worldBoundShader != shader || !reuseGlobals))
+        {
+            unbindWorldShader();
+        }
+
+        if (worldBoundShader == shader && reuseGlobals)
+        {
+            /* Keep the model shader bound across consecutive actors in the world batch:
+             * only reconcile texture units 0/1/2 (GlStateManager skips redundant GL binds). */
+            passShaderBound = true;
+            RenderSystem.activeTexture(GL13.GL_TEXTURE2);
+            RenderSystem.bindTexture(tex2);
+            RenderSystem.activeTexture(GL13.GL_TEXTURE1);
+            RenderSystem.bindTexture(passTex1);
+            RenderSystem.activeTexture(GL13.GL_TEXTURE0);
+            RenderSystem.bindTexture(passTex0);
+        }
+        else if (reuseGlobals)
+        {
+            shader.addSampler("Sampler0", passTex0);
+            shader.addSampler("Sampler1", passTex1);
+            shader.addSampler("Sampler2", tex2);
+        }
+        else
+        {
+            setupGlobalUniforms(shader);
+            lastGlobalShader = shader;
+            lastGlobalFrame = frame;
+            lastGlobalUnlimited = unlimited;
+            lastGlobalFogStart = fogStart;
+            lastGlobalFogEnd = fogEnd;
+            lastGlobalProjection.set(proj);
+            lastGlobalViewRot.set(viewRot);
+        }
     }
 
     public static void endPass()
@@ -54,13 +210,40 @@ public class ModelVAORenderer
 
         if (passShaderBound)
         {
-            passShader.unbind();
+            if (worldBatchDepth > 0 && !BBSRendering.isIrisShadersEnabled())
+            {
+                worldBoundShader = passShader;
+            }
+            else
+            {
+                internalProgramChange = true;
+
+                try
+                {
+                    passShader.unbind();
+                }
+                finally
+                {
+                    internalProgramChange = false;
+                }
+            }
+
             passShaderBound = false;
         }
 
-        GL30.glBindVertexArray(passSavedVAO);
-        GL30.glBindBuffer(GL30.GL_ELEMENT_ARRAY_BUFFER, passSavedEBO);
+        if (worldBatchDepth == 0)
+        {
+            GL30.glBindVertexArray(passSavedVAO);
+            GL30.glBindBuffer(GL30.GL_ELEMENT_ARRAY_BUFFER, passSavedEBO);
+        }
+        else
+        {
+            /* Invalidate vanilla BufferRenderer's cached VertexBuffer too — otherwise a MobForm/item
+             * drawn next inside the world batch skips glBindVertexArray and crashes in glDrawElements. */
+            net.minecraft.client.render.BufferRenderer.resetCurrentVertexBuffer();
+        }
         passShader = null;
+        passNormalUniform = null;
     }
 
     public static boolean isInPass()
@@ -75,7 +258,7 @@ public class ModelVAORenderer
 
     public static boolean isShaderBound(ShaderProgram shader)
     {
-        return passShaderBound && passShader == shader;
+        return (passShaderBound && passShader == shader) || (worldBoundShader != null && worldBoundShader == shader);
     }
 
     /**
@@ -110,7 +293,17 @@ public class ModelVAORenderer
                     passTex0 = tex0;
                     passTex1 = tex1;
                     setPerDrawUniforms(shader, modelView, normalMat);
-                    shader.bind();
+                    internalProgramChange = true;
+
+                    try
+                    {
+                        shader.bind();
+                    }
+                    finally
+                    {
+                        internalProgramChange = false;
+                    }
+
                     passShaderBound = true;
                 }
                 else
@@ -180,7 +373,7 @@ public class ModelVAORenderer
             shader.modelViewMat.set(modelView);
         }
 
-        GlUniform normalUniform = shader.getUniform("NormalMat");
+        GlUniform normalUniform = getNormalUniform(shader);
 
         if (normalUniform != null)
         {
@@ -196,7 +389,7 @@ public class ModelVAORenderer
             shader.modelViewMat.upload();
         }
 
-        GlUniform normalUniform = shader.getUniform("NormalMat");
+        GlUniform normalUniform = getNormalUniform(shader);
 
         if (normalUniform != null)
         {

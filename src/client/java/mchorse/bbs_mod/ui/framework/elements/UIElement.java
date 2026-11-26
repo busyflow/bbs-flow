@@ -1584,8 +1584,32 @@ public class UIElement implements IUIElement, IUndoElement
             context.resetTooltip();
         }
 
-        for (IUIElement element : this.children)
+        /* If a later child is an opaque full-container UIFormPalette (Forms picker / Form Editor),
+         * skip rendering all occluded siblings behind it (e.g. dual timelines & replay list). */
+        int startIndex = 0;
+        int childCount = this.children.size();
+
+        if (childCount > 1)
         {
+            for (int i = childCount - 1; i >= 1; i--)
+            {
+                if (this.children.get(i) instanceof mchorse.bbs_mod.ui.forms.UIFormPalette palette
+                    && palette.isFullScreenOpaque()
+                    && palette.area.x <= this.area.x
+                    && palette.area.y <= this.area.y
+                    && palette.area.ex() >= this.area.ex()
+                    && palette.area.ey() >= this.area.ey())
+                {
+                    startIndex = i;
+                    break;
+                }
+            }
+        }
+
+        for (int i = startIndex; i < childCount; i++)
+        {
+            IUIElement element = this.children.get(i);
+
             if (element.isVisible() && element.canBeRendered(context.getViewport()))
             {
                 element.render(context);

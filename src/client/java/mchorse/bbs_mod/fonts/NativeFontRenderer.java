@@ -60,9 +60,19 @@ public class NativeFontRenderer
     private static final Map<String, Font> BASE_FONTS = new HashMap<>();
     private static final Map<FaceKey, Face> FACES = new LinkedHashMap<>(16, 0.75F, true);
 
+    private static NativeFontRenderer cachedInstance;
+    private static String cachedFontPath;
+    private static int cachedLogicalSize = -1;
+    private static float cachedPhysicalScale = Float.NaN;
+
+    private static ShaderProgram cachedTextShader;
+    private static GlUniform cachedGammaUniform;
+
     private final String fontKey;
     private final int physicalPx;
     private final float physicalScale;
+    private Face plainFace;
+    private final Map<String, Integer> widthCache = new HashMap<>(256);
 
     private NativeFontRenderer(String fontKey, int physicalPx, float physicalScale)
     {
@@ -78,6 +88,16 @@ public class NativeFontRenderer
             return null;
         }
 
+        float safeScale = Math.max(0.5F, physicalScale);
+
+        if (cachedInstance != null
+            && logicalSize == cachedLogicalSize
+            && Float.compare(safeScale, cachedPhysicalScale) == 0
+            && fontPath.equals(cachedFontPath))
+        {
+            return cachedInstance;
+        }
+
         Font base = getBaseFont(fontPath);
 
         if (base == null)
@@ -85,10 +105,15 @@ public class NativeFontRenderer
             return null;
         }
 
-        float safeScale = Math.max(0.5F, physicalScale);
         int physicalPx = Math.max(8, Math.min(96, Math.round(logicalSize * safeScale)));
+        NativeFontRenderer instance = new NativeFontRenderer(fontPath, physicalPx, safeScale);
 
-        return new NativeFontRenderer(fontPath, physicalPx, safeScale);
+        cachedInstance = instance;
+        cachedFontPath = fontPath;
+        cachedLogicalSize = logicalSize;
+        cachedPhysicalScale = safeScale;
+
+        return instance;
     }
 
     public static void clearCache()
@@ -100,6 +125,12 @@ public class NativeFontRenderer
 
         FACES.clear();
         BASE_FONTS.clear();
+        cachedInstance = null;
+        cachedFontPath = null;
+        cachedLogicalSize = -1;
+        cachedPhysicalScale = Float.NaN;
+        cachedTextShader = null;
+        cachedGammaUniform = null;
     }
 
     private static Font getBaseFont(String fontPath)
@@ -143,11 +174,21 @@ public class NativeFontRenderer
 
     private Face getFace(int style)
     {
+        if (style == Font.PLAIN && this.plainFace != null)
+        {
+            return this.plainFace;
+        }
+
         FaceKey key = new FaceKey(this.fontKey, this.physicalPx, style);
         Face face = FACES.get(key);
 
         if (face != null)
         {
+            if (style == Font.PLAIN)
+            {
+                this.plainFace = face;
+            }
+
             return face;
         }
 
@@ -162,6 +203,11 @@ public class NativeFontRenderer
         face = new Face(derived);
         FACES.put(key, face);
 
+        if (style == Font.PLAIN)
+        {
+            this.plainFace = face;
+        }
+
         while (FACES.size() > MAX_CACHED_FACES)
         {
             Iterator<Map.Entry<FaceKey, Face>> it = FACES.entrySet().iterator();
@@ -169,7 +215,12 @@ public class NativeFontRenderer
             if (it.hasNext())
             {
                 Map.Entry<FaceKey, Face> oldest = it.next();
-                oldest.getValue().delete();
+                Face removed = oldest.getValue();
+                if (removed == this.plainFace)
+                {
+                    this.plainFace = null;
+                }
+                removed.delete();
                 it.remove();
             }
         }
@@ -208,6 +259,13 @@ public class NativeFontRenderer
             return 0;
         }
 
+        Integer cached = this.widthCache.get(text);
+
+        if (cached != null)
+        {
+            return cached;
+        }
+
         int style = Font.PLAIN;
         Face face = this.getFace(style);
 
@@ -242,7 +300,16 @@ public class NativeFontRenderer
             }
         }
 
-        return Math.round(px / this.physicalScale);
+        int width = Math.round(px / this.physicalScale);
+
+        if (this.widthCache.size() > 512)
+        {
+            this.widthCache.clear();
+        }
+
+        this.widthCache.put(text, width);
+
+        return width;
     }
 
     public List<String> wrap(String text, int maxWidth)
@@ -369,6 +436,164 @@ public class NativeFontRenderer
         return fmt.toString();
     }
 
+    @FunctionalInterface
+    public interface BatchSink
+    {
+        BufferBuilder acquire(int textureId, ShaderProgram shader, float contrastGamma);
+    }
+
+    public static void applyContrastGamma(ShaderProgram shader, float gamma)
+    {
+        if (shader == null)
+        {
+            return;
+        }
+
+        if (shader != cachedTextShader)
+        {
+            cachedTextShader = shader;
+            cachedGammaUniform = shader.getUniform("ContrastGamma");
+        }
+
+        if (cachedGammaUniform != null)
+        {
+            cachedGammaUniform.set(gamma);
+        }
+    }
+
+    public void drawBatched(MatrixStack matrices, String text, float x, float y, int color, boolean shadow, BatchSink sink)
+    {
+        if (text == null || text.isEmpty() || sink == null)
+        {
+            return;
+        }
+
+        int alpha = (color >>> 24) & 0xFF;
+
+        if (alpha == 0)
+        {
+            alpha = 0xFF;
+            color = (alpha << 24) | (color & 0x00FFFFFF);
+        }
+
+        if (shadow)
+        {
+            int sr = ((color >> 16) & 0xFF) / 4;
+            int sg = ((color >> 8) & 0xFF) / 4;
+            int sb = (color & 0xFF) / 4;
+            int shadowColor = (alpha << 24) | (sr << 16) | (sg << 8) | sb;
+            float offset = 1F / this.physicalScale;
+
+            this.drawPassBatched(matrices, text, x + offset, y + offset, shadowColor, true, sink);
+        }
+
+        this.drawPassBatched(matrices, text, x, y, color, false, sink);
+    }
+
+    private void drawPassBatched(MatrixStack matrices, String text, float x, float y, int baseColor, boolean isShadow, BatchSink sink)
+    {
+        Face defaultFace = this.getFace(Font.PLAIN);
+
+        if (defaultFace == null)
+        {
+            return;
+        }
+
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        float invScale = 1F / this.physicalScale;
+        float penPx = Math.round(x * this.physicalScale);
+        float topPx = Math.round(y * this.physicalScale);
+        float baselinePx = topPx + defaultFace.capHeight;
+
+        int style = Font.PLAIN;
+        int currentColor = baseColor;
+        int baseAlpha = (baseColor >>> 24) & 0xFF;
+
+        Face currentFace = defaultFace;
+        ShaderProgram shader = BBSShaders.getNativeTextProgram();
+        float gamma = (isShadow || BBSSettings.lightSurfaces()) ? 1.0F : 0.84F;
+
+        int len = text.length();
+
+        for (int i = 0; i < len; i++)
+        {
+            char c = text.charAt(i);
+
+            if (c == '\u00A7' && i + 1 < len)
+            {
+                char code = Character.toLowerCase(text.charAt(i + 1));
+                i++;
+
+                int colorIdx = "0123456789abcdef".indexOf(code);
+
+                if (colorIdx >= 0)
+                {
+                    int rgb = MC_COLORS[colorIdx];
+
+                    if (isShadow)
+                    {
+                        int sr = ((rgb >> 16) & 0xFF) / 4;
+                        int sg = ((rgb >> 8) & 0xFF) / 4;
+                        int sb = (rgb & 0xFF) / 4;
+                        rgb = (sr << 16) | (sg << 8) | sb;
+                    }
+
+                    currentColor = (baseAlpha << 24) | rgb;
+                    style = Font.PLAIN;
+                    currentFace = this.getFace(style);
+                }
+                else if (code == 'l')
+                {
+                    style |= Font.BOLD;
+                    currentFace = this.getFace(style);
+                }
+                else if (code == 'o')
+                {
+                    style |= Font.ITALIC;
+                    currentFace = this.getFace(style);
+                }
+                else if (code == 'r')
+                {
+                    currentColor = baseColor;
+                    style = Font.PLAIN;
+                    currentFace = defaultFace;
+                }
+
+                continue;
+            }
+
+            if (currentFace == null)
+            {
+                continue;
+            }
+
+            Glyph glyph = currentFace.getOrRasterize(c);
+
+            if (glyph == null)
+            {
+                continue;
+            }
+
+            if (glyph.width > 0 && glyph.height > 0)
+            {
+                int texId = currentFace.getTextureId();
+                BufferBuilder builder = sink.acquire(texId, shader, gamma);
+
+                float gx1 = (penPx + glyph.offsetX) * invScale;
+                float gy1 = (baselinePx + glyph.offsetY) * invScale;
+                float gx2 = (penPx + glyph.offsetX + glyph.width) * invScale;
+                float gy2 = (baselinePx + glyph.offsetY + glyph.height) * invScale;
+
+                builder.vertex(matrix, gx1, gy2, 0F).texture(glyph.u1, glyph.v2).color(currentColor).next();
+                builder.vertex(matrix, gx2, gy2, 0F).texture(glyph.u2, glyph.v2).color(currentColor).next();
+                builder.vertex(matrix, gx2, gy1, 0F).texture(glyph.u2, glyph.v1).color(currentColor).next();
+                builder.vertex(matrix, gx1, gy1, 0F).texture(glyph.u1, glyph.v1).color(currentColor).next();
+            }
+
+            penPx += glyph.advance;
+        }
+    }
+
     public void draw(MatrixStack matrices, String text, float x, float y, int color, boolean shadow)
     {
         if (text == null || text.isEmpty())
@@ -429,13 +654,17 @@ public class NativeFontRenderer
 
         if (shader != null)
         {
-            GlUniform gamma = shader.getUniform("ContrastGamma");
+            if (shader != cachedTextShader)
+            {
+                cachedTextShader = shader;
+                cachedGammaUniform = shader.getUniform("ContrastGamma");
+            }
 
-            if (gamma != null)
+            if (cachedGammaUniform != null)
             {
                 /* Slight stem darkening on dark backgrounds keeps small Ctrl+- text razor sharp */
                 float g = (isShadow || BBSSettings.lightSurfaces()) ? 1.0F : 0.84F;
-                gamma.set(g);
+                cachedGammaUniform.set(g);
             }
 
             RenderSystem.setShader(() -> shader);
@@ -584,6 +813,8 @@ public class NativeFontRenderer
         final FontMetrics metrics;
 
         private final Map<Character, Glyph> glyphs = new HashMap<>();
+        private final Glyph[] asciiGlyphs = new Glyph[128];
+        private final int[] asciiAdvances = new int[128];
         private int textureId = -1;
         private int cursorX = 1;
         private int cursorY = 1;
@@ -607,6 +838,11 @@ public class NativeFontRenderer
             this.ascent = this.metrics.getAscent();
             this.descent = this.metrics.getDescent();
             this.capHeight = measureCapHeight();
+
+            for (int i = 0; i < 128; i++)
+            {
+                this.asciiAdvances[i] = Math.max(0, this.metrics.charWidth((char) i));
+            }
         }
 
         private int measureCapHeight()
@@ -646,6 +882,11 @@ public class NativeFontRenderer
 
         int getAdvance(char c)
         {
+            if (c < 128)
+            {
+                return this.asciiAdvances[c];
+            }
+
             Glyph g = this.glyphs.get(c);
 
             if (g != null)
@@ -686,6 +927,16 @@ public class NativeFontRenderer
 
         Glyph getOrRasterize(char c)
         {
+            if (c < 128)
+            {
+                Glyph fast = this.asciiGlyphs[c];
+
+                if (fast != null)
+                {
+                    return fast;
+                }
+            }
+
             Glyph existing = this.glyphs.get(c);
 
             if (existing != null)
@@ -693,12 +944,13 @@ public class NativeFontRenderer
                 return existing;
             }
 
-            int advance = Math.max(0, this.metrics.charWidth(c));
+            int advance = c < 128 ? this.asciiAdvances[c] : Math.max(0, this.metrics.charWidth(c));
 
             if (c == ' ' || c == '\t' || Character.isISOControl(c))
             {
                 Glyph space = new Glyph(0, 0, 0, 0, 0, 0, 0, 0, advance);
                 this.glyphs.put(c, space);
+                if (c < 128) this.asciiGlyphs[c] = space;
                 return space;
             }
 
@@ -796,6 +1048,7 @@ public class NativeFontRenderer
             );
 
             this.glyphs.put(c, glyph);
+            if (c < 128) this.asciiGlyphs[c] = glyph;
             return glyph;
         }
 

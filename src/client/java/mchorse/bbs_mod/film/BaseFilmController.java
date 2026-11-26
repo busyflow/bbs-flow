@@ -173,6 +173,31 @@ public abstract class BaseFilmController
                 this.updateEntityAndForm(entity, replayTicks);
                 this.applyReplay(replay, replayTicks, entity);
 
+                if (entity.getForm() instanceof mchorse.bbs_mod.forms.forms.ParticleForm particleForm
+                    && mchorse.bbs_mod.forms.FormUtilsClient.getRenderer(particleForm) instanceof mchorse.bbs_mod.forms.renderers.ParticleFormRenderer particleRenderer)
+                {
+                    Matrix4f worldMatrix = FilmMatrices.getMatrixForRenderWithRotation(entity, 0D, 0D, 0D, 0F);
+
+                    if (!replay.relative.get())
+                    {
+                        Anchor anchor = FilmMatrices.getAnchor(entity, replay);
+
+                        if (anchor != null && (anchor.hasTarget() || !anchor.transform.isDefault()
+                            || (anchor.previous != null && (anchor.previous.hasTarget() || !anchor.previous.transform.isDefault()))))
+                        {
+                            Pair<Matrix4f, Float> pair = FilmMatrices.getTotalMatrix(this.entities, anchor, worldMatrix, 0D, 0D, 0D, 0F, 0);
+
+                            if (pair.a != null)
+                            {
+                                worldMatrix = pair.a;
+                            }
+                        }
+                    }
+
+                    worldMatrix = new Matrix4f(worldMatrix).mul(particleForm.transform.get().createMatrix());
+                    particleRenderer.syncWorldTransform(worldMatrix);
+                }
+
                 /* Vanilla's eating and drinking effects: the actor never ticks
                  * an item use, so the crumbs and chewing come from the clip.
                  * The take the real player acts is no exception - the film's use
@@ -352,9 +377,52 @@ public abstract class BaseFilmController
         replay.applyClientActions(ticks, entity, this.film);
     }
 
+    private int lastPausedFilmVersion = Integer.MIN_VALUE;
+    private int lastPausedTick = Integer.MIN_VALUE;
+    private long lastPausedInvalidateEpoch = Long.MIN_VALUE;
+    private int lastPausedReplayCount = -1;
+    private int lastPausedEntityCount = -1;
+    private boolean lastPausedValid;
+
+    /** Whether the film is paused and not being interactively driven this frame. */
+    protected boolean isPausedForRender()
+    {
+        return this.paused;
+    }
+
     public void startRenderFrame(float transition)
     {
         List<Replay> replays = this.replays();
+        boolean pausedMode = this.isPausedForRender();
+        Map<String, Integer> actors = this.getActors();
+        int currentTick = this.getTick();
+        int filmVersion = this.film != null ? this.film.getChangeVersion() : 0;
+        long invalidateEpoch = RenderFrame.getInvalidateEpoch();
+
+        boolean noLiveActors = actors == null || actors.isEmpty();
+
+        if (pausedMode && noLiveActors && this.lastPausedValid
+            && filmVersion == this.lastPausedFilmVersion
+            && currentTick == this.lastPausedTick
+            && invalidateEpoch == this.lastPausedInvalidateEpoch
+            && replays.size() == this.lastPausedReplayCount
+            && this.entities.size() == this.lastPausedEntityCount)
+        {
+            for (int i = 0, size = replays.size(); i < size; i++)
+            {
+                Replay replay = replays.get(i);
+                IEntity entity = this.entities.get(replay.getId());
+
+                if (entity != null && entity.getForm() != null)
+                {
+                    RenderFrame.setFilmTick(entity.getForm(), replay.getTick(currentTick));
+                }
+            }
+
+            return;
+        }
+
+        boolean allZeroDelta = pausedMode && noLiveActors;
 
         for (int i = 0; i < replays.size(); i++)
         {
@@ -367,7 +435,11 @@ public abstract class BaseFilmController
             }
 
             float delta = this.getTransition(entity, transition);
-            int tick = replay.getTick(this.getTick());
+            if (delta != 0F)
+            {
+                allZeroDelta = false;
+            }
+            int tick = replay.getTick(currentTick);
 
             /* Apply property */
             Form form1 = entity.getForm();
@@ -382,8 +454,6 @@ public abstract class BaseFilmController
             ItemUsePose.Use offUse = ReplayItemUse.compute(replay, tick + delta, false);
 
             ThirdPersonItemUse.set(ThirdPersonItemUse.keyOf(entity), use, offUse);
-
-            Map<String, Integer> actors = this.getActors();
 
             if (actors != null)
             {
@@ -427,6 +497,20 @@ public abstract class BaseFilmController
                     }
                 }
             }
+        }
+
+        if (allZeroDelta)
+        {
+            this.lastPausedFilmVersion = filmVersion;
+            this.lastPausedTick = currentTick;
+            this.lastPausedInvalidateEpoch = invalidateEpoch;
+            this.lastPausedReplayCount = replays.size();
+            this.lastPausedEntityCount = this.entities.size();
+            this.lastPausedValid = true;
+        }
+        else
+        {
+            this.lastPausedValid = false;
         }
     }
 
@@ -508,6 +592,7 @@ public abstract class BaseFilmController
      * still culls everything a big set keeps far outside the shot.
      */
     private static final double CULL_RADIUS = 32D;
+    private static final double COMPACT_CULL_RADIUS = 6D;
 
     public void render(WorldRenderContext context)
     {
@@ -518,30 +603,39 @@ public abstract class BaseFilmController
         List<Replay> replays = this.replays();
         Frustum frustum = BBSSettings.frustumCulling.get() && !BBSRendering.isIrisShadowPass() ? context.frustum() : null;
 
-        for (int i = 0; i < replays.size(); i++)
+        mchorse.bbs_mod.cubic.render.vao.ModelVAORenderer.beginWorldBatch();
+
+        try
         {
-            Replay replay = replays.get(i);
-            IEntity entity = this.entities.get(replay.getId());
-
-            if (entity == null || !this.canUpdate(i, replay, entity, UpdateMode.RENDER))
+            for (int i = 0; i < replays.size(); i++)
             {
-                continue;
-            }
+                Replay replay = replays.get(i);
+                IEntity entity = this.entities.get(replay.getId());
 
-            /* Claimed before culling, not inside the draw: the film and the world cull by
-             * different boxes, and an actor this film skipped would otherwise be picked back up
-             * by the vanilla renderer and drawn at its networked position. */
-            if (!this.claimActor(replay, entity))
-            {
-                continue;
-            }
+                if (entity == null || !this.canUpdate(i, replay, entity, UpdateMode.RENDER))
+                {
+                    continue;
+                }
 
-            if (frustum != null && this.isCulled(frustum, replay, entity))
-            {
-                continue;
-            }
+                /* Claimed before culling, not inside the draw: the film and the world cull by
+                 * different boxes, and an actor this film skipped would otherwise be picked back up
+                 * by the vanilla renderer and drawn at its networked position. */
+                if (!this.claimActor(replay, entity))
+                {
+                    continue;
+                }
 
-            this.renderEntity(context, replay, entity);
+                if (frustum != null && this.isCulled(frustum, replay, entity))
+                {
+                    continue;
+                }
+
+                this.renderEntity(context, replay, entity);
+            }
+        }
+        finally
+        {
+            mchorse.bbs_mod.cubic.render.vao.ModelVAORenderer.endWorldBatch();
         }
 
         BBSProfiler.end(BBSProfiler.Timer.WORLD_FORMS);
@@ -573,11 +667,54 @@ public abstract class BaseFilmController
         double x = entity.getX();
         double y = entity.getY();
         double z = entity.getZ();
+        double radius = computeCullRadius(form, 0);
 
         return !frustum.isVisible(new Box(
-            x - CULL_RADIUS, y - CULL_RADIUS, z - CULL_RADIUS,
-            x + CULL_RADIUS, y + CULL_RADIUS, z + CULL_RADIUS
+            x - radius, y - radius, z - radius,
+            x + radius, y + radius, z + radius
         ));
+    }
+
+    private static double computeCullRadius(Form form, int depth)
+    {
+        if (form == null || depth > 4)
+        {
+            return CULL_RADIUS;
+        }
+
+        if (form instanceof mchorse.bbs_mod.forms.forms.ParticleForm
+            || form instanceof mchorse.bbs_mod.forms.forms.VanillaParticleForm
+            || form instanceof mchorse.bbs_mod.forms.forms.TrailForm
+            || form instanceof mchorse.bbs_mod.forms.forms.StructureForm
+            || form instanceof mchorse.bbs_mod.forms.forms.SplineForm)
+        {
+            return CULL_RADIUS;
+        }
+
+        mchorse.bbs_mod.utils.pose.Transform t = form.transform.get();
+        double maxScale = Math.max(Math.abs(t.scale.x), Math.max(Math.abs(t.scale.y), Math.abs(t.scale.z)));
+        double offset = Math.abs(t.translate.x) + Math.abs(t.translate.y) + Math.abs(t.translate.z);
+
+        double radius = (maxScale > 3D || offset > 4D)
+            ? Math.max(CULL_RADIUS, offset + maxScale * 4D)
+            : COMPACT_CULL_RADIUS;
+
+        for (mchorse.bbs_mod.forms.forms.BodyPart part : form.parts.getAllTyped())
+        {
+            Form child = part.getForm();
+
+            if (child != null)
+            {
+                double childRadius = computeCullRadius(child, depth + 1);
+
+                if (childRadius > radius)
+                {
+                    radius = childRadius;
+                }
+            }
+        }
+
+        return radius;
     }
 
     /**

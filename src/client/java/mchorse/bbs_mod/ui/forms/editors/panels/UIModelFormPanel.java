@@ -132,7 +132,9 @@ public class UIModelFormPanel extends UIFormPanel<ModelForm>
         this.snowballSection = this.section(mchorse.bbs_mod.l10n.L10n.lang("bbs.ui.forms.editor.model.snowball"), "model.snowball", true);
         this.snowballSection.fields.add(
             UIValues.toggle(mchorse.bbs_mod.l10n.L10n.lang("bbs.ui.forms.editor.model.snowball.trail"), () -> this.form.snowTrail),
-            UIValues.toggle(mchorse.bbs_mod.l10n.L10n.lang("bbs.ui.forms.editor.model.snowball.impact"), () -> this.form.snowballImpact)
+            UI.labelRow(mchorse.bbs_mod.l10n.keys.IKey.constant("Trail size"), UIValues.trackpad(() -> this.form.snowTrailSize).limit(0.1D, 5D)),
+            UIValues.toggle(mchorse.bbs_mod.l10n.L10n.lang("bbs.ui.forms.editor.model.snowball.impact"), () -> this.form.snowballImpact),
+            UI.labelRow(mchorse.bbs_mod.l10n.keys.IKey.constant("Impact size"), UIValues.trackpad(() -> this.form.snowballImpactSize).limit(0.1D, 5D))
         );
     }
 

@@ -135,6 +135,20 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
     private double shakeHeldAt = Double.NaN;
     private double shakeOffset;
 
+    /* Cached shadow displacement so stationary/paused actors skip re-evaluating channels + captureMatrices. */
+    private ModelInstance shadowCacheModel;
+    private IEntity shadowCacheEntity;
+    private int shadowCachePoseVersion;
+    private int shadowCacheEntityAge;
+    private float shadowCacheTransition = Float.NaN;
+    private Float shadowCacheFilmTick;
+    private Vector3f shadowCacheDisplacement;
+
+    /* Cached merged render pose (base + overlays) so paused actors skip deep Pose.copy() every frame. */
+    private Pose cachedMergedPose;
+    private int cachedMergedPoseVersion = Integer.MIN_VALUE;
+    private long cachedMergedInvalidateEpoch = Long.MIN_VALUE;
+
     /**
      * Render the bind pose alone — no actions, no default pose, no form pose: what the model editor
      * edits the model's geometry against.
@@ -199,7 +213,7 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         float y = y1 + (y2 - y1) * 0.85F;
         float angle = MathUtils.toRad(context.mouseX - (x1 + x2) / 2) + MathUtils.PI;
 
-        if (BBSSettings.freezeModels.get())
+        if (BBSSettings.freezeModels.get() || mchorse.bbs_mod.forms.FormThumbnailCache.capturingThumbnail)
         {
             angle = -MathUtils.PI + MathUtils.PI / 8;
         }
@@ -300,12 +314,79 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         Pose pose = this.form.pose.get().copy();
         Pose overlay = this.form.poseOverlay.get();
 
+        if (!overlay.transforms.isEmpty())
+        {
+            this.applyPose(pose, overlay);
+        }
+
+        for (int i = 0, size = this.form.additionalOverlays.size(); i < size; i++)
+        {
+            Pose extra = this.form.additionalOverlays.get(i).get();
+
+            if (!extra.transforms.isEmpty())
+            {
+                this.applyPose(pose, extra);
+            }
+        }
+
+        return pose;
+    }
+
+    /** Read-only pose for rendering: skips deep-copying when no overlays exist or when poseVersion is unchanged. */
+    private Pose getPoseForRender()
+    {
+        this.form.syncOverlayTracks();
+
+        Pose overlay = this.form.poseOverlay.get();
+        boolean hasOverlay = !overlay.transforms.isEmpty();
+
+        if (!hasOverlay)
+        {
+            for (int i = 0, size = this.form.additionalOverlays.size(); i < size; i++)
+            {
+                if (!this.form.additionalOverlays.get(i).get().transforms.isEmpty())
+                {
+                    hasOverlay = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasOverlay)
+        {
+            this.cachedMergedPose = null;
+
+            return this.form.pose.get();
+        }
+
+        int poseVersion = this.form.getPoseVersion();
+        long invalidateEpoch = RenderFrame.getInvalidateEpoch();
+
+        if (this.cachedMergedPose != null
+            && this.cachedMergedPoseVersion == poseVersion
+            && this.cachedMergedInvalidateEpoch == invalidateEpoch)
+        {
+            return this.cachedMergedPose;
+        }
+
+        BBSProfiler.count(BBSProfiler.Section.POSE_COPY);
+
+        Pose pose = this.form.pose.get().copy();
         this.applyPose(pose, overlay);
 
-        for (ValuePose newPose : this.form.additionalOverlays)
+        for (int i = 0, size = this.form.additionalOverlays.size(); i < size; i++)
         {
-            this.applyPose(pose, newPose.get());
+            Pose extra = this.form.additionalOverlays.get(i).get();
+
+            if (!extra.transforms.isEmpty())
+            {
+                this.applyPose(pose, extra);
+            }
         }
+
+        this.cachedMergedPose = pose;
+        this.cachedMergedPoseVersion = poseVersion;
+        this.cachedMergedInvalidateEpoch = invalidateEpoch;
 
         return pose;
     }
@@ -440,8 +521,11 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         }
 
         boolean cacheable = this.form != null && model.model != null && RenderFrame.isEnabled();
+        int poseVersion = cacheable ? this.form.getPoseVersion() : 0;
+        int entityAge = entity != null ? entity.getAge() : 0;
+        Float filmTick = cacheable && !this.form.isSnowballModel() ? RenderFrame.getFilmTick(this.form) : null;
 
-        if (cacheable && model.matchesChannels(this.form, entity, transition, RenderFrame.getEpoch(), this.form.getPoseVersion()))
+        if (cacheable && model.matchesChannels(this.form, entity, transition, RenderFrame.getEpoch(), RenderFrame.getInvalidateEpoch(), poseVersion, entityAge, filmTick))
         {
             BBSProfiler.count(BBSProfiler.Section.CHANNELS_SKIPPED);
 
@@ -483,7 +567,7 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         /* The config's default pose sits under the form's, the same additive layer: the posture the
          * model has before anything of the form is applied, whichever animator drove it. */
         model.model.applyPose(model.getDefaultPose());
-        model.model.applyPose(this.getPose());
+        model.model.applyPose(this.getPoseForRender());
 
         /* The shake belongs to the pose: IK, physics, limits and every reader of the channels see
          * the bones where they are drawn. */
@@ -492,7 +576,7 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         if (cacheable)
         {
             model.model.snapshotChannels();
-            model.stampChannels(this.form, entity, transition, RenderFrame.getEpoch(), this.form.getPoseVersion());
+            model.stampChannels(this.form, entity, transition, RenderFrame.getEpoch(), RenderFrame.getInvalidateEpoch(), poseVersion, entityAge, filmTick);
         }
         else
         {
@@ -661,9 +745,16 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         }
     }
 
+    private final Color renderFinalColor = new Color();
+    private final MatrixStack renderModelStack = new MatrixStack();
+    private final Matrix4f renderBaseTransform = new Matrix4f();
+    private final Color renderContextColor = new Color();
+    private final List<mchorse.bbs_mod.cubic.data.model.ModelGroup> shadowBoneChain = new ArrayList<>();
+
     private void renderModel(IEntity target, Supplier<ShaderProgram> program, MatrixStack stack, ModelInstance model, int light, int overlay, Color contextColor, Color formColor, boolean ui, StencilMap stencilMap, float transition, MatrixStack world)
     {
-        Color finalColor = contextColor.copy();
+        Color finalColor = this.renderFinalColor;
+        finalColor.copy(contextColor);
         FormColorBlend.blend(finalColor, formColor);
 
         if (!model.isCulling())
@@ -678,9 +769,9 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         gameRenderer.getLightmapTextureManager().enable();
         gameRenderer.getOverlayTexture().setupOverlayColor();
 
-        MatrixStack newStack = new MatrixStack();
-
-        MatrixStackUtils.multiply(newStack, stack.peek().getPositionMatrix());
+        MatrixStack newStack = this.renderModelStack;
+        newStack.push();
+        newStack.peek().getPositionMatrix().set(stack.peek().getPositionMatrix());
         newStack.peek().getNormalMatrix().set(stack.peek().getNormalMatrix());
 
         if (ui)
@@ -694,7 +785,7 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
          * stack when there is no world stack — the first person arm — resolved them against the camera
          * instead, and gravity pulled toward the bottom of the screen. Without a world frame there is no
          * honest answer, so they run model-local, as they do in the UI. */
-        Matrix4f baseTransform = ui || world == null ? null : new Matrix4f(world.peek().getPositionMatrix());
+        Matrix4f baseTransform = ui || world == null ? null : this.renderBaseTransform.set(world.peek().getPositionMatrix());
 
         RepeatedFormRender repeated = RepeatedFormRender.current();
         if (repeated == null || repeated.pose(this) == null)
@@ -758,6 +849,8 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
             ModelIKDebug.capture(newStack, model.model, this.form);
         }
 
+        newStack.pop();
+
         gameRenderer.getLightmapTextureManager().disable();
         gameRenderer.getOverlayTexture().teardownOverlayColor();
         RenderSystem.disableBlend();
@@ -768,26 +861,71 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         }
 
         /* Render items. The capture allocates ~4 matrices per bone, and its only readers here
-         * are the item/armor block right below (skipped in the picking pass entirely) and
-         * renderBodyParts afterwards - so a model with neither pays for neither. */
-        boolean hasEquipment = !model.getItemsMain().isEmpty() || !model.getItemsOff().isEmpty() || !model.getArmorSlots().isEmpty();
+         * are the item/armor block right below (skipped in the picking pass and whenever nothing
+         * is actually equipped) and renderBodyParts afterwards - so an unarmed/unarmored actor
+         * with no body parts pays for neither. */
+        boolean hasEquipped = stencilMap == null && hasEquippedItemsOrArmor(target, model);
         boolean hasBodyParts = this.form != null && !this.form.parts.getAllTyped().isEmpty();
 
-        if (hasBodyParts || (stencilMap == null && hasEquipment))
+        if (hasBodyParts || hasEquipped)
         {
             this.captureMatrices(model);
         }
 
-        if (stencilMap == null && hasEquipment)
+        if (hasEquipped)
         {
-            this.renderItems(target, model, stack, EquipmentSlot.MAINHAND, ModelTransformationMode.THIRD_PERSON_RIGHT_HAND, model.getItemsMain(), finalColor, overlay, light);
-            this.renderItems(target, model, stack, EquipmentSlot.OFFHAND, ModelTransformationMode.THIRD_PERSON_LEFT_HAND, model.getItemsOff(), finalColor, overlay, light);
-
-            for (Map.Entry<ArmorType, ArmorSlot> entry : model.getArmorSlots().entrySet())
+            if (!model.getItemsMain().isEmpty())
             {
-                this.renderArmor(target, stack, entry.getKey(), entry.getValue(), finalColor, overlay, light);
+                this.renderItems(target, model, stack, EquipmentSlot.MAINHAND, ModelTransformationMode.THIRD_PERSON_RIGHT_HAND, model.getItemsMain(), finalColor, overlay, light);
+            }
+
+            if (!model.getItemsOff().isEmpty())
+            {
+                this.renderItems(target, model, stack, EquipmentSlot.OFFHAND, ModelTransformationMode.THIRD_PERSON_LEFT_HAND, model.getItemsOff(), finalColor, overlay, light);
+            }
+
+            if (!model.getArmorSlots().isEmpty())
+            {
+                for (Map.Entry<ArmorType, ArmorSlot> entry : model.getArmorSlots().entrySet())
+                {
+                    if (!target.getEquipmentStack(entry.getKey().slot).isEmpty())
+                    {
+                        this.renderArmor(target, stack, entry.getKey(), entry.getValue(), finalColor, overlay, light);
+                    }
+                }
             }
         }
+    }
+
+    private static boolean hasEquippedItemsOrArmor(IEntity target, ModelInstance model)
+    {
+        if (target == null)
+        {
+            return false;
+        }
+
+        if (!model.getItemsMain().isEmpty() && !target.getEquipmentStack(EquipmentSlot.MAINHAND).isEmpty())
+        {
+            return true;
+        }
+
+        if (!model.getItemsOff().isEmpty() && !target.getEquipmentStack(EquipmentSlot.OFFHAND).isEmpty())
+        {
+            return true;
+        }
+
+        if (!model.getArmorSlots().isEmpty())
+        {
+            for (ArmorType type : model.getArmorSlots().keySet())
+            {
+                if (!target.getEquipmentStack(type.slot).isEmpty())
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1185,7 +1323,7 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         {
             Link link = this.form.texture.get();
             Link texture = link == null ? model.getTexture() : link;
-            Color contextColor = new Color().set(context.color, true);
+            Color contextColor = this.renderContextColor.set(context.color, true);
             Color formColor = this.form.color.get();
 
             if (context.isPicking())
@@ -1233,10 +1371,9 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
              * under Iris; without Iris the BBS shader's own discard covers it), TRANSLUCENT forbids
              * the cutout degrade so the model stays in the pack's translucent phase. */
             int renderLayer = this.form.renderLayer.get();
-            boolean boneTranslucent = model.hasTranslucency();
             boolean cutout = renderLayer == Form.LAYER_AUTO
                 ? irisWorld && textureObject != null && textureObject.hasTranslucency()
-                    && contextColor.a >= 1F && formColor.a >= 1F && !boneTranslucent
+                    && contextColor.a >= 1F && formColor.a >= 1F && !model.hasTranslucency()
                 : renderLayer == Form.LAYER_CUTOUT && irisWorld;
             boolean noBlend = cutout || renderLayer == Form.LAYER_SOLID
                 || (renderLayer == Form.LAYER_CUTOUT && !irisWorld);
@@ -1349,6 +1486,9 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
 
         for (BodyPart part : this.form.parts.getAllTyped())
         {
+            boolean snowballParticle = this.form.isSnowballModel()
+                && part.getForm() instanceof ParticleForm pf
+                && ("snowball_trail".equals(pf.effect.get()) || "snowball_impact".equals(pf.effect.get()));
             Matrix4f bone = this.bones.get(part.bone.get()).matrix();
             Matrix4f matrix = part.filterBoneMatrix(bone);
 
@@ -1358,7 +1498,22 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
                 context.world.push();
             }
 
-            if (matrix != null)
+            if (snowballParticle)
+            {
+                /* Keep snowball trail/impact particles at full size even when the snowball's
+                 * own Transform is scaled to 0 (e.g. hiding the snowball body on impact). */
+                Matrix4f stackMat = context.stack.peek().getPositionMatrix();
+                stackMat.translation(stackMat.m30(), stackMat.m31(), stackMat.m32());
+                context.stack.peek().getNormalMatrix().identity();
+
+                if (context.world != null)
+                {
+                    Matrix4f worldMat = context.world.peek().getPositionMatrix();
+                    worldMat.translation(worldMat.m30(), worldMat.m31(), worldMat.m32());
+                    context.world.peek().getNormalMatrix().identity();
+                }
+            }
+            else if (matrix != null)
             {
                 MatrixStackUtils.multiply(context.stack, matrix);
                 if (context.world != null)
@@ -1521,15 +1676,51 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
             return super.getShadowDisplacement(entity, transition);
         }
 
+        int poseVersion = this.form.getPoseVersion();
+        int entityAge = entity == null ? 0 : entity.getAge();
+        Float filmTick = RenderFrame.getFilmTick(this.form);
+
+        if (this.shadowCacheDisplacement != null
+            && this.shadowCacheModel == model
+            && this.shadowCacheEntity == entity
+            && this.shadowCachePoseVersion == poseVersion
+            && this.shadowCacheEntityAge == entityAge
+            && Float.compare(this.shadowCacheTransition, transition) == 0
+            && Objects.equals(this.shadowCacheFilmTick, filmTick))
+        {
+            return new Vector3f(this.shadowCacheDisplacement);
+        }
+
+        Vector3f rest = model.getCachedRestAnchorOrigin(anchor);
+
+        if (rest == null)
+        {
+            rest = this.sampleBoneOrigin(entity, transition, anchor, true);
+
+            if (rest != null)
+            {
+                model.cacheRestAnchorOrigin(anchor, rest);
+            }
+        }
+
         Vector3f current = this.sampleBoneOrigin(entity, transition, anchor, false);
-        Vector3f rest = this.sampleBoneOrigin(entity, transition, anchor, true);
 
         if (current == null || rest == null)
         {
             return super.getShadowDisplacement(entity, transition);
         }
 
-        return current.sub(rest);
+        Vector3f result = current.sub(rest);
+
+        this.shadowCacheModel = model;
+        this.shadowCacheEntity = entity;
+        this.shadowCachePoseVersion = poseVersion;
+        this.shadowCacheEntityAge = entityAge;
+        this.shadowCacheTransition = transition;
+        this.shadowCacheFilmTick = filmTick;
+        this.shadowCacheDisplacement = new Vector3f(result);
+
+        return result;
     }
 
     /**
@@ -1597,6 +1788,60 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
             stack.pop();
             return origin;
         }
+
+        /* Fast path for cubic models: walk only the anchor bone's ancestor chain (1-3 bones)
+         * instead of capturing full matrices for every bone in the skeleton into a HashMap. */
+        if (model.model instanceof Model cubicModel)
+        {
+            mchorse.bbs_mod.cubic.data.model.ModelGroup target = null;
+            List<mchorse.bbs_mod.cubic.data.model.ModelGroup> ordered = cubicModel.getOrderedGroups();
+
+            for (int i = 0, size = ordered.size(); i < size; i++)
+            {
+                mchorse.bbs_mod.cubic.data.model.ModelGroup g = ordered.get(i);
+
+                if (bone.equals(g.id))
+                {
+                    target = g;
+                    break;
+                }
+            }
+
+            if (target == null)
+            {
+                stack.pop();
+                return null;
+            }
+
+            this.shadowBoneChain.clear();
+
+            for (mchorse.bbs_mod.cubic.data.model.ModelGroup cur = target; cur != null; cur = cur.parent)
+            {
+                this.shadowBoneChain.add(cur);
+            }
+
+            for (int i = this.shadowBoneChain.size() - 1; i >= 1; i--)
+            {
+                mchorse.bbs_mod.cubic.data.model.ModelGroup ancestor = this.shadowBoneChain.get(i);
+                mchorse.bbs_mod.cubic.render.ICubicRenderer.offsetGroup(stack, ancestor);
+                mchorse.bbs_mod.cubic.render.ICubicRenderer.translateGroup(stack, ancestor);
+                mchorse.bbs_mod.cubic.render.ICubicRenderer.moveToGroupPivot(stack, ancestor);
+                mchorse.bbs_mod.cubic.render.ICubicRenderer.rotateGroup(stack, ancestor);
+                mchorse.bbs_mod.cubic.render.ICubicRenderer.scaleGroup(stack, ancestor);
+                mchorse.bbs_mod.cubic.render.ICubicRenderer.moveBackFromGroupPivot(stack, ancestor);
+            }
+
+            mchorse.bbs_mod.cubic.render.ICubicRenderer.offsetGroup(stack, target);
+            mchorse.bbs_mod.cubic.render.ICubicRenderer.translateGroup(stack, target);
+            stack.translate(target.initial.translate.x / 16F, target.initial.translate.y / 16F, target.initial.translate.z / 16F);
+
+            Vector3f result = stack.peek().getPositionMatrix().getTranslation(new Vector3f());
+            this.shadowBoneChain.clear();
+            stack.pop();
+
+            return result;
+        }
+
         this.captureMatrices(model);
 
         Vector3f result = null;
@@ -1637,10 +1882,14 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
                 if ("snowball_trail".equals(effect))
                 {
                     particle.paused.set(!trailActive);
+                    float size = this.form.snowTrailSize.get();
+                    particle.transform.get().scale.set(size, size, size);
                 }
-                else if ("snowball_impact".equals(effect) && impactActive)
+                else if ("snowball_impact".equals(effect))
                 {
-                    particle.paused.set(false);
+                    particle.paused.set(!impactActive);
+                    float size = this.form.snowballImpactSize.get();
+                    particle.transform.get().scale.set(size, size, size);
                 }
             }
         }

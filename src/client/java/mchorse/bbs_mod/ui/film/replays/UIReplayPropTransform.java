@@ -52,13 +52,14 @@ public class UIReplayPropTransform extends UIPropTransform
         public final double headYawOffset;
         public final double bodyYawOffset;
 
-        public final double[] origX;
-        public final double[] origY;
-        public final double[] origZ;
-        public final double[] origYaw;
-        public final double[] origHeadYaw;
-        public final double[] origBodyYaw;
-        public final double[] origPitch;
+        public double[] origX;
+        public double[] origY;
+        public double[] origZ;
+        public double[] origYaw;
+        public double[] origHeadYaw;
+        public double[] origBodyYaw;
+        public double[] origPitch;
+        private boolean channelsSnapshotted;
 
         public ReplayEntry(Replay replay, IEntity entity)
         {
@@ -71,14 +72,23 @@ public class UIReplayPropTransform extends UIPropTransform
             this.startPitch = entity.getPitch();
             this.headYawOffset = entity.getHeadYaw() - this.startYaw;
             this.bodyYawOffset = entity.getBodyYaw() - this.startYaw;
+        }
 
-            this.origX = snapshotChannel(replay.keyframes.x);
-            this.origY = snapshotChannel(replay.keyframes.y);
-            this.origZ = snapshotChannel(replay.keyframes.z);
-            this.origYaw = snapshotChannel(replay.keyframes.yaw);
-            this.origHeadYaw = snapshotChannel(replay.keyframes.headYaw);
-            this.origBodyYaw = snapshotChannel(replay.keyframes.bodyYaw);
-            this.origPitch = snapshotChannel(replay.keyframes.pitch);
+        public void ensureChannelSnapshots()
+        {
+            if (this.channelsSnapshotted)
+            {
+                return;
+            }
+
+            this.channelsSnapshotted = true;
+            this.origX = snapshotChannel(this.replay.keyframes.x);
+            this.origY = snapshotChannel(this.replay.keyframes.y);
+            this.origZ = snapshotChannel(this.replay.keyframes.z);
+            this.origYaw = snapshotChannel(this.replay.keyframes.yaw);
+            this.origHeadYaw = snapshotChannel(this.replay.keyframes.headYaw);
+            this.origBodyYaw = snapshotChannel(this.replay.keyframes.bodyYaw);
+            this.origPitch = snapshotChannel(this.replay.keyframes.pitch);
         }
 
         private static double[] snapshotChannel(KeyframeChannel<Double> channel)
@@ -412,6 +422,8 @@ public class UIReplayPropTransform extends UIPropTransform
 
         for (ReplayEntry entry : this.entries)
         {
+            if (isMulti) entry.ensureChannelSnapshots();
+
             double nx = entry.startX + dx;
             double ny = entry.startY + dy;
             double nz = entry.startZ + dz;
@@ -470,6 +482,8 @@ public class UIReplayPropTransform extends UIPropTransform
 
         for (ReplayEntry entry : this.entries)
         {
+            if (isMulti) entry.ensureChannelSnapshots();
+
             float tick = this.writeTick(entry.replay);
             ReplayKeyframes keyframes = entry.replay.keyframes;
 

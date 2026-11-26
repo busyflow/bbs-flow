@@ -51,6 +51,7 @@ public class UIWorldPreview extends UIElement
     /** Whether the icon bar is currently shown - see {@link #updateIconsVisibility(UIContext)} */
     protected boolean iconsVisible = true;
     private int iconsPosition = -1;
+    private int iconsSize = -1;
 
     /** Everything drawn over the frame goes through here - see {@link PreviewHud}. */
     protected final PreviewHud hud = new PreviewHud();
@@ -358,23 +359,30 @@ public class UIWorldPreview extends UIElement
     protected void updateIconsLayout()
     {
         int position = BBSSettings.editorPreviewIconsPosition.get();
+        int iconSize = BBSSettings.editorPreviewIconsSize != null ? BBSSettings.editorPreviewIconsSize.get() : 20;
 
-        if (position == this.iconsPosition)
+        if (position == this.iconsPosition && iconSize == this.iconsSize)
         {
             return;
         }
 
         this.iconsPosition = position;
+        this.iconsSize = iconSize;
+
+        for (UIIcon icon : this.iconSettings.keySet())
+        {
+            icon.w(iconSize).h(iconSize);
+        }
 
         if (position == 1 || position == 2)
         {
-            this.icons.column(1).vertical().width(20);
-            this.icons.w(20);
+            this.icons.column(1).vertical().width(iconSize);
+            this.icons.w(iconSize);
         }
         else
         {
             this.icons.row(1).resize();
-            this.icons.h(20);
+            this.icons.h(iconSize);
         }
 
         this.applyIconsAnchor(position);

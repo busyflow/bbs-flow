@@ -40,7 +40,13 @@ public class CubicVAORenderer extends CubicCubeRenderer
 {
     private ShaderProgram program;
     private ModelInstance model;
+    private ModelForm modelForm;
     private Function<String, Link> textureResolver;
+    private final boolean hasMaterialOverrides;
+    private final boolean hasFormOverlay;
+    private String lastBoundMaterial;
+    private Texture lastBoundTexture;
+    private boolean hasBoundMaterial;
 
     /* Hybrid mode's two halves run as separate walks: the draw pass every pass (VAOs and welded bands ride
      * the GPU), the bake pass only when the CPU geometry cache misses. The CPU set is decided once per bake
@@ -63,8 +69,22 @@ public class CubicVAORenderer extends CubicCubeRenderer
 
         this.program = program;
         this.model = model;
+        this.modelForm = model.form instanceof ModelForm form ? form : null;
         this.textureResolver = textureResolver;
-        this.setMaterialVisibility((material) -> FormMaterialLevels.materialVisible(model.form instanceof ModelForm form ? form : null, material));
+        this.hasMaterialOverrides = this.modelForm != null && (
+            !this.modelForm.materials.getAll().isEmpty()
+            || !this.modelForm.materialVisibilityOverrides.isEmpty()
+            || !this.modelForm.materialColorOverrides.isEmpty()
+            || !this.modelForm.materialLightingOverrides.isEmpty()
+            || !this.modelForm.materialCullingOverrides.isEmpty()
+            || !this.modelForm.materialOverlayOverrides.isEmpty()
+        );
+        Color formOverlay = this.modelForm != null ? this.modelForm.overlayColor.get() : null;
+        this.hasFormOverlay = formOverlay != null && formOverlay.a > 0F;
+        if (this.hasMaterialOverrides)
+        {
+            this.setMaterialVisibility((material) -> FormMaterialLevels.materialVisible(this.modelForm, material));
+        }
     }
 
     /** Bones that tessellate on the CPU (no VAO): the bake pass emits only these, the draw pass skips their VAOs. */
@@ -159,7 +179,7 @@ public class CubicVAORenderer extends CubicCubeRenderer
      */
     private boolean drawMaterial(MatrixStack stack, ModelGroup group, String material, IModelVAO vao, Matrix4f modelView, Matrix3f normalMat)
     {
-        if (!this.materialVisibility.test(material))
+        if (this.hasMaterialOverrides && !this.materialVisibility.test(material))
         {
             return false;
         }
@@ -174,7 +194,7 @@ public class CubicVAORenderer extends CubicCubeRenderer
         {
             light = this.stencilMap.increment ? group.index : 0;
         }
-        else
+        else if (group.lighting != 0F)
         {
             int u = (int) Lerps.lerp(light & '￿', LightmapTextureManager.MAX_BLOCK_LIGHT_COORDINATE, MathUtils.clamp(group.lighting, 0F, 1F));
             int v = light >> 16 & '￿';
@@ -187,27 +207,40 @@ public class CubicVAORenderer extends CubicCubeRenderer
          * the bone level (group.color/lighting/overlay above). Picking keeps everything neutral
          * (light carries stencil ids there), and a hurt flash in the overlay UV wins over the color
          * overlay by design. */
-        ModelForm modelForm = this.model.form instanceof ModelForm form ? form : null;
+        ModelForm modelForm = this.modelForm;
         boolean plain = this.stencilMap == null;
         boolean hurtFlash = this.overlay != OverlayTexture.DEFAULT_UV;
-        Texture texture = null;
+        Texture texture;
 
-        if (this.textureResolver != null)
+        if (this.hasBoundMaterial && (material == this.lastBoundMaterial || (material != null && material.equals(this.lastBoundMaterial))))
         {
-            Link link = this.textureResolver.apply(material);
-
-            if (link != null)
-            {
-                texture = BBSModClient.getTextures().getTexture(link);
-                texture = FormPbr.resolveAlbedo(modelForm, material, link, texture);
-                BBSModClient.getTextures().bindTexture(texture);
-            }
+            texture = this.lastBoundTexture;
         }
-
-        if (texture == null)
+        else
         {
-            /* No per-material override — the draw uses the form's base texture bound earlier. */
-            texture = BBSModClient.getTextures().getLastBound();
+            texture = null;
+
+            if (this.textureResolver != null)
+            {
+                Link link = this.textureResolver.apply(material);
+
+                if (link != null)
+                {
+                    texture = BBSModClient.getTextures().getTexture(link);
+                    texture = FormPbr.resolveAlbedo(modelForm, material, link, texture);
+                    BBSModClient.getTextures().bindTexture(texture);
+                }
+            }
+
+            if (texture == null)
+            {
+                /* No per-material override — the draw uses the form's base texture bound earlier. */
+                texture = BBSModClient.getTextures().getLastBound();
+            }
+
+            this.lastBoundMaterial = material;
+            this.lastBoundTexture = texture;
+            this.hasBoundMaterial = true;
         }
 
         Color overlayColor = null;
@@ -215,7 +248,7 @@ public class CubicVAORenderer extends CubicCubeRenderer
 
         if (plain)
         {
-            if (modelForm != null)
+            if (this.hasMaterialOverrides)
             {
                 Color materialColor = FormMaterialLevels.materialColor(modelForm, material);
 
@@ -239,7 +272,7 @@ public class CubicVAORenderer extends CubicCubeRenderer
                 culling = FormMaterialLevels.materialCulling(modelForm, material);
             }
 
-            if (!hurtFlash)
+            if (!hurtFlash && (this.hasMaterialOverrides || this.hasFormOverlay || group.overlay.a > 0F))
             {
                 overlayColor = FormOverlay.combine(modelForm, material, group);
             }

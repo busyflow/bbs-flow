@@ -824,6 +824,7 @@ public class UIKeyframeGraph implements IUIKeyframeGraph
     @Override
     public void renderTopmostKeyframes(UIContext context)
     {
+        context.batcher.flush();
         BufferBuilder builder = Tessellator.getInstance().getBuffer();
         Matrix4f matrix = context.batcher.getContext().getMatrices().peek().getPositionMatrix();
         List<UIKeyframeSheet> sheets = this.hitOrder();

@@ -51,9 +51,17 @@ public class RenderFrame
     /** Frames proper: only {@link #nextFrame()} counts them, never {@link #invalidate()}. */
     private static long frame;
 
+    /** Only bumped on explicit {@link #invalidate()}, never on normal frame boundaries. */
+    private static long invalidateEpoch;
+
     public static long getEpoch()
     {
         return epoch;
+    }
+
+    public static long getInvalidateEpoch()
+    {
+        return invalidateEpoch;
     }
 
     /**
@@ -139,6 +147,7 @@ public class RenderFrame
     public static void invalidate()
     {
         epoch += 1;
+        invalidateEpoch += 1;
         ENTRIES.clear();
     }
 

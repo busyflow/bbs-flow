@@ -168,6 +168,21 @@ public class UIIcon extends UIClickable<UIIcon>
             color = this.disabledColor;
         }
 
-        context.batcher.icon(icon, color, this.area.mx(), this.area.my(), 0.5F, 0.5F);
+        float scale = Math.min(this.area.w, this.area.h) / 20F;
+
+        if (scale != 1F && scale > 0F)
+        {
+            var matrices = context.batcher.getContext().getMatrices();
+
+            matrices.push();
+            matrices.translate(this.area.mx(), this.area.my(), 0F);
+            matrices.scale(scale, scale, 1F);
+            context.batcher.icon(icon, color, 0F, 0F, 0.5F, 0.5F);
+            matrices.pop();
+        }
+        else
+        {
+            context.batcher.icon(icon, color, this.area.mx(), this.area.my(), 0.5F, 0.5F);
+        }
     }
 }

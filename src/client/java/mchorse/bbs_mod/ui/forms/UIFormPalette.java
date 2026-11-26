@@ -243,6 +243,14 @@ public class UIFormPalette extends UIElement implements IUIFormList
         return false;
     }
 
+    public boolean isFullScreenOpaque()
+    {
+        return this.isVisible()
+            && this.background
+            && (!this.immersive || this.list.isVisible())
+            && this.area.w > 0 && this.area.h > 0;
+    }
+
     @Override
     public void render(UIContext context)
     {

@@ -494,7 +494,35 @@ public class UIPoseEditor extends UIElement
     /** Whether this pose editor lists the given bone (so a viewport pick can target it). */
     public boolean hasBone(String bone)
     {
-        return bone != null && !bone.isEmpty() && this.groups.list.getList().contains(bone);
+        return this.matchBone(bone) != null;
+    }
+
+    /** Resolve a viewport-picked bone id against the bone list (exact match first, then case-insensitive). */
+    public String matchBone(String bone)
+    {
+        if (bone == null || bone.isEmpty())
+        {
+            return null;
+        }
+
+        List<String> list = this.groups.list.getList();
+
+        if (list.contains(bone))
+        {
+            return bone;
+        }
+
+        for (int i = 0, size = list.size(); i < size; i++)
+        {
+            String candidate = list.get(i);
+
+            if (candidate.equalsIgnoreCase(bone))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     /**

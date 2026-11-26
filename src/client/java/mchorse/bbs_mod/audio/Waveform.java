@@ -17,6 +17,8 @@ public class Waveform
 {
     private static final int PREVIEW_TILE_WIDTH = 512;
     private static final int PREVIEW_TILE_LIMIT = 8;
+    private static final int DETAILED_TILE_WIDTH = 512;
+    private static final int DETAILED_TILE_LIMIT = 24;
     private WaveformEnvelope envelope;
     private List<ColorCode> colorCodes;
     private float[] cues;
@@ -24,6 +26,9 @@ public class Waveform
     private int height;
     private float duration;
     private final Map<Integer, Texture> previewTiles = new LinkedHashMap<>(16, 0.75F, true);
+    private final Map<DetailedTileKey, Texture> detailedTiles = new LinkedHashMap<>(32, 0.75F, true);
+
+    private record DetailedTileKey(long ppsQuarter, int tileHeight, int tileIndex) {}
 
     public void generate(Wave data, List<ColorCode> colorCodes, int pixelsPerSecond, int height)
     {
@@ -212,6 +217,13 @@ public class Waveform
         }
 
         this.previewTiles.clear();
+
+        for (Texture texture : this.detailedTiles.values())
+        {
+            texture.delete();
+        }
+
+        this.detailedTiles.clear();
     }
 
     public void render(Batcher2D batcher, int color, int x, int y, int w, int h, float startTime, float endTime)
@@ -228,9 +240,60 @@ public class Waveform
             return;
         }
 
+        double pixelsPerScreenSecond = w / (endTime - (double) startTime);
+        int visibleFirst = (int) Math.max(0L, -(long) x);
+        int visibleLast = (int) Math.min(w, (long) MinecraftClient.getInstance().getWindow().getWidth() - x);
+
+        if (visibleLast <= visibleFirst)
+        {
+            return;
+        }
+
+        long ppsQuarter = Math.max(1L, Math.round(pixelsPerScreenSecond * 4D));
+        double tilePps = ppsQuarter / 4D;
+        int tileHeight = Math.max(1, Math.min(256, h));
+
+        double visibleStartTime = Math.max(0D, startTime + visibleFirst / pixelsPerScreenSecond);
+        double visibleEndTime = Math.min(this.duration, startTime + visibleLast / pixelsPerScreenSecond);
+
+        if (visibleEndTime <= visibleStartTime)
+        {
+            return;
+        }
+
+        double firstD = Math.floor(visibleStartTime * tilePps / DETAILED_TILE_WIDTH);
+        double lastD = Math.floor(visibleEndTime * tilePps / DETAILED_TILE_WIDTH);
+
+        if (firstD >= 0D && lastD - firstD <= 64D && lastD <= Integer.MAX_VALUE)
+        {
+            int first = (int) firstD;
+            int last = (int) lastD;
+
+            batcher.clip(x, y, w, h, 0, 0);
+
+            for (int tile = first; tile <= last; tile++)
+            {
+                double tileStart = tile * (double) DETAILED_TILE_WIDTH / tilePps;
+
+                if (tileStart >= this.duration || tileStart >= endTime)
+                {
+                    break;
+                }
+
+                Texture texture = this.getDetailedTile(ppsQuarter, tileHeight, tile);
+                float drawX = (float) (x + (tileStart - startTime) * pixelsPerScreenSecond);
+                float drawW = (float) (DETAILED_TILE_WIDTH * pixelsPerScreenSecond / tilePps);
+
+                batcher.texturedBox(texture, color, drawX, y, drawW, h, 0, 0, DETAILED_TILE_WIDTH, tileHeight);
+            }
+
+            batcher.unclip(0, 0);
+
+            return;
+        }
+
+        /* Fallback direct pass (also preserves Batcher2D.box targets for addon mixins such as RefreshedUI). */
         double secondsPerPixel = (endTime - (double) startTime) / w;
-        /* Physical width also covers BBS's custom GUI scale. Limit CPU work
-         * when a zoomed timeline extends far beyond the screen. */
         int first = (int) Math.max(0L, -(long) x);
         int last = (int) Math.min(w, (long) MinecraftClient.getInstance().getWindow().getWidth() - x);
         float center = y + h / 2F;
@@ -292,6 +355,88 @@ public class Waveform
         {
             batcher.endBatch();
         }
+    }
+
+    private Texture getDetailedTile(long ppsQuarter, int tileHeight, int index)
+    {
+        DetailedTileKey key = new DetailedTileKey(ppsQuarter, tileHeight, index);
+        Texture cached = this.detailedTiles.get(key);
+
+        if (cached != null)
+        {
+            return cached;
+        }
+
+        double tilePps = ppsQuarter / 4D;
+        double secondsPerPixel = 1D / tilePps;
+        Pixels pixels = Pixels.fromSize(DETAILED_TILE_WIDTH, tileHeight);
+        WaveformEnvelope.Range range = new WaveformEnvelope.Range();
+        Color background = new Color();
+        long firstColumn = (long) index * DETAILED_TILE_WIDTH;
+
+        for (int px = 0; px < DETAILED_TILE_WIDTH; px++)
+        {
+            double from = (firstColumn + px) * secondsPerPixel;
+
+            if (from >= this.duration)
+            {
+                break;
+            }
+
+            this.envelope.sample(from, from + secondsPerPixel, range);
+            int columnColor = Colors.WHITE;
+
+            if (this.colorCodes != null)
+            {
+                for (ColorCode code : this.colorCodes)
+                {
+                    if (code.isInside((float) from))
+                    {
+                        columnColor = code.color | 0xff000000;
+                        background.set(columnColor);
+
+                        for (int row = 0; row < tileHeight; row++)
+                        {
+                            background.a = 0.125F + 0.25F * row / tileHeight;
+                            pixels.setColor(px, row, background);
+                        }
+
+                        break;
+                    }
+                }
+            }
+
+            if (this.cues != null)
+            {
+                for (float cue : this.cues)
+                {
+                    if (cue >= from && cue < from + secondsPerPixel)
+                    {
+                        pixels.drawRect(px, 0, 1, tileHeight, Colors.ACTIVE | Colors.A75);
+                        break;
+                    }
+                }
+            }
+
+            int peak = range.maximum > 0 ? Math.max(1, Math.round(range.maximum * tileHeight)) : 0;
+            int average = range.average > 0 ? Math.max(1, Math.round(range.average * tileHeight)) : 0;
+
+            if (peak > 0) pixels.drawRect(px, (tileHeight - peak) / 2, 1, peak, columnColor);
+            if (average > 0) pixels.drawRect(px, (tileHeight - average) / 2, 1, average, Colors.mulRGB(columnColor, 0.8F));
+        }
+
+        pixels.rewindBuffer();
+        Texture texture = Texture.textureFromPixels(pixels, GL11.GL_NEAREST);
+        pixels.delete();
+        this.detailedTiles.put(key, texture);
+
+        if (this.detailedTiles.size() > DETAILED_TILE_LIMIT)
+        {
+            DetailedTileKey oldest = this.detailedTiles.keySet().iterator().next();
+            this.detailedTiles.remove(oldest).delete();
+        }
+
+        return texture;
     }
 
     private static int tint(int a, int b)

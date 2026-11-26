@@ -57,6 +57,26 @@ public class Film extends ValueGroup
     /** Time spent editing with recent input (excludes AFK idle in the film editor). */
     public final ValueLong timeSpentActive = new ValueLong("time_spent_active", 0L);
 
+    private int changeVersion;
+
+    public int getChangeVersion()
+    {
+        return this.changeVersion;
+    }
+
+    public void bumpChangeVersion()
+    {
+        this.changeVersion += 1;
+    }
+
+    @Override
+    public void postNotify(mchorse.bbs_mod.settings.values.base.BaseValue value, int flag)
+    {
+        this.changeVersion += 1;
+
+        super.postNotify(value, flag);
+    }
+
     public Film()
     {
         super("");
@@ -98,6 +118,7 @@ public class Film extends ValueGroup
         super.fromData(data);
 
         FilmLegacy.migrateHotbar(this, data);
+        this.changeVersion += 1;
     }
 
     public void stampCreationTimeNow()

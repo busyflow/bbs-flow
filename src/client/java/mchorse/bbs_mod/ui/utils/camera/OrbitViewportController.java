@@ -168,6 +168,21 @@ public abstract class OrbitViewportController implements ICameraController
         }
     }
 
+    public boolean isOrbiting()
+    {
+        return this.orbiting;
+    }
+
+    /** True while actively orbiting/panning or still coasting under camera smoothing. */
+    public boolean isMoving()
+    {
+        return this.orbiting
+            || this.velocityPosition.lengthSquared() > 0
+            || this.rotation.distanceSquared(this.targetRotation) > 1e-6F
+            || this.pivot.distanceSquared(this.targetPivot) > 1e-6F
+            || Math.abs(this.distance - this.targetDistance) > 1e-3F;
+    }
+
     public boolean wasDragged()
     {
         return this.dragged;

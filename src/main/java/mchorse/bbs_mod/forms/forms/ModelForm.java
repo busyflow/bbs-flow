@@ -100,6 +100,8 @@ public class ModelForm extends Form implements IPosedForm
     /** Snowball-only timeline tracks: snow particle trail and explode/impact trigger. */
     public final ValueBoolean snowTrail = new ValueBoolean("snow_trail", true);
     public final ValueBoolean snowballImpact = new ValueBoolean("impact", false);
+    public final ValueFloat snowTrailSize = new ValueFloat("snow_trail_size", 1F, 0.1F, 5F).slider();
+    public final ValueFloat snowballImpactSize = new ValueFloat("impact_size", 1F, 0.1F, 5F).slider();
 
     /** Runtime tick of the latest active "true" keyframe on {@link #snowballImpact}, or NaN when none. */
     public transient float snowballImpactKeyTick = Float.NaN;
@@ -180,6 +182,10 @@ public class ModelForm extends Form implements IPosedForm
 
         this.add(this.snowTrail);
         this.add(this.snowballImpact);
+        this.snowTrailSize.invisible();
+        this.add(this.snowTrailSize);
+        this.snowballImpactSize.invisible();
+        this.add(this.snowballImpactSize);
     }
 
     public boolean isSnowballModel()
@@ -208,10 +214,12 @@ public class ModelForm extends Form implements IPosedForm
                 if ("snowball_trail".equals(effect))
                 {
                     hasTrail = true;
+                    part.inheritScale.set(false);
                 }
                 else if ("snowball_impact".equals(effect))
                 {
                     hasImpact = true;
+                    part.inheritScale.set(false);
                 }
             }
         }
@@ -241,7 +249,7 @@ public class ModelForm extends Form implements IPosedForm
 
         part.inheritPosition.set(true);
         part.inheritRotation.set(false);
-        part.inheritScale.set(true);
+        part.inheritScale.set(false);
         part.setForm(particle);
 
         return part;

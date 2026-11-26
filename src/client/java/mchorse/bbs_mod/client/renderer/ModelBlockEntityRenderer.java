@@ -79,6 +79,11 @@ public class ModelBlockEntityRenderer implements BlockEntityRenderer<ModelBlockE
 
         opacity = (float) ((1D - distance / 256D) * opacity);
 
+        if (opacity <= 0.01F)
+        {
+            return;
+        }
+
         matrices.push();
         matrices.translate(tx, ty, tz);
 

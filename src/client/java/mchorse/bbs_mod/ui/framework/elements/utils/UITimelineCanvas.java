@@ -50,11 +50,20 @@ public abstract class UITimelineCanvas extends UIElement
     protected int initialX;
     protected int initialY;
 
+    /* Visual playhead smoothing state (tick space; never alters actual cursor tick). */
+    private float visualPlayhead = Float.NaN;
+    private long lastPlayheadNs;
+
     /**
      * Render the time cursor: a vertical line at {@code x} with the tick label on a card at its
      * foot, nudged left when it would poke out of the area.
      */
     public static void renderCursor(UIContext context, String label, Area area, int x)
+    {
+        renderCursor(context, label, area, (float) x, area.ey(), BBSSettings.primaryColor.get(), false);
+    }
+
+    public static void renderCursor(UIContext context, String label, Area area, float x)
     {
         renderCursor(context, label, area, x, area.ey(), BBSSettings.primaryColor.get(), false);
     }
@@ -66,25 +75,72 @@ public abstract class UITimelineCanvas extends UIElement
      */
     public static void renderCursor(UIContext context, String label, Area area, int x, int bottom, int color, boolean onTop)
     {
+        renderCursor(context, label, area, (float) x, bottom, color, onTop);
+    }
+
+    public static void renderCursor(UIContext context, String label, Area area, float x, int bottom, int color, boolean onTop)
+    {
         FontRenderer font = context.batcher.getFont();
         int width = font.getWidth(label) + 3;
 
-        context.batcher.box(x, area.y, x + 1, bottom, color | Colors.A100);
+        context.batcher.box(x, area.y, x + 1F, bottom, color | Colors.A100);
 
         if (label.isEmpty())
         {
             return;
         }
 
+        int lx = Math.round(x);
+
         /* Move the tick line left, so it won't overflow the timeline */
-        if (x + 1 + width > area.ex())
+        if (lx + 1 + width > area.ex())
         {
-            x -= width + 1;
+            lx -= width + 1;
         }
 
         int y = onTop ? area.y + 2 : bottom - 2 - font.getHeight();
 
-        context.batcher.textCard(label, x + 3, y, Colors.WHITE, Colors.setA(color, 0.78F), 2);
+        context.batcher.textCard(label, lx + 3, y, Colors.WHITE, Colors.setA(color, 0.78F), 2);
+    }
+
+    /**
+     * Smooth visual playhead position in tick space: uses exact sub-tick cursor during playback
+     * (zero lag, full framerate), and gently glides toward snapped ticks when paused/scrubbing.
+     */
+    public float smoothPlayhead(float targetTick, boolean playing)
+    {
+        long now = System.nanoTime();
+
+        if (playing || Float.isNaN(this.visualPlayhead))
+        {
+            this.visualPlayhead = targetTick;
+            this.lastPlayheadNs = now;
+
+            return targetTick;
+        }
+
+        float diff = targetTick - this.visualPlayhead;
+
+        if (diff == 0F)
+        {
+            this.lastPlayheadNs = now;
+
+            return targetTick;
+        }
+
+        if (Math.abs(this.xAxis.to(targetTick) - this.xAxis.to(this.visualPlayhead)) < 0.2D)
+        {
+            this.visualPlayhead = targetTick;
+            this.lastPlayheadNs = now;
+
+            return targetTick;
+        }
+
+        float dt = Math.min(0.05F, Math.max(0F, (now - this.lastPlayheadNs) * 1E-9F));
+        this.lastPlayheadNs = now;
+        this.visualPlayhead += diff * (1F - (float) Math.exp(-dt * 42F));
+
+        return this.visualPlayhead;
     }
 
     public Scale getXAxis()
@@ -95,6 +151,11 @@ public abstract class UITimelineCanvas extends UIElement
     public int toGraphX(double value)
     {
         return (int) this.xAxis.to(value);
+    }
+
+    public float toGraphXF(double value)
+    {
+        return (float) this.xAxis.to(value);
     }
 
     public double fromGraphX(int mouseX)

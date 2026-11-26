@@ -266,6 +266,17 @@ public class FilmEditorController extends BaseFilmController
     }
 
     @Override
+    protected boolean isPausedForRender()
+    {
+        return !this.controller.isPlaying()
+            && !this.controller.isControlling()
+            && !this.fractionalPreview
+            && this.controller.panel.getRunner().getTransition(0F) == 0F
+            && UIPoseEditor.PINNED_LIMBS.isEmpty()
+            && mchorse.bbs_mod.ui.utils.Gizmo.INSTANCE.getTrackedGesture() == null;
+    }
+
+    @Override
     public void startRenderFrame(float transition)
     {
         boolean fractional = this.controller.panel.getRunner().getTransition(0F) != 0F;

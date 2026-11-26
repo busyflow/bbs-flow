@@ -25,6 +25,7 @@ public class AutoBezier
         double w = bTick - aTick;
         double h = b - a;
 
+        if (w <= 0) return a;
         if (h == 0) h = 0.00001;
 
         double[] ah = new double[4];

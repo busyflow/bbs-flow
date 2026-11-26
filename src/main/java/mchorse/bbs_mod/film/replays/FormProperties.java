@@ -56,6 +56,13 @@ public class FormProperties extends ValueGroup
 
     public final Map<TrackId, KeyframeChannel> tracks = new LinkedHashMap<>();
     private final Map<Form, Set<TrackId>> appliedTracks = new java.util.WeakHashMap<>();
+    private final Map<Form, Integer> appliedVersions = new java.util.WeakHashMap<>();
+
+    private int tracksVersion;
+    private int compiledVersion = -1;
+    private List<Map.Entry<TrackId, KeyframeChannel>> compiledNonBone = java.util.Collections.emptyList();
+    private List<Map.Entry<TrackId, KeyframeChannel>> compiledBone = java.util.Collections.emptyList();
+    private List<String> compiledBoneResetPaths = java.util.Collections.emptyList();
 
     /**
      * Tracks that were read but could not be understood — an unknown kind, or a channel whose
@@ -189,6 +196,7 @@ public class FormProperties extends ValueGroup
         }
 
         this.add(channel);
+        this.tracksVersion += 1;
     }
 
     public void remove(TrackId track)
@@ -198,6 +206,7 @@ public class FormProperties extends ValueGroup
         if (channel != null)
         {
             this.remove(channel);
+            this.tracksVersion += 1;
         }
     }
 
@@ -221,60 +230,132 @@ public class FormProperties extends ValueGroup
      * over last frame's result. A form that also has a whole-pose track keeps it — that track writes
      * the runtime pose the bones add onto.</p>
      */
-    public void apply(TrackContext context, float tick, float blend)
+    private void ensureCompiled()
     {
-        if (context.root() == null)
+        if (this.compiledVersion == this.tracksVersion)
         {
             return;
         }
 
-        float clampedBlend = MathUtils.clamp(blend, 0F, 1F);
-        Map<TrackId, KeyframeChannel> boneTracks = new LinkedHashMap<>();
-        Set<TrackId> previous = this.appliedTracks.put(context.root(), new HashSet<>(this.tracks.keySet()));
-        Set<TrackId> affected = new HashSet<>(this.tracks.keySet());
-        if (previous != null) affected.addAll(previous);
-        var legacySplines = LegacySplineValues.begin(context.root(), affected);
-        if (previous != null)
-            for (TrackId track : previous)
-                if (!this.tracks.containsKey(track) && TrackBehaviours.of(track) != null)
-                    TrackBehaviours.of(track).reset(context.root(), track);
+        this.compiledVersion = this.tracksVersion;
+
+        if (this.tracks.isEmpty())
+        {
+            this.compiledNonBone = java.util.Collections.emptyList();
+            this.compiledBone = java.util.Collections.emptyList();
+            this.compiledBoneResetPaths = java.util.Collections.emptyList();
+            return;
+        }
+
+        List<Map.Entry<TrackId, KeyframeChannel>> nonBone = new ArrayList<>();
+        List<Map.Entry<TrackId, KeyframeChannel>> bone = new ArrayList<>();
+        Set<String> boneFormPaths = new java.util.LinkedHashSet<>();
 
         List<Map.Entry<TrackId, KeyframeChannel>> ordered = new ArrayList<>(this.tracks.entrySet());
         ordered.sort(java.util.Comparator.comparingInt(entry ->
             LegacyTrackCompatibility.order(entry.getKey())));
+
         for (Map.Entry<TrackId, KeyframeChannel> entry : ordered)
         {
             if (entry.getKey().is(TrackKind.BONE))
             {
-                boneTracks.put(entry.getKey(), entry.getValue());
+                bone.add(entry);
+                String formPath = entry.getKey().formPath();
+
+                if (!this.has(TrackId.property(formPath, POSE_PROPERTY)))
+                {
+                    boneFormPaths.add(formPath);
+                }
             }
             else
             {
-                apply(context, entry.getKey(), entry.getValue(), tick, clampedBlend);
+                nonBone.add(entry);
             }
         }
 
-        Set<String> processedForms = new HashSet<>();
+        this.compiledNonBone = nonBone;
+        this.compiledBone = bone;
+        this.compiledBoneResetPaths = boneFormPaths.isEmpty() ? java.util.Collections.emptyList() : new ArrayList<>(boneFormPaths);
+    }
 
-        for (TrackId track : boneTracks.keySet())
+    public void apply(TrackContext context, float tick, float blend)
+    {
+        Form root = context.root();
+
+        if (root == null)
         {
-            String formPath = track.formPath();
+            return;
+        }
 
-            if (!processedForms.add(formPath))
+        Integer lastVersion = this.appliedVersions.get(root);
+        boolean tracksUnchanged = lastVersion != null && lastVersion == this.tracksVersion;
+
+        /* Fast path when no tracks exist and nothing previously applied needs resetting. */
+        if (this.tracks.isEmpty() && (tracksUnchanged || !this.appliedTracks.containsKey(root)))
+        {
+            this.appliedVersions.put(root, this.tracksVersion);
+            SolverBindings.apply(context);
+            return;
+        }
+
+        this.ensureCompiled();
+
+        float clampedBlend = MathUtils.clamp(blend, 0F, 1F);
+        Set<TrackId> affected;
+
+        if (tracksUnchanged)
+        {
+            affected = this.tracks.keySet();
+        }
+        else
+        {
+            Set<TrackId> previous = this.appliedTracks.put(root, new HashSet<>(this.tracks.keySet()));
+            this.appliedVersions.put(root, this.tracksVersion);
+
+            if (previous != null)
             {
-                continue;
+                affected = new HashSet<>(this.tracks.keySet());
+                affected.addAll(previous);
+            }
+            else
+            {
+                affected = this.tracks.keySet();
             }
 
-            if (!this.has(TrackId.property(formPath, POSE_PROPERTY)) && FormUtils.getForm(context.root(), formPath) instanceof IPosedForm posedForm)
+            if (previous != null)
+            {
+                for (TrackId track : previous)
+                {
+                    if (!this.tracks.containsKey(track) && TrackBehaviours.of(track) != null)
+                    {
+                        TrackBehaviours.of(track).reset(root, track);
+                    }
+                }
+            }
+        }
+
+        var legacySplines = LegacySplineValues.begin(root, affected);
+
+        for (int i = 0, size = this.compiledNonBone.size(); i < size; i++)
+        {
+            Map.Entry<TrackId, KeyframeChannel> entry = this.compiledNonBone.get(i);
+            apply(context, entry.getKey(), entry.getValue(), tick, clampedBlend);
+        }
+
+        for (int i = 0, size = this.compiledBoneResetPaths.size(); i < size; i++)
+        {
+            if (FormUtils.getForm(root, this.compiledBoneResetPaths.get(i)) instanceof IPosedForm posedForm)
             {
                 posedForm.getPose().setRuntimeValue(null);
             }
         }
 
-        for (Map.Entry<TrackId, KeyframeChannel> entry : boneTracks.entrySet())
+        for (int i = 0, size = this.compiledBone.size(); i < size; i++)
         {
+            Map.Entry<TrackId, KeyframeChannel> entry = this.compiledBone.get(i);
             apply(context, entry.getKey(), entry.getValue(), tick, clampedBlend);
         }
+
         LegacySplineValues.finish(legacySplines);
         SolverBindings.apply(context);
     }
@@ -299,6 +380,7 @@ public class FormProperties extends ValueGroup
 
         Set<TrackId> reset = new HashSet<>(this.tracks.keySet());
         Set<TrackId> previous = this.appliedTracks.remove(form);
+        this.appliedVersions.remove(form);
         if (previous != null) reset.addAll(previous);
         var legacySplines = LegacySplineValues.begin(form, reset);
         for (TrackId track : reset)
@@ -325,6 +407,7 @@ public class FormProperties extends ValueGroup
             {
                 it.remove();
                 this.remove(next);
+                this.tracksVersion += 1;
             }
         }
     }
@@ -387,6 +470,7 @@ public class FormProperties extends ValueGroup
         this.removeAll();
         this.tracks.clear();
         this.foreignTracks.clear();
+        this.tracksVersion += 1;
 
         if (!data.isMap())
         {

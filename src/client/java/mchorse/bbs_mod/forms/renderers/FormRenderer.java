@@ -105,7 +105,11 @@ public abstract class FormRenderer <T extends Form>
     public final void renderUI(UIContext context, int x1, int y1, int x2, int y2)
     {
         this.renderInUI(context, x1, y1, x2, y2);
+        this.renderUIOverlays(context, x1, y1, x2, y2);
+    }
 
+    public final void renderUIOverlays(UIContext context, int x1, int y1, int x2, int y2)
+    {
         FontRenderer font = context.batcher.getFont();
         String name = this.form.name.get();
 

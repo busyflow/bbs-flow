@@ -26,6 +26,23 @@ public class FontRenderer
     private int height;
     private int lineHeight = DEFAULT_LINE_HEIGHT;
 
+    /* Zero-allocation direct-mapped cache for limitToWidth() so truncated timeline/list labels
+     * don't re-measure character-by-character every frame. */
+    private static final int LIMIT_CACHE_SIZE = 128;
+    private static final int LIMIT_CACHE_MASK = LIMIT_CACHE_SIZE - 1;
+    private final String[] limitKeyStr = new String[LIMIT_CACHE_SIZE];
+    private final String[] limitKeySuffix = new String[LIMIT_CACHE_SIZE];
+    private final int[] limitKeyWidth = new int[LIMIT_CACHE_SIZE];
+    private final String[] limitValue = new String[LIMIT_CACHE_SIZE];
+
+    private void clearLimitCache()
+    {
+        for (int i = 0; i < LIMIT_CACHE_SIZE; i++)
+        {
+            this.limitKeyStr[i] = null;
+        }
+    }
+
     public static List<String> wrap(TextRenderer renderer, String string, int width)
     {
         return renderer.wrapLines(Text.literal(string), width).stream().map((ot) ->
@@ -96,6 +113,11 @@ public class FontRenderer
 
     public void setRenderer(TextRenderer renderer, int height, int lineHeight)
     {
+        if (this.renderer != renderer || this.nativeRenderer != null || this.height != height)
+        {
+            this.clearLimitCache();
+        }
+
         this.renderer = renderer;
         this.nativeRenderer = null;
         this.height = height;
@@ -104,6 +126,11 @@ public class FontRenderer
 
     public void setNativeRenderer(NativeFontRenderer nativeRenderer, TextRenderer fallbackRenderer)
     {
+        if (this.nativeRenderer != nativeRenderer)
+        {
+            this.clearLimitCache();
+        }
+
         this.nativeRenderer = nativeRenderer;
         this.renderer = fallbackRenderer;
         this.height = nativeRenderer.getHeight();
@@ -120,6 +147,14 @@ public class FontRenderer
         if (this.nativeRenderer != null)
         {
             this.nativeRenderer.draw(matrices, text, x, y, color, shadow);
+        }
+    }
+
+    public void drawNativeBatched(MatrixStack matrices, String text, float x, float y, int color, boolean shadow, NativeFontRenderer.BatchSink sink)
+    {
+        if (this.nativeRenderer != null)
+        {
+            this.nativeRenderer.drawBatched(matrices, text, x, y, color, shadow, sink);
         }
     }
 
@@ -171,25 +206,43 @@ public class FontRenderer
             return str;
         }
 
+        int slot = ((str.hashCode() * 31 + suffix.hashCode()) * 31 + width) & LIMIT_CACHE_MASK;
+
+        if (width == this.limitKeyWidth[slot]
+            && str.equals(this.limitKeyStr[slot])
+            && suffix.equals(this.limitKeySuffix[slot]))
+        {
+            return this.limitValue[slot];
+        }
+
         int w = this.getWidth(str);
+        String result;
 
         if (w < width)
         {
-            return str;
+            result = str;
         }
-
-        int sw = this.getWidth(suffix);
-        int i = str.length() - 1;
-
-        while (w + sw >= width && i > 0)
+        else
         {
-            w -= this.getWidth(String.valueOf(str.charAt(i)));
-            i -= 1;
+            int sw = this.getWidth(suffix);
+            int i = str.length() - 1;
+
+            while (w + sw >= width && i > 0)
+            {
+                w -= this.getWidth(String.valueOf(str.charAt(i)));
+                i -= 1;
+            }
+
+            String cut = str.substring(0, i);
+            result = cut.isEmpty() ? cut : cut + suffix;
         }
 
-        str = str.substring(0, i);
+        this.limitKeyStr[slot] = str;
+        this.limitKeySuffix[slot] = suffix;
+        this.limitKeyWidth[slot] = width;
+        this.limitValue[slot] = result;
 
-        return str.isEmpty() ? str : str + suffix;
+        return result;
     }
 
     private static class StyleHolder

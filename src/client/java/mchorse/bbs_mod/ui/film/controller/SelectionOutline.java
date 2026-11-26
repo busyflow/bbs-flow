@@ -4,6 +4,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.systems.VertexSorter;
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.BBSSettings;
+import mchorse.bbs_mod.film.Film;
 import mchorse.bbs_mod.film.FilmControllerContext;
 import mchorse.bbs_mod.film.FilmEntityRenderer;
 import mchorse.bbs_mod.film.FilmTarget;
@@ -13,7 +14,10 @@ import mchorse.bbs_mod.forms.entities.IEntity;
 import mchorse.bbs_mod.ui.framework.UIBaseMenu;
 import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.input.drag.TransformSpace;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeEditor;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIPoseKeyframeFactory;
 import mchorse.bbs_mod.ui.utils.Area;
+import mchorse.bbs_mod.ui.utils.Gizmo;
 import mchorse.bbs_mod.ui.utils.OutlineMask;
 import mchorse.bbs_mod.utils.MatrixStackUtils;
 import mchorse.bbs_mod.utils.Pair;
@@ -24,6 +28,9 @@ import net.minecraft.client.util.math.MatrixStack;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector3d;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * A thin outline around the bone edited on the film's selected actor, the way 3D programs mark
@@ -37,7 +44,7 @@ import org.joml.Vector3d;
 public class SelectionOutline
 {
     /** Redraw at least this often (in frames), for what the key below doesn't see (a pose edit from a field). */
-    private static final int HEARTBEAT = 10;
+    private static final int HEARTBEAT = 120;
 
     private final UIFilmController controller;
     private final OutlineMask mask = new OutlineMask();
@@ -46,14 +53,15 @@ public class SelectionOutline
     private final Matrix4f lastView = new Matrix4f();
     private final Matrix4f lastProjection = new Matrix4f();
     private final Vector3d lastEye = new Vector3d();
-    private int lastMouseX = Integer.MIN_VALUE;
-    private int lastMouseY;
     private int lastCursor;
     private int lastReplay;
+    private int lastPoseVersion;
+    private int lastFilmVersion;
     private FilmTarget lastTarget;
     private int lastWidth;
     private int lastHeight;
     private int framesSince;
+    private final List<String> selectedBonePaths = new ArrayList<>();
 
     public SelectionOutline(UIFilmController controller)
     {
@@ -86,28 +94,69 @@ public class SelectionOutline
 
         BBSProfiler.begin(BBSProfiler.Timer.OUTLINE);
 
-        if (this.needsRedraw(context, w, h) && this.mask.begin(w, h))
+        if (this.needsRedraw(w, h, entity) && this.mask.begin(w, h))
         {
             this.drawMask(world, entity, replay);
             this.mask.end();
         }
 
-        int index = this.mask.indexOf((form, id) -> StringUtils.combinePaths(FormUtils.getPath(form), id).equals(bone.a));
+        this.collectSelectedBonePaths(bone.a);
 
-        if (index > 0)
+        for (int i = 0, size = this.selectedBonePaths.size(); i < size; i++)
         {
-            this.mask.draw(context, viewport, index, controller.panel.lastProjection);
+            String bonePath = this.selectedBonePaths.get(i);
+            int index = this.mask.indexOf((form, id) -> StringUtils.combinePaths(FormUtils.getPath(form), id).equals(bonePath));
+
+            if (index > 0)
+            {
+                this.mask.draw(context, viewport, index, controller.panel.lastProjection);
+            }
         }
 
         BBSProfiler.end(BBSProfiler.Timer.OUTLINE);
     }
 
-    private boolean needsRedraw(UIContext context, int w, int h)
+    private void collectSelectedBonePaths(String primaryBonePath)
+    {
+        this.selectedBonePaths.clear();
+
+        UIKeyframeEditor keyframeEditor = this.controller.panel.replayEditor.getBoneKeyframeEditor();
+
+        if (keyframeEditor != null && keyframeEditor.editor instanceof UIPoseKeyframeFactory poseFactory)
+        {
+            List<String> selected = poseFactory.poseEditor.groups.list.getCurrent();
+
+            if (selected.size() > 1)
+            {
+                for (int i = 0, size = selected.size(); i < size; i++)
+                {
+                    String path = poseFactory.poseEditor.bonePath(selected.get(i));
+
+                    if (path != null && !path.isEmpty())
+                    {
+                        this.selectedBonePaths.add(path);
+                    }
+                }
+
+                if (!this.selectedBonePaths.isEmpty())
+                {
+                    return;
+                }
+            }
+        }
+
+        this.selectedBonePaths.add(primaryBonePath);
+    }
+
+    private boolean needsRedraw(int w, int h, IEntity entity)
     {
         UIFilmController controller = this.controller;
         int cursor = controller.panel.getCursor();
         int replay = controller.getCurrentReplayIndex();
         FilmTarget target = controller.getEditTarget();
+        int poseVersion = entity != null && entity.getForm() != null ? entity.getForm().getPoseVersion() : 0;
+        Film film = controller.panel.getData();
+        int filmVersion = film != null ? film.getChangeVersion() : 0;
 
         this.framesSince += 1;
 
@@ -116,10 +165,10 @@ public class SelectionOutline
             && this.framesSince < HEARTBEAT
             && w == this.lastWidth
             && h == this.lastHeight
-            && context.mouseX == this.lastMouseX
-            && context.mouseY == this.lastMouseY
             && cursor == this.lastCursor
             && replay == this.lastReplay
+            && poseVersion == this.lastPoseVersion
+            && filmVersion == this.lastFilmVersion
             && target.equals(this.lastTarget)
             && controller.panel.lastView.equals(this.lastView)
             && controller.panel.lastProjection.equals(this.lastProjection)
@@ -133,10 +182,10 @@ public class SelectionOutline
         this.framesSince = 0;
         this.lastWidth = w;
         this.lastHeight = h;
-        this.lastMouseX = context.mouseX;
-        this.lastMouseY = context.mouseY;
         this.lastCursor = cursor;
         this.lastReplay = replay;
+        this.lastPoseVersion = poseVersion;
+        this.lastFilmVersion = filmVersion;
         this.lastTarget = target;
         this.lastView.set(controller.panel.lastView);
         this.lastProjection.set(controller.panel.lastProjection);

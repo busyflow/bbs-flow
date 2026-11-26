@@ -218,7 +218,33 @@ public class UIKeyframes extends UITimelineCanvas
         if (this.valueGesture == null) sheet.channel.preNotify(this.getAutoKeyframeTick() == null
             ? IValueListener.FLAG_DEFAULT : IValueListener.FLAG_BATCH);
         edit.run();
-        if (this.valueGesture == null) sheet.channel.postNotify();
+        if (this.valueGesture == null)
+        {
+            sheet.channel.postNotify();
+        }
+        else
+        {
+            bumpChannelAndFilmVersion(sheet.channel);
+        }
+    }
+
+    private static void bumpChannelAndFilmVersion(KeyframeChannel<?> channel)
+    {
+        if (channel == null)
+        {
+            return;
+        }
+
+        channel.bumpVersion();
+
+        for (mchorse.bbs_mod.settings.values.base.BaseValue p = channel.getParent(); p != null; p = p.getParent())
+        {
+            if (p instanceof mchorse.bbs_mod.film.Film film)
+            {
+                film.bumpChangeVersion();
+                break;
+            }
+        }
     }
 
     public void endValueGesture()
@@ -259,6 +285,7 @@ public class UIKeyframes extends UITimelineCanvas
         for (Pair<BaseType, UIKeyframeSheet> before : this.valueGesture.data)
         {
             before.b.channel.fromData(before.a);
+            bumpChannelAndFilmVersion(before.b.channel);
             before.b.selection.clear();
             before.b.selection.addAll(this.valueSelection.get(before.b));
         }
@@ -1517,13 +1544,60 @@ public class UIKeyframes extends UITimelineCanvas
             }
             else if (context.mouseButton == 2)
             {
-                this.startNavigating();
+                if (!this.toggleBooleanKeyframesAt(context))
+                {
+                    this.startNavigating();
+                }
             }
 
             return context.mouseButton != 1;
         }
 
         return super.subMouseClicked(context);
+    }
+
+    private boolean toggleBooleanKeyframesAt(UIContext context)
+    {
+        List<Keyframe> keyframes = this.currentGraph.findKeyframes(context.mouseX, context.mouseY);
+
+        if (keyframes.isEmpty())
+        {
+            return false;
+        }
+
+        boolean hasBoolean = false;
+
+        for (Keyframe keyframe : keyframes)
+        {
+            if (keyframe.getFactory() == mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories.BOOLEAN
+                || keyframe.getValue() instanceof Boolean)
+            {
+                hasBoolean = true;
+                break;
+            }
+        }
+
+        if (!hasBoolean)
+        {
+            return false;
+        }
+
+        this.cacheKeyframes();
+
+        for (Keyframe keyframe : keyframes)
+        {
+            if (keyframe.getFactory() == mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories.BOOLEAN
+                || keyframe.getValue() instanceof Boolean)
+            {
+                keyframe.setValue(!Boolean.TRUE.equals(keyframe.getValue()), true);
+            }
+        }
+
+        this.submitKeyframes();
+        this.triggerChange();
+        UIUtils.playClick();
+
+        return true;
     }
 
     private void removeOrCreateKeyframe(UIContext context)

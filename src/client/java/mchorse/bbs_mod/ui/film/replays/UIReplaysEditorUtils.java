@@ -376,25 +376,52 @@ public class UIReplaysEditorUtils
         return started;
     }
 
+    private static UIReplayPropTransform lastSyncedReplayTransform;
+    private static Replay lastSyncedReplay;
+    private static IEntity lastSyncedEntity;
+    private static float lastSyncedCursor = Float.NaN;
+    private static int lastSyncedFilmVersion = Integer.MIN_VALUE;
+    private static int lastSyncedSelectionCount = -1;
+
     public static void configureFilmHotkeyDrag(UIFilmPanel panel, UIContext context)
     {
         float transition = panel.replayEditor.getContext() == null ? 0F : panel.replayEditor.getContext().getTransition();
 
-        /* The replay's own placement is a target of its own, refreshed every frame so a
-         * gesture always starts from the pose on screen. It is configured beside the
-         * keyframe editor's transform rather than instead of it: the two never hold the
-         * gizmo at the same time, but a track can own the value pads without owning the
-         * gizmo (a form-transform property track), and that one must keep its wiring. */
+        /* The replay's own placement is a target of its own, refreshed when paused state or cursor/film changes.
+         * Skipping redundant syncFromReplays while idle/orbiting avoids ~8 keyframe interpolations every frame. */
         UIReplayPropTransform replayTransform = panel.replayEditor.replayTransform;
+        Replay replay = panel.replayEditor.getReplay();
+        IEntity entity = panel.getController().getCurrentEntity();
+        float keyCursor = panel.getKeyframeCursor(transition);
+        int filmVersion = panel.getData() != null ? panel.getData().getChangeVersion() : 0;
+        int selCount = panel.replayEditor.replaysList == null ? 0 : panel.replayEditor.replaysList.replays.getCurrentIndices().size();
+        boolean running = panel.isRunning();
 
-        replayTransform.setRunning(panel.isRunning());
-        replayTransform.syncFromReplays(
-            panel.replayEditor.getReplay(),
-            panel.getController().getCurrentEntity(),
-            panel.replayEditor.replaysList == null ? null : panel.replayEditor.replaysList.replays.getSelectedReplays(),
-            panel.getController().getEntities(),
-            panel.getKeyframeCursor(transition)
-        );
+        replayTransform.setRunning(running);
+
+        if (running || replayTransform.isEditing()
+            || replayTransform != lastSyncedReplayTransform
+            || replay != lastSyncedReplay
+            || entity != lastSyncedEntity
+            || Float.compare(keyCursor, lastSyncedCursor) != 0
+            || filmVersion != lastSyncedFilmVersion
+            || selCount != lastSyncedSelectionCount)
+        {
+            replayTransform.syncFromReplays(
+                replay,
+                entity,
+                panel.replayEditor.replaysList == null ? null : panel.replayEditor.replaysList.replays.getSelectedReplays(),
+                panel.getController().getEntities(),
+                keyCursor
+            );
+
+            lastSyncedReplayTransform = replayTransform;
+            lastSyncedReplay = replay;
+            lastSyncedEntity = entity;
+            lastSyncedCursor = keyCursor;
+            lastSyncedFilmVersion = filmVersion;
+            lastSyncedSelectionCount = selCount;
+        }
         replayTransform.hotkeyDrag(() -> buildFilmGizmoDrag(
             panel,
             panel.getCamera(),
@@ -884,14 +911,29 @@ public class UIReplaysEditorUtils
          * resets the pose editor — so it caps the multi-selection. When a pose factory is
          * already up and owns this bone, just toggle it and stop, so the selection accumulates. */
         if (!insert && Window.isCtrlPressed()
-            && keyframeEditor.editor instanceof UIPoseKeyframeFactory poseFactory
-            && poseFactory.poseEditor.hasBone(bone))
+            && keyframeEditor.editor instanceof UIPoseKeyframeFactory poseFactory)
         {
-            IUIKeyframeGraph graph = keyframeEditor.view.getGraph();
-            keyframeEditor.view.getDopeSheet().revealSheet(graph.getSheet(graph.getSelected()));
-            poseFactory.poseEditor.selectBone(bone, true);
+            String matchedBone = poseFactory.poseEditor.matchBone(bone);
 
-            return;
+            if (matchedBone != null)
+            {
+                IUIKeyframeGraph graph = keyframeEditor.view.getGraph();
+                Keyframe selected = graph.getSelected();
+
+                if (selected != null)
+                {
+                    UIKeyframeSheet selectedSheet = graph.getSheet(selected);
+
+                    if (selectedSheet != null)
+                    {
+                        keyframeEditor.view.getDopeSheet().revealSheet(selectedSheet);
+                    }
+                }
+
+                poseFactory.poseEditor.selectBone(matchedBone, true);
+
+                return;
+            }
         }
 
         String path = FormUtils.getPath(form);

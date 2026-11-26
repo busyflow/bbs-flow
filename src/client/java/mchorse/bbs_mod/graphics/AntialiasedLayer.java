@@ -39,6 +39,9 @@ public class AntialiasedLayer
     private static final float[] CLEAR_COLOR = {0F, 0F, 0F, 0F};
     private static final float[] CLEAR_DEPTH = {1F};
     private static final int[] SAMPLES = {0, 2, 4};
+    private static final Matrix4f SAVED_PROJECTION = new Matrix4f();
+    private static final Matrix4f SAVED_MODEL_VIEW = new Matrix4f();
+    private static final Matrix4f UNIT_ORTHO = new Matrix4f().setOrtho(0F, 1F, 0F, 1F, -1F, 1F);
 
     private static boolean active;
     private static boolean failed;
@@ -69,6 +72,7 @@ public class AntialiasedLayer
     private static boolean blend;
     private static boolean depthWrite;
     private static final int[] blendFunc = new int[4];
+    private static boolean fastUIState;
 
     public static boolean isActive()
     {
@@ -95,7 +99,7 @@ public class AntialiasedLayer
     {
         GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
 
-        return begin(viewport[0], viewport[1], viewport[2], viewport[3]);
+        return beginWithViewport(viewport[0], viewport[1], viewport[2], viewport[3], false, false);
     }
 
     /**
@@ -104,6 +108,25 @@ public class AntialiasedLayer
      * covers only a small part of it.
      */
     public static boolean begin(int x, int y, int w, int h)
+    {
+        return beginWithViewport(x, y, w, h, true, false);
+    }
+
+    /**
+     * Fast path when the caller already knows the active GL viewport (e.g. from {@code UIUtils.viewportArea}),
+     * avoiding a synchronous {@code glGetIntegerv(GL_VIEWPORT)} driver stall.
+     */
+    public static boolean begin(int x, int y, int w, int h, int vpX, int vpY, int vpW, int vpH)
+    {
+        viewport[0] = vpX;
+        viewport[1] = vpY;
+        viewport[2] = vpW;
+        viewport[3] = vpH;
+
+        return beginWithViewport(x, y, w, h, false, true);
+    }
+
+    private static boolean beginWithViewport(int x, int y, int w, int h, boolean queryViewport, boolean knownUI)
     {
         int wanted = wantedSamples();
 
@@ -117,20 +140,45 @@ public class AntialiasedLayer
             return false;
         }
 
-        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
+        if (queryViewport)
+        {
+            GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
+        }
 
         AntialiasedLayer.x = x;
         AntialiasedLayer.y = y;
-        previousDraw = GL30.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        fastUIState = knownUI;
+
+        if (knownUI)
+        {
+            int mainFbo = MinecraftClient.getInstance().getFramebuffer().fbo;
+            previousDraw = mainFbo;
+            previousRead = mainFbo;
+            scissor = false;
+            blend = true;
+            depthWrite = true;
+            blendFunc[0] = GL11.GL_SRC_ALPHA;
+            blendFunc[1] = GL11.GL_ONE_MINUS_SRC_ALPHA;
+            blendFunc[2] = GL11.GL_ONE;
+            blendFunc[3] = GL11.GL_ZERO;
+        }
+        else
+        {
+            previousDraw = GL30.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         previousRead = GL30.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
         scissor = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
-        GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, scissorBox);
+        if (scissor)
+        {
+            GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, scissorBox);
+        }
         blend = GL11.glIsEnabled(GL11.GL_BLEND);
         depthWrite = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
         blendFunc[0] = GL11.glGetInteger(GL30.GL_BLEND_SRC_RGB);
         blendFunc[1] = GL11.glGetInteger(GL30.GL_BLEND_DST_RGB);
         blendFunc[2] = GL11.glGetInteger(GL30.GL_BLEND_SRC_ALPHA);
         blendFunc[3] = GL11.glGetInteger(GL30.GL_BLEND_DST_ALPHA);
+
+        }
 
         GlStateManager._disableScissorTest();
         GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, msaaFbo);
@@ -183,10 +231,9 @@ public class AntialiasedLayer
             RenderSystem.disableBlend();
         }
 
-        GlStateManager._scissorBox(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
-
         if (scissor)
         {
+            GlStateManager._scissorBox(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3]);
             GlStateManager._enableScissorTest();
         }
     }
@@ -194,14 +241,14 @@ public class AntialiasedLayer
     /** The resolved buffer over the rectangle, premultiplied. */
     private static void composite()
     {
-        boolean depthTest = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
-        boolean cull = GL11.glIsEnabled(GL11.GL_CULL_FACE);
-        Matrix4f projection = new Matrix4f(RenderSystem.getProjectionMatrix());
+        boolean depthTest = !fastUIState && GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
+        boolean cull = !fastUIState && GL11.glIsEnabled(GL11.GL_CULL_FACE);
+        SAVED_PROJECTION.set(RenderSystem.getProjectionMatrix());
         VertexSorter sorter = RenderSystem.getVertexSorting();
-        Matrix4f modelView = new Matrix4f(RenderSystem.getModelViewMatrix());
+        SAVED_MODEL_VIEW.set(RenderSystem.getModelViewMatrix());
         MatrixStack stack = RenderSystem.getModelViewStack();
 
-        RenderSystem.setProjectionMatrix(new Matrix4f().setOrtho(0F, 1F, 0F, 1F, -1F, 1F), VertexSorter.BY_Z);
+        RenderSystem.setProjectionMatrix(UNIT_ORTHO, VertexSorter.BY_Z);
         stack.push();
         stack.loadIdentity();
         RenderSystem.applyModelViewMatrix();
@@ -234,10 +281,10 @@ public class AntialiasedLayer
         stack.pop();
         /* Put back the applied model-view as it was (it isn't necessarily the stack's top) */
         stack.push();
-        stack.peek().getPositionMatrix().set(modelView);
+        stack.peek().getPositionMatrix().set(SAVED_MODEL_VIEW);
         RenderSystem.applyModelViewMatrix();
         stack.pop();
-        RenderSystem.setProjectionMatrix(projection, sorter);
+        RenderSystem.setProjectionMatrix(SAVED_PROJECTION, sorter);
     }
 
     private static int wantedSamples()
@@ -339,12 +386,14 @@ public class AntialiasedLayer
     public static boolean beginUI(float x, float y, float w, float h)
     {
         MinecraftClient mc = MinecraftClient.getInstance();
+        int fbW = mc.getWindow().getFramebufferWidth();
+        int fbH = mc.getWindow().getFramebufferHeight();
         float scale = (float) mc.getWindow().getScaleFactor();
         int px = (int) Math.floor(x * scale);
-        int py = (int) Math.floor(mc.getWindow().getFramebufferHeight() - (y + h) * scale);
+        int py = (int) Math.floor(fbH - (y + h) * scale);
         int pw = (int) Math.ceil((x + w) * scale) - px;
-        int ph = (int) Math.ceil(mc.getWindow().getFramebufferHeight() - y * scale) - py;
+        int ph = (int) Math.ceil(fbH - y * scale) - py;
 
-        return begin(px, py, pw, ph);
+        return begin(px, py, pw, ph, 0, 0, fbW, fbH);
     }
 }

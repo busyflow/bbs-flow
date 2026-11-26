@@ -566,13 +566,34 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
 
     private void pasteClips(MapType data, int mouseX, int mouseY)
     {
-        this.pasteClips(data, this.fromGraphTick(mouseX));
+        int tick = Math.max(0, this.fromGraphTick(mouseX));
+        int layer = Math.max(0, this.fromLayerY(mouseY));
+
+        this.pasteClipsAt(data, tick, layer);
     }
 
     /**
      * Paste given clip data to timeline.
      */
     private void pasteClips(MapType data, int tick)
+    {
+        this.pasteClipsAt(data, tick, -1);
+    }
+
+    private boolean isLayerOccupied(int start, int end, int layer)
+    {
+        for (Clip existing : this.clips.get())
+        {
+            if (existing.layer.get() == layer && existing.tick.get() < end && existing.tick.get() + existing.duration.get() > start)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void pasteClipsAt(MapType data, int tick, int targetLayer)
     {
         if (data == null)
         {
@@ -590,6 +611,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
 
         List<Clip> newClips = new ArrayList<>();
         int min = Integer.MAX_VALUE;
+        int minLayer = Integer.MAX_VALUE;
 
         try
         {
@@ -614,6 +636,7 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
                 }
 
                 min = Math.min(min, clip.tick.get());
+                minLayer = Math.min(minLayer, clip.layer.get());
 
                 newClips.add(clip);
             }
@@ -621,7 +644,25 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
             for (Clip clip : newClips)
             {
                 clip.tick.set(tick + (clip.tick.get() - min));
-                clip.layer.set(this.clips.findFreeLayer(clip));
+
+                if (targetLayer >= 0)
+                {
+                    int start = clip.tick.get();
+                    int end = start + clip.duration.get();
+                    int desiredLayer = targetLayer + (clip.layer.get() - minLayer);
+
+                    while (this.isLayerOccupied(start, end, desiredLayer))
+                    {
+                        desiredLayer += 1;
+                    }
+
+                    clip.layer.set(desiredLayer);
+                }
+                else
+                {
+                    clip.layer.set(this.clips.findFreeLayer(clip));
+                }
+
                 this.clips.addClip(clip);
                 this.addSelected(clip);
             }
@@ -2333,10 +2374,13 @@ public class UIClips extends UITimelineCanvas implements IFileDropTarget
         /* Keep marker lines visible over the clips, below the playhead. */
         this.markers.render(context, this.area, this.xAxis, 0);
 
-        float cursor = this.delegate.getTimelineCursor(context.getTransition());
-        String label = TimeUtils.formatCursorTime(cursor) + "/" + TimeUtils.formatTime(this.clips.calculateDuration());
+        boolean running = this.delegate.isRunning();
+        float displayCursor = this.delegate.getTimelineCursor(context.getTransition());
+        float targetCursor = running ? this.delegate.getCursor(context.getTransition()) : displayCursor;
+        float cx = this.toGraphXF(this.smoothPlayhead(targetCursor, running));
+        String label = TimeUtils.formatCursorTime(displayCursor) + "/" + TimeUtils.formatTime(this.clips.calculateDuration());
 
-        renderCursor(context, label, area, this.toGraphX(cursor));
+        renderCursor(context, label, area, cx);
         this.renderSelection(context);
 
         batcher.unclip(context);

@@ -67,14 +67,17 @@ public class FilmStencilPicker
     private int lastPickMouseX = Integer.MIN_VALUE;
     private int lastPickMouseY;
     private boolean lastPickAlt;
+    private boolean lastPickTargetMode;
     private int lastPickCursor;
     private int lastPickReplayIndex;
     private FilmTarget lastPickTarget;
     private int lastPickReplayCount;
+    private int lastPickPoseVersion;
+    private boolean sceneValid;
     private int framesSincePick;
 
     /** Repick at least this often (in frames) even when no tracked input changed. */
-    private static final int PICK_HEARTBEAT = 15;
+    private static final int PICK_HEARTBEAT = 120;
 
     /** One-shot target selection, scoped to the visible control that armed it. */
     private UIElement pickOwner;
@@ -113,6 +116,7 @@ public class FilmStencilPicker
         this.hoveredReplayIndex = -1;
         this.stencil.clearPicking();
         this.lastPickMouseX = Integer.MIN_VALUE;
+        this.sceneValid = false;
     }
 
     public boolean isPickingTarget()
@@ -143,6 +147,7 @@ public class FilmStencilPicker
         }
         else if (context.mouseButton == 0)
         {
+            this.stencil.finishAsyncPick();
             Form spline = this.controller.pickSplineForm(context);
             Pair<Form, String> handle = this.controller.pickRigHandle(context);
             Pair<Form, String> pair = spline != null ? new Pair<>(spline, "") : handle != null ? handle : this.stencil.getPicked();
@@ -173,6 +178,25 @@ public class FilmStencilPicker
         return this.hoveredReplayIndex;
     }
 
+    public int resolveHoveredReplayIndex()
+    {
+        this.stencil.finishAsyncPick();
+
+        if (!this.stencil.hasPicked())
+        {
+            return -1;
+        }
+
+        int stencilIndex = this.stencil.getIndex() - REPLAY_STENCIL_OFFSET;
+
+        if (stencilIndex >= 0 && stencilIndex < this.controller.panel.getData().replays.getList().size())
+        {
+            return stencilIndex;
+        }
+
+        return -1;
+    }
+
     /**
      * The picking pass of a rendered frame: draw the scene into the pick buffer, read what is
      * under the cursor, then paint the hover highlight and its label back over the viewport.
@@ -186,27 +210,7 @@ public class FilmStencilPicker
 
         boolean altPressed = Window.isAltPressed() && !this.isPickingTarget();
 
-        RenderSystem.depthFunc(GL11.GL_LESS);
-
-        /* Cache the global stuff */
-        MatrixStackUtils.cacheMatrices();
-
-        RenderSystem.setProjectionMatrix(this.controller.panel.lastProjection, VertexSorter.BY_Z);
-        RenderSystem.setInverseViewRotationMatrix(new Matrix3f(this.controller.panel.lastView).invert());
-
-        /* Render the stencil */
-        MatrixStack worldStack = this.controller.worldRenderContext().matrixStack();
-
-        worldStack.push();
-        worldStack.loadIdentity();
-        MatrixStackUtils.multiply(worldStack, this.controller.panel.lastView);
         this.renderStencil(this.controller.worldRenderContext(), this.controller.getContext(), altPressed);
-        worldStack.pop();
-
-        /* Return back to orthographic projection */
-        MatrixStackUtils.restoreMatrices();
-
-        RenderSystem.depthFunc(GL11.GL_ALWAYS);
 
         this.hoveredReplayIndex = -1;
 
@@ -269,9 +273,21 @@ public class FilmStencilPicker
     {
         Area viewport = this.controller.panel.preview.getViewport();
 
+        /* Skip hover picking completely while actively orbiting/coasting the camera or dragging a gizmo:
+         * neither needs a hover highlight and skipping avoids GPU readback stalls during drags. */
+        if (this.controller.orbit.isMoving() || Gizmo.INSTANCE.getTrackedGesture() != null)
+        {
+            this.stencil.clearIndex();
+            this.sceneValid = false;
+            this.lastPickMouseX = Integer.MIN_VALUE;
+
+            return;
+        }
+
         if (!viewport.isInside(context) || this.controller.panel.preview.isOverIcons(context) || this.controller.getControlled() != null)
         {
             this.stencil.clearPicking();
+            this.sceneValid = false;
             this.lastPickMouseX = Integer.MIN_VALUE;
 
             return;
@@ -281,20 +297,57 @@ public class FilmStencilPicker
 
         if ((entity == null || (this.controller.getPovMode() == UIFilmController.CAMERA_MODE_FIRST_PERSON && entity == this.controller.getCurrentEntity())) && !altPressed && !this.isPickingTarget())
         {
+            this.sceneValid = false;
             this.lastPickMouseX = Integer.MIN_VALUE;
 
             return;
         }
 
-        if (!this.needsRepick(context, altPressed))
+        boolean sceneChanged = this.needsSceneRedraw(altPressed, entity);
+        boolean mouseMoved = context.mouseX != this.lastPickMouseX || context.mouseY != this.lastPickMouseY;
+
+        if (!sceneChanged)
         {
+            /* Harvest any async PBO readback queued by the previous frame's stencil render. */
+            this.stencil.finishAsyncPick();
+
+            if (!mouseMoved)
+            {
+                return;
+            }
+        }
+
+        this.lastPickMouseX = context.mouseX;
+        this.lastPickMouseY = context.mouseY;
+
+        if (!sceneChanged && this.sceneValid && this.stencil.getFramebuffer() != null)
+        {
+            /* Scene/camera/pose haven't moved — read the new cursor pixel straight from
+             * the already-rendered stencil buffer without re-rendering any 3D geometry. */
+            Texture mainTexture = this.stencil.getFramebuffer().getMainTexture();
+            int x = (int) ((context.mouseX - viewport.x) / (float) viewport.w * mainTexture.width);
+            int y = (int) ((1F - (context.mouseY - viewport.y) / (float) viewport.h) * mainTexture.height);
+            int radius = Math.round(BBSSettings.gizmoHoverTolerance.get() * mainTexture.width / (float) viewport.w);
+
+            this.stencil.repickFromBufferAsync(x, y, radius, Gizmo.STENCIL_MAX);
+
             return;
         }
 
         BBSProfiler.count(BBSProfiler.Section.STENCIL_PASS);
         BBSProfiler.begin(BBSProfiler.Timer.STENCIL_PASS);
 
-        this.ensureFramebuffer();
+        RenderSystem.depthFunc(GL11.GL_LESS);
+        MatrixStackUtils.cacheMatrices();
+        RenderSystem.setProjectionMatrix(this.controller.panel.lastProjection, VertexSorter.BY_Z);
+        RenderSystem.setInverseViewRotationMatrix(new Matrix3f(this.controller.panel.lastView).invert());
+
+        MatrixStack worldStack = renderContext.matrixStack();
+        worldStack.push();
+        worldStack.loadIdentity();
+        MatrixStackUtils.multiply(worldStack, this.controller.panel.lastView);
+
+        this.ensureFramebuffer(viewport);
 
         /* Match the visual gizmo's on-screen size compensation (see
          * Gizmo#setViewportHeight) so the pick handles line up with what is drawn. */
@@ -393,20 +446,24 @@ public class FilmStencilPicker
         int y = (int) ((1F - (context.mouseY - viewport.y) / (float) viewport.h) * mainTexture.height);
         int radius = Math.round(BBSSettings.gizmoHoverTolerance.get() * mainTexture.width / (float) viewport.w);
 
-        this.stencil.pick(x, y, radius, Gizmo.STENCIL_MAX);
+        this.stencil.pickAsync(x, y, radius, Gizmo.STENCIL_MAX);
         this.stencil.unbind(this.stencilMap);
+        this.sceneValid = true;
 
         MinecraftClient.getInstance().getFramebuffer().beginWrite(true);
+
+        worldStack.pop();
+        MatrixStackUtils.restoreMatrices();
+        RenderSystem.depthFunc(GL11.GL_ALWAYS);
 
         BBSProfiler.end(BBSProfiler.Timer.STENCIL_PASS);
     }
 
     /**
-     * True when any input the pick depends on changed since the buffer was last drawn — or when
-     * the heartbeat expires. Doubt resolves toward repicking: a spare pass costs what every
-     * frame used to cost, a missed one costs a stale highlight.
+     * True when the 3D scene contents in the pick buffer may have changed — independent of
+     * mouse position, so moving the cursor across a still scene reuses the rendered FBO.
      */
-    private boolean needsRepick(UIContext context, boolean altPressed)
+    private boolean needsSceneRedraw(boolean altPressed, IEntity entity)
     {
         this.framesSincePick += 1;
 
@@ -414,14 +471,17 @@ public class FilmStencilPicker
         int replayIndex = this.controller.getCurrentReplayIndex();
         FilmTarget target = this.controller.getEditTarget();
         int replayCount = this.controller.panel.getData().replays.getList().size();
+        int poseVersion = entity != null && entity.getForm() != null ? entity.getForm().getPoseVersion() : 0;
+        boolean pickingTarget = this.isPickingTarget();
 
-        boolean unchanged = !this.controller.isPlaying()
+        boolean unchanged = this.sceneValid
+            && !this.controller.isPlaying()
             && this.framesSincePick < PICK_HEARTBEAT
-            && context.mouseX == this.lastPickMouseX
-            && context.mouseY == this.lastPickMouseY
             && altPressed == this.lastPickAlt
+            && pickingTarget == this.lastPickTargetMode
             && cursor == this.lastPickCursor
             && replayIndex == this.lastPickReplayIndex
+            && poseVersion == this.lastPickPoseVersion
             && target.equals(this.lastPickTarget)
             && replayCount == this.lastPickReplayCount
             && this.controller.panel.lastView.equals(this.lastPickView)
@@ -434,11 +494,11 @@ public class FilmStencilPicker
         }
 
         this.framesSincePick = 0;
-        this.lastPickMouseX = context.mouseX;
-        this.lastPickMouseY = context.mouseY;
         this.lastPickAlt = altPressed;
+        this.lastPickTargetMode = pickingTarget;
         this.lastPickCursor = cursor;
         this.lastPickReplayIndex = replayIndex;
+        this.lastPickPoseVersion = poseVersion;
         this.lastPickTarget = target;
         this.lastPickReplayCount = replayCount;
         this.lastPickView.set(this.controller.panel.lastView);
@@ -448,17 +508,21 @@ public class FilmStencilPicker
         return true;
     }
 
-    private void ensureFramebuffer()
+    private void ensureFramebuffer(Area viewport)
     {
         this.stencil.setup(Link.bbs("stencil_film"));
 
         Texture mainTexture = this.stencil.getFramebuffer().getMainTexture();
-        int w = BBSRendering.getVideoWidth();
-        int h = BBSRendering.getVideoHeight();
+        /* Match the actual viewport size (capped at 960x540) and compare against actual
+         * texture pixels directly — resizeGUI previously multiplied by guiScale, causing a
+         * mismatch and full 4K FBO reallocation on every single stencil pass. */
+        int w = Math.max(2, Math.min(960, viewport.w > 0 ? viewport.w : BBSRendering.getVideoWidth()));
+        int h = Math.max(2, Math.min(540, viewport.h > 0 ? viewport.h : BBSRendering.getVideoHeight()));
 
         if (mainTexture.width != w || mainTexture.height != h)
         {
-            this.stencil.resizeGUI(w, h);
+            this.stencil.resize(w, h);
+            this.sceneValid = false;
         }
     }
 }

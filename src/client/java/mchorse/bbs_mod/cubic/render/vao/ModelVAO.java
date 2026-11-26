@@ -228,6 +228,8 @@ public class ModelVAO implements IModelVAO
         }
     }
 
+    private static boolean everEnabledShaderAttribs;
+
     /** Bind the VAO of the pair that matches the shader's format and set the draw's colour, light and overlay. */
     public static void bindForDraw(int vao, int vao2, VertexFormat format, float r, float g, float b, float a, int light, int overlay)
     {
@@ -248,11 +250,17 @@ public class ModelVAO implements IModelVAO
             GL30.glVertexAttrib4f(3, r, g, b, a);
         }
 
-        if (hasShaders) GL30.glEnableVertexAttribArray(Attributes.MID_TEXTURE_UV);
-        else GL30.glDisableVertexAttribArray(Attributes.MID_TEXTURE_UV);
-
-        if (hasShaders) GL30.glEnableVertexAttribArray(Attributes.TANGENTS);
-        else GL30.glDisableVertexAttribArray(Attributes.TANGENTS);
+        if (hasShaders)
+        {
+            everEnabledShaderAttribs = true;
+            GL30.glEnableVertexAttribArray(Attributes.MID_TEXTURE_UV);
+            GL30.glEnableVertexAttribArray(Attributes.TANGENTS);
+        }
+        else if (everEnabledShaderAttribs)
+        {
+            GL30.glDisableVertexAttribArray(Attributes.MID_TEXTURE_UV);
+            GL30.glDisableVertexAttribArray(Attributes.TANGENTS);
+        }
     }
 
     public static boolean isShadersEnabled()

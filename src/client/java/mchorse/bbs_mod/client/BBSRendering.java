@@ -442,6 +442,22 @@ public class BBSRendering
         toggleFramebuffer(true);
     }
 
+    /**
+     * Lightweight frame boundary when a full-screen opaque UI (Forms menu / Form Editor)
+     * covers the entire viewport and world rendering is skipped.
+     */
+    public static void onWorldRenderSkipped()
+    {
+        BBSProfiler.enabled = BBSSettings.profilerOverlay != null && BBSSettings.profilerOverlay.get();
+        BBSProfiler.frame();
+        RenderFrame.nextFrame();
+        Gizmo.INSTANCE.forgetPlacement();
+        ModelSetupQueue.drain();
+        renderingWorld = false;
+
+        RenderSystem.clear(GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT, MinecraftClient.IS_SYSTEM_MAC);
+    }
+
     public static void onWorldRenderEnd()
     {
         MinecraftClient mc = MinecraftClient.getInstance();
