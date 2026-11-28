@@ -602,6 +602,12 @@ public abstract class BaseFilmController
 
         List<Replay> replays = this.replays();
         Frustum frustum = BBSSettings.frustumCulling.get() && !BBSRendering.isIrisShadowPass() ? context.frustum() : null;
+        boolean collectReplayLights = !BBSRendering.isIrisShadowPass() && mchorse.bbs_mod.utils.RealisticBiomesBridge.isEnabled();
+
+        if (collectReplayLights)
+        {
+            mchorse.bbs_mod.utils.RealisticBiomesBridge.beginReplayLights();
+        }
 
         mchorse.bbs_mod.cubic.render.vao.ModelVAORenderer.beginWorldBatch();
 
@@ -623,6 +629,11 @@ public abstract class BaseFilmController
                 if (!this.claimActor(replay, entity))
                 {
                     continue;
+                }
+
+                if (collectReplayLights)
+                {
+                    mchorse.bbs_mod.utils.RealisticBiomesBridge.reportReplayHeldLight(entity);
                 }
 
                 if (frustum != null && this.isCulled(frustum, replay, entity))

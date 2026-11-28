@@ -425,6 +425,16 @@ public class BBSRendering
         BBSModClient.getVideos().startFrame();
         BBSModClient.getFilms().startRenderFrame(mc.getTickDelta());
 
+        if (mchorse.bbs_mod.utils.RealisticBiomesBridge.isLoaded())
+        {
+            Double fogOpacity = getCurveValue(
+                mchorse.bbs_mod.camera.clips.misc.RealisticBiomesClip.GROUND_FOG_OPACITY,
+                mchorse.bbs_mod.camera.clips.misc.RealisticBiomesClip::getValues
+            );
+
+            mchorse.bbs_mod.utils.RealisticBiomesBridge.setClipGroundFogOpacity(fogOpacity != null ? fogOpacity.floatValue() : -1F);
+        }
+
         UIBaseMenu menu = UIScreen.getCurrentMenu();
 
         if (menu != null)

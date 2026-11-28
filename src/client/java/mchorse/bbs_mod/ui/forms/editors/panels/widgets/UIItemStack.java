@@ -31,6 +31,8 @@ public class UIItemStack extends UIElement
 
     /** Ghost icon shown in the slot square while it is empty, like vanilla armor slots. */
     private Icon placeholder;
+    /** Optional armor slot filter: when set, clicking opens an armor-only picker for this slot. */
+    private net.minecraft.entity.EquipmentSlot armorSlot;
 
     public UIItemStack(Consumer<ItemStack> callback)
     {
@@ -70,10 +72,90 @@ public class UIItemStack extends UIElement
         return this;
     }
 
+    public UIItemStack armorSlot(net.minecraft.entity.EquipmentSlot slot)
+    {
+        this.armorSlot = slot;
+
+        return this;
+    }
+
+    private static boolean isValidArmorForSlot(net.minecraft.entity.EquipmentSlot slot, net.minecraft.item.Item item)
+    {
+        if (item instanceof net.minecraft.item.ArmorItem armor)
+        {
+            return armor.getSlotType() == slot;
+        }
+
+        return slot == net.minecraft.entity.EquipmentSlot.CHEST && item instanceof net.minecraft.item.ElytraItem;
+    }
+
     protected boolean subMouseClicked(UIContext context)
     {
         if (this.area.isInside(context) && context.mouseButton == 0)
         {
+            if (this.armorSlot != null)
+            {
+                net.minecraft.entity.EquipmentSlot slot = this.armorSlot;
+                Icon slotIcon = this.placeholder != null ? this.placeholder : Icons.ARMOR_CHESTPLATE;
+
+                context.replaceContextMenu((menu) ->
+                {
+                    menu.action(Icons.CLOSE, UIKeys.GENERAL_NONE, () ->
+                    {
+                        if (this.callback != null)
+                        {
+                            this.callback.accept(ItemStack.EMPTY);
+                        }
+
+                        this.setStack(ItemStack.EMPTY);
+                    });
+
+                    for (net.minecraft.item.Item item : Registries.ITEM)
+                    {
+                        if (isValidArmorForSlot(slot, item))
+                        {
+                            ItemStack optionStack = new ItemStack(item);
+
+                            menu.action(new mchorse.bbs_mod.ui.utils.context.ContextAction(slotIcon, mchorse.bbs_mod.l10n.keys.IKey.constant(optionStack.getName().getString()), () ->
+                            {
+                                ItemStack copy = optionStack.copy();
+
+                                if (this.callback != null)
+                                {
+                                    this.callback.accept(copy);
+                                }
+
+                                this.setStack(copy);
+                            })
+                            {
+                                @Override
+                                public void render(UIContext ctx, FontRenderer font, int x, int y, int w, int h, boolean hover, boolean selected)
+                                {
+                                    this.renderBackground(ctx, x, y, w, h, hover, selected);
+
+                                    CustomVertexConsumerProvider consumers = FormUtilsClient.getProvider();
+                                    MatrixStack matrices = ctx.batcher.getContext().getMatrices();
+
+                                    matrices.push();
+                                    consumers.setUI(true);
+                                    ctx.batcher.getContext().drawItem(optionStack, x + 2, y + (h - 16) / 2);
+                                    consumers.setUI(false);
+                                    matrices.pop();
+
+                                    String label = font.limitToWidth(this.label.get(), w - 24);
+
+                                    ctx.batcher.text(label, x + 22, y + (h - font.getHeight()) / 2 + 1, Colors.WHITE, false);
+                                }
+                            });
+                        }
+                    }
+                });
+
+                UIUtils.playClick();
+
+                return true;
+            }
+
             this.opened = true;
 
             UIUnifiedPickOverlayPanel panel = UIUnifiedPickOverlayPanel.forItem((i) ->

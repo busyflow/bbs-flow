@@ -217,7 +217,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                     if (UIFilmPanel.this.selectedMainEditorPanel != UIFilmPanel.this.cameraEditor)
                     {
                         UIFilmPanel.this.selectedMainEditorPanel = UIFilmPanel.this.cameraEditor;
-                        UIFilmPanel.this.updateMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
+                        UIFilmPanel.this.refreshMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
                     }
 
                     if (UIFilmPanel.this.cameraEditor.getClip() != null && UIFilmPanel.this.controller != null
@@ -238,7 +238,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                     if (UIFilmPanel.this.selectedMainEditorPanel != UIFilmPanel.this.cameraEditor)
                     {
                         UIFilmPanel.this.selectedMainEditorPanel = UIFilmPanel.this.cameraEditor;
-                        UIFilmPanel.this.updateMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
+                        UIFilmPanel.this.refreshMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
                     }
 
                     if (UIFilmPanel.this.cameraEditor.getClip() != null && UIFilmPanel.this.controller != null
@@ -265,7 +265,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                         UIFilmPanel.this.selectedMainEditorPanel = UIFilmPanel.this.lastMainEditorPanel != null
                             ? UIFilmPanel.this.lastMainEditorPanel
                             : UIFilmPanel.this.replayEditor;
-                        UIFilmPanel.this.updateMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
+                        UIFilmPanel.this.refreshMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
                     }
                 }
 
@@ -282,7 +282,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                         UIFilmPanel.this.selectedMainEditorPanel = UIFilmPanel.this.lastMainEditorPanel != null
                             ? UIFilmPanel.this.lastMainEditorPanel
                             : UIFilmPanel.this.replayEditor;
-                        UIFilmPanel.this.updateMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
+                        UIFilmPanel.this.refreshMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
                     }
                 }
 
@@ -382,6 +382,10 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             this.cycleEditors();
             UIUtils.playClick();
         }).category(editor);
+        Supplier<Boolean> povActive = () -> active.get() && this.isPovEditorVisible();
+        this.keys().register(Keys.REPLAYS_TAB_1, () -> this.selectPovSection("HOTBAR")).active(povActive).category(editor);
+        this.keys().register(Keys.REPLAYS_TAB_2, () -> this.selectPovSection("HAND")).active(povActive).category(editor);
+        this.keys().register(Keys.REPLAYS_TAB_3, () -> this.selectPovSection("ACTIONS")).active(povActive).category(editor);
         this.keys().register(Keys.FILM_CONTROLLER_TOGGLE_ACTIONS, () ->
         {
             this.showPanel(this.replayEditor);
@@ -447,7 +451,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                         UIFilmPanel.this.selectedMainEditorPanel = UIFilmPanel.this.lastMainEditorPanel != null
                             ? UIFilmPanel.this.lastMainEditorPanel
                             : UIFilmPanel.this.replayEditor;
-                        UIFilmPanel.this.updateMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
+                        UIFilmPanel.this.refreshMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
                     }
                 }
 
@@ -464,7 +468,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
                         UIFilmPanel.this.selectedMainEditorPanel = UIFilmPanel.this.lastMainEditorPanel != null
                             ? UIFilmPanel.this.lastMainEditorPanel
                             : UIFilmPanel.this.replayEditor;
-                        UIFilmPanel.this.updateMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
+                        UIFilmPanel.this.refreshMainEditorVisibility(UIFilmPanel.this.hasFilmInCurrentTab());
                     }
                 }
 
@@ -613,13 +617,47 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
     /** Runs after every dock layout pass; the dock owns panel visibility, this owns what's inside them. */
     private void onDockLayoutChanged()
     {
-        this.updateMainEditorVisibility(this.hasFilmInCurrentTab());
+        this.refreshMainEditorVisibility(this.hasFilmInCurrentTab());
         this.syncLanding();
     }
 
     private boolean hasFilmInCurrentTab()
     {
         return this.tabs.getCurrentId() != null;
+    }
+
+    /**
+     * Runs {@link #updateMainEditorVisibility(boolean)} (including any addon mixins targeting its TAIL)
+     * and then ensures that in dual-timeline mode, an addon editor shown in {@code main} (such as the
+     * POV editor) keeps its timeline visible when {@code selectedMainEditorPanel} temporarily switches
+     * to {@code cameraEditor} while inspecting a camera clip in the separate camera window.
+     */
+    private void refreshMainEditorVisibility(boolean hasFilm)
+    {
+        this.updateMainEditorVisibility(hasFilm);
+
+        if (hasFilm
+            && this.dock != null
+            && this.isSeparateCameraTimeline()
+            && this.dock.isPanelActive(PANEL_MAIN_ID)
+            && this.selectedMainEditorPanel == this.cameraEditor)
+        {
+            UIElement mainSelected = this.lastMainEditorPanel != null ? this.lastMainEditorPanel : this.replayEditor;
+
+            if (mainSelected != null && mainSelected != this.cameraEditor && mainSelected != this.replayEditor && !mainSelected.isVisible())
+            {
+                mainSelected.setVisible(true);
+
+                try
+                {
+                    java.lang.reflect.Method setTimelineVisible = mainSelected.getClass().getMethod("setTimelineVisible", boolean.class);
+
+                    setTimelineVisible.invoke(mainSelected, true);
+                }
+                catch (Throwable ignored)
+                {}
+            }
+        }
     }
 
     private void updateMainEditorVisibility(boolean hasFilm)
@@ -1131,11 +1169,18 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
             for (UIElement panel : this.panels)
             {
-                if (panel != this.cameraEditor && panel != this.replayEditor && panel.getParent() != this.main)
+                if (panel != this.cameraEditor && panel != this.replayEditor)
                 {
-                    panel.removeFromParent();
-                    panel.full(this.main);
-                    this.main.add(panel);
+                    if (panel.getParent() != this.main)
+                    {
+                        panel.removeFromParent();
+                        this.main.add(panel);
+                    }
+
+                    if (panel.getFlex().relative == this.cameraEditor.area || panel.getFlex().relative != this.main.area)
+                    {
+                        panel.full(this.main);
+                    }
                 }
             }
 
@@ -1159,11 +1204,18 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
 
             for (UIElement panel : this.panels)
             {
-                if (panel != this.cameraEditor && panel != this.replayEditor && panel.getParent() != this.main)
+                if (panel != this.cameraEditor && panel != this.replayEditor)
                 {
-                    panel.removeFromParent();
-                    panel.full(this.main);
-                    this.main.add(panel);
+                    if (panel.getParent() != this.main)
+                    {
+                        panel.removeFromParent();
+                        this.main.add(panel);
+                    }
+
+                    if (panel.getFlex().relative == this.cameraEditor.area || panel.getFlex().relative != this.main.area)
+                    {
+                        panel.full(this.main);
+                    }
                 }
             }
 
@@ -1178,7 +1230,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             }
         }
 
-        this.updateMainEditorVisibility(this.hasFilmInCurrentTab());
+        this.refreshMainEditorVisibility(this.hasFilmInCurrentTab());
 
         if (this.dock != null)
         {
@@ -1525,7 +1577,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             if (this.isSeparateCameraTimeline())
             {
                 this.selectedMainEditorPanel = this.cameraEditor;
-                this.updateMainEditorVisibility(this.hasFilmInCurrentTab());
+                this.refreshMainEditorVisibility(this.hasFilmInCurrentTab());
             }
         }
     }
@@ -1544,12 +1596,56 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         {
             for (IUIElement child : this.main.getChildren())
             {
-                if (child instanceof UIElement element && !this.panels.contains(element) && element != this.cameraEditor)
+                if (child instanceof UIElement element && element != this.cameraEditor)
                 {
-                    this.panels.add(element);
+                    if (!this.panels.contains(element))
+                    {
+                        this.panels.add(element);
+                    }
+
+                    /* Addons (like BBS-POV) commonly size their editor with .full(this.cameraEditor),
+                     * which breaks when cameraEditor is mounted in the separate cameraTimeline dock.
+                     * Re-anchor any non-camera main editor panel to this.main so it lays out inside main. */
+                    if (element != this.replayEditor && this.cameraEditor != null && element.getFlex().relative == this.cameraEditor.area)
+                    {
+                        element.full(this.main);
+                        element.resize();
+                    }
                 }
             }
         }
+    }
+
+    private boolean isPovEditorVisible()
+    {
+        return this.selectedMainEditorPanel != null
+            && this.selectedMainEditorPanel != this.cameraEditor
+            && this.selectedMainEditorPanel != this.replayEditor
+            && this.selectedMainEditorPanel.isVisible()
+            && "Glaxium.POV.editor.UIPovEditor".equals(this.selectedMainEditorPanel.getClass().getName());
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void selectPovSection(String sectionName)
+    {
+        if (!this.isPovEditorVisible())
+        {
+            return;
+        }
+
+        try
+        {
+            Class<?> editorClass = this.selectedMainEditorPanel.getClass();
+            Class<?> sectionClass = Class.forName("Glaxium.POV.editor.UIPovEditor$Section", false, editorClass.getClassLoader());
+            Object section = Enum.valueOf((Class<? extends Enum>) sectionClass, sectionName);
+            java.lang.reflect.Method setSection = editorClass.getDeclaredMethod("setSection", sectionClass);
+
+            setSection.setAccessible(true);
+            setSection.invoke(this.selectedMainEditorPanel, section);
+            UIUtils.playClick();
+        }
+        catch (Throwable ignored)
+        {}
     }
 
     public void cycleEditors()
@@ -1673,7 +1769,7 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
         }
         else
         {
-            this.updateMainEditorVisibility(this.hasFilmInCurrentTab());
+            this.refreshMainEditorVisibility(this.hasFilmInCurrentTab());
         }
 
         this.applyTimelineViewport(element);
@@ -3228,7 +3324,82 @@ public class UIFilmPanel extends UIDataDashboardPanel<Film> implements IFlightSu
             this.setCursor(tick);
         }
 
-        this.controller.createEntities();
+        this.applyEntitiesAfterUndo(this.undoHandler == null ? null : this.undoHandler.getLastAppliedValues());
+    }
+
+    private void applyEntitiesAfterUndo(java.util.List<BaseValue> applied)
+    {
+        if (applied == null || applied.isEmpty())
+        {
+            this.controller.createEntities();
+
+            return;
+        }
+
+        java.util.Set<Replay> formsToRefresh = null;
+
+        for (BaseValue value : applied)
+        {
+            boolean handled = false;
+            BaseValue cursor = value;
+
+            while (cursor != null)
+            {
+                if (cursor instanceof mchorse.bbs_mod.film.replays.ReplayKeyframes
+                    || cursor instanceof mchorse.bbs_mod.film.replays.FormProperties
+                    || cursor instanceof mchorse.bbs_mod.utils.clips.Clips)
+                {
+                    handled = true;
+
+                    break;
+                }
+
+                if (cursor instanceof mchorse.bbs_mod.forms.forms.Form && cursor.getParent() instanceof Replay owner)
+                {
+                    if (formsToRefresh == null)
+                    {
+                        formsToRefresh = new java.util.LinkedHashSet<>();
+                    }
+
+                    formsToRefresh.add(owner);
+                    handled = true;
+
+                    break;
+                }
+
+                if (cursor.getParent() instanceof Replay owner && cursor == owner.form)
+                {
+                    if (formsToRefresh == null)
+                    {
+                        formsToRefresh = new java.util.LinkedHashSet<>();
+                    }
+
+                    formsToRefresh.add(owner);
+                    handled = true;
+
+                    break;
+                }
+
+                cursor = cursor.getParent();
+            }
+
+            if (!handled)
+            {
+                this.controller.createEntities();
+
+                return;
+            }
+        }
+
+        if (formsToRefresh != null)
+        {
+            for (Replay replay : formsToRefresh)
+            {
+                this.controller.refreshReplayForm(replay);
+            }
+        }
+
+        this.controller.refreshEntitiesAfterUndo();
     }
 
     @Override

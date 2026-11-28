@@ -171,8 +171,17 @@ public class UIKeyframeEditor extends UITimelinePanel
             {
                 /* Null when the keyframe's type has no editor registered: the track still works, it
                  * just gets no properties panel. It used to be dereferenced straight away, so a type
-                 * whose registration went missing crashed on the click that selected a keyframe. */
-                panel = UIKeyframeFactory.createPanel(new UITrackValue<>(sheet, this.view), this.view);
+                 * whose registration went missing crashed on the click that selected a keyframe.
+                 * Also guard against addon mixins (e.g. BBS-POV UIHotbarItemKeyframeFactory) that
+                 * assume track.getKeyframe() is non-null. */
+                try
+                {
+                    panel = UIKeyframeFactory.createPanel(new UITrackValue<>(sheet, this.view), this.view);
+                }
+                catch (NullPointerException e)
+                {
+                    panel = null;
+                }
             }
 
             if (panel != null)
@@ -281,7 +290,7 @@ public class UIKeyframeEditor extends UITimelinePanel
             {
                 String id = StringUtils.fileName(sheet.id);
 
-                if (id.startsWith("pose"))
+                if (id.startsWith("pose") || id.equals("item_pose"))
                 {
                     bone = pose.poseEditor.bonePath(currentFirst);
                     space = pose.poseEditor.transform.getSpace();

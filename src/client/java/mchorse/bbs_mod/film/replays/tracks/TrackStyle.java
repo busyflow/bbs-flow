@@ -148,6 +148,9 @@ public class TrackStyle
 
         COLORS.put("visible", Colors.WHITE & Colors.RGB);
         COLORS.put("pose", Colors.RED);
+        COLORS.put("item_pose", 0x3898ff);
+        LABELS.put("item_pose", IKey.constant("Item pose"));
+        ICONS.put("item_pose", Icons.POSE);
         COLORS.put("physics_targets", Colors.MAGENTA);
         COLORS.put("transform_overlay", 0xaaff00);
         COLORS.put("color", Colors.INACTIVE);

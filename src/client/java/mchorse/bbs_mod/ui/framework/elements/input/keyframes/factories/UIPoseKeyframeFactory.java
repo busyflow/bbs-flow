@@ -63,7 +63,12 @@ public class UIPoseKeyframeFactory extends UIKeyframeFactory<Pose>
 
         UIKeyframeSheet sheet = track.sheet;
 
-        if (FormUtils.getForm(sheet.property) instanceof ModelForm modelForm)
+        if (sheet.property != null && "item_pose".equals(sheet.property.getId()))
+        {
+            this.poseEditor.setPose(track.getValue(), "item_pose");
+            this.poseEditor.fillGroups(List.of("main_hand", "off_hand"), false);
+        }
+        else if (FormUtils.getForm(sheet.property) instanceof ModelForm modelForm)
         {
             ModelInstance model = ((ModelFormRenderer) FormUtilsClient.getRenderer(modelForm)).getModel();
 

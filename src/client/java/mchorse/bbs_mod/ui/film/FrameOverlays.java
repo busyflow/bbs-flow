@@ -43,9 +43,20 @@ public class FrameOverlays
 
     public static void render(MatrixStack stack, Batcher2D batcher, ClipContext context)
     {
-        for (IFrameOverlayRenderer renderer : RENDERERS)
+        mchorse.bbs_mod.ui.framework.elements.utils.FontRenderer previousFont = batcher.getFont();
+
+        batcher.setFont(Batcher2D.getVanillaFontRenderer());
+
+        try
         {
-            renderer.render(stack, batcher, context);
+            for (IFrameOverlayRenderer renderer : RENDERERS)
+            {
+                renderer.render(stack, batcher, context);
+            }
+        }
+        finally
+        {
+            batcher.setFont(previousFont);
         }
     }
 

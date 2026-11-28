@@ -266,7 +266,7 @@ public final class FormThumbnailCache
         mvStack.loadIdentity();
         RenderSystem.applyModelViewMatrix();
 
-        GL30.glBindFramebuffer(GL30.GL_FRAMEBUFFER, fboId);
+        com.mojang.blaze3d.platform.GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fboId);
         GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, entry.texture.id, 0);
         GL30.glFramebufferRenderbuffer(GL30.GL_FRAMEBUFFER, depthBuffer.target, GL30.GL_RENDERBUFFER, depthBuffer.id);
 
@@ -275,8 +275,8 @@ public final class FormThumbnailCache
         if (!complete)
         {
             GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, 0, 0);
-            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
-            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+            com.mojang.blaze3d.platform.GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
+            com.mojang.blaze3d.platform.GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
             restoreRenderMatrices(savedProjection, savedSorting, savedMV, savedInverse);
             return false;
         }
@@ -290,7 +290,7 @@ public final class FormThumbnailCache
         try
         {
             RenderSystem.disableScissor();
-            GL11.glViewport(0, 0, texW, texH);
+            com.mojang.blaze3d.platform.GlStateManager._viewport(0, 0, texW, texH);
             RenderSystem.enableDepthTest();
             RenderSystem.depthMask(true);
             RenderSystem.clearColor(0F, 0F, 0F, 0F);
@@ -322,11 +322,13 @@ public final class FormThumbnailCache
             context.mouseX = savedMouseX;
             context.mouseY = savedMouseY;
 
+            com.mojang.blaze3d.platform.GlStateManager._glBindFramebuffer(GL30.GL_FRAMEBUFFER, fboId);
             GL30.glFramebufferTexture2D(GL30.GL_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0, GL11.GL_TEXTURE_2D, 0, 0);
-            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
-            GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
-            GL11.glViewport(VIEWPORT_SAVE[0], VIEWPORT_SAVE[1], VIEWPORT_SAVE[2], VIEWPORT_SAVE[3]);
+            com.mojang.blaze3d.platform.GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, prevDrawFbo);
+            com.mojang.blaze3d.platform.GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, prevReadFbo);
+            com.mojang.blaze3d.platform.GlStateManager._viewport(VIEWPORT_SAVE[0], VIEWPORT_SAVE[1], VIEWPORT_SAVE[2], VIEWPORT_SAVE[3]);
             RenderSystem.clearColor(CLEAR_COLOR_SAVE[0], CLEAR_COLOR_SAVE[1], CLEAR_COLOR_SAVE[2], CLEAR_COLOR_SAVE[3]);
+            RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
 
             if (prevScissor)
             {

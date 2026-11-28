@@ -31,6 +31,16 @@ public class PropertyTrack implements TrackBehaviour
             return;
         }
 
+        if (channel.isMuted())
+        {
+            if (blend >= 1F)
+            {
+                property.setRuntimeValue(null);
+            }
+
+            return;
+        }
+
         KeyframeSegment segment = channel.find(tick);
 
         if (segment != null)

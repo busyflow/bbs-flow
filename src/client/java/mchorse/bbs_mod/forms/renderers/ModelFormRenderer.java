@@ -332,6 +332,125 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         return pose;
     }
 
+    private double lastReaperSalivaTick = Double.NaN;
+    private double lastReaperDeathTick = Double.NaN;
+    private boolean reaperDeathPoofFired = false;
+
+    private void updateGreenReaperEffects(IEntity entity, float transition)
+    {
+        if (entity == null || !"green_reaper".equals(this.form.model.get()))
+        {
+            return;
+        }
+
+        net.minecraft.client.MinecraftClient mc = net.minecraft.client.MinecraftClient.getInstance();
+        net.minecraft.world.World world = mc != null ? mc.world : null;
+
+        if (world == null)
+        {
+            return;
+        }
+
+        String idleAnim = this.form.actions.get().getConfig("idle").name;
+        Float filmTick = RenderFrame.getFilmTick(this.form);
+        double curTick = filmTick != null ? filmTick : (entity.getAge() + transition);
+
+        double yawRad = Math.toRadians(entity.getBodyYaw());
+        double fwdX = -Math.sin(yawRad);
+        double fwdZ = Math.cos(yawRad);
+        double baseX = entity.getX();
+        double baseY = entity.getY();
+        double baseZ = entity.getZ();
+
+        /* 1. Purple saliva droplets dripping from the jaws while chewing */
+        if ("chew".equalsIgnoreCase(idleAnim))
+        {
+            if (Double.isNaN(this.lastReaperSalivaTick) || Math.abs(curTick - this.lastReaperSalivaTick) >= 1.5D)
+            {
+                this.lastReaperSalivaTick = curTick;
+                double mx = baseX + fwdX * 0.85;
+                double my = baseY + 2.85;
+                double mz = baseZ + fwdZ * 0.85;
+                net.minecraft.particle.DustParticleEffect purpleDrop = new net.minecraft.particle.DustParticleEffect(
+                    new org.joml.Vector3f(0.68F, 0.18F, 0.95F), 1.15F
+                );
+
+                for (int i = 0; i < 3; i++)
+                {
+                    double rx = (world.random.nextDouble() - 0.5) * 1.1;
+                    double rz = (world.random.nextDouble() - 0.5) * 0.9;
+                    world.addParticle(purpleDrop, mx + rx, my, mz + rz, 0D, -0.18D - world.random.nextDouble() * 0.12D, 0D);
+                    if (i == 0)
+                    {
+                        world.addParticle(net.minecraft.particle.ParticleTypes.FALLING_OBSIDIAN_TEAR, mx + rx, my, mz + rz, 0D, -0.08D, 0D);
+                    }
+                }
+            }
+            this.reaperDeathPoofFired = false;
+            return;
+        }
+
+        /* 2. Purple death poof + smooth Warden-inspired rising purple souls during death animation */
+        if ("death".equalsIgnoreCase(idleAnim))
+        {
+            if (Double.isNaN(this.lastReaperDeathTick) || curTick < this.lastReaperDeathTick - 2.0D)
+            {
+                this.lastReaperDeathTick = curTick;
+                this.reaperDeathPoofFired = false;
+            }
+
+            double elapsed = curTick - this.lastReaperDeathTick;
+            double headX = baseX + fwdX * 1.1;
+            double headY = baseY + 0.45;
+            double headZ = baseZ + fwdZ * 1.1;
+
+            if (!this.reaperDeathPoofFired && elapsed >= 18.0D)
+            {
+                this.reaperDeathPoofFired = true;
+                net.minecraft.particle.DustParticleEffect poof = new net.minecraft.particle.DustParticleEffect(
+                    new org.joml.Vector3f(0.76F, 0.25F, 1.0F), 2.2F
+                );
+                for (int i = 0; i < 36; i++)
+                {
+                    double a = (Math.PI * 2.0 * i) / 36.0;
+                    double sp = 0.08 + world.random.nextDouble() * 0.18;
+                    world.addParticle(poof, headX + Math.cos(a) * 0.4, headY + 0.2, headZ + Math.sin(a) * 0.4,
+                        Math.cos(a) * sp, 0.06 + world.random.nextDouble() * 0.12, Math.sin(a) * sp);
+                    if (i % 3 == 0)
+                    {
+                        world.addParticle(net.minecraft.particle.ParticleTypes.DRAGON_BREATH,
+                            headX + Math.cos(a) * 0.5, headY + 0.15, headZ + Math.sin(a) * 0.5,
+                            Math.cos(a) * 0.06, 0.05, Math.sin(a) * 0.06);
+                    }
+                }
+            }
+
+            if (elapsed >= 16.0D && elapsed <= 52.0D && (Double.isNaN(this.lastReaperSalivaTick) || Math.abs(curTick - this.lastReaperSalivaTick) >= 1.2D))
+            {
+                this.lastReaperSalivaTick = curTick;
+                net.minecraft.particle.DustParticleEffect soulGlow = new net.minecraft.particle.DustParticleEffect(
+                    new org.joml.Vector3f(0.84F, 0.42F, 1.0F), 1.65F
+                );
+                double spiral = elapsed * 0.35;
+                for (int k = 0; k < 2; k++)
+                {
+                    double ang = spiral + k * Math.PI;
+                    double r = 0.35 + (elapsed - 16.0D) * 0.015;
+                    double sx = headX + Math.cos(ang) * r;
+                    double sy = headY + 0.25 + (elapsed - 16.0D) * 0.04;
+                    double sz = headZ + Math.sin(ang) * r;
+                    world.addParticle(soulGlow, sx, sy, sz, -Math.sin(ang) * 0.03, 0.09, Math.cos(ang) * 0.03);
+                    world.addParticle(net.minecraft.particle.ParticleTypes.WITCH, sx, sy, sz, 0D, 0.08D, 0D);
+                }
+            }
+        }
+        else
+        {
+            this.lastReaperDeathTick = Double.NaN;
+            this.reaperDeathPoofFired = false;
+        }
+    }
+
     /** Read-only pose for rendering: skips deep-copying when no overlays exist or when poseVersion is unchanged. */
     private Pose getPoseForRender()
     {
@@ -362,7 +481,8 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         int poseVersion = this.form.getPoseVersion();
         long invalidateEpoch = RenderFrame.getInvalidateEpoch();
 
-        if (this.cachedMergedPose != null
+        if (!BBSRendering.isHoldingExportFrame()
+            && this.cachedMergedPose != null
             && this.cachedMergedPoseVersion == poseVersion
             && this.cachedMergedInvalidateEpoch == invalidateEpoch)
         {
@@ -572,6 +692,7 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
         /* The shake belongs to the pose: IK, physics, limits and every reader of the channels see
          * the bones where they are drawn. */
         this.runSteps(RigStep.CHANNELS, entity, model, transition, null, null);
+        this.updateGreenReaperEffects(entity, transition);
 
         if (cacheable)
         {
@@ -1141,6 +1262,18 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
                 stack.translate(0F, 0.125F, 0F);
                 MatrixStackUtils.applyTransform(stack, armorSlot.transform);
 
+                PoseTransform itemPoseTr = this.form.itemPose.get().transforms.get(slot == EquipmentSlot.MAINHAND ? "main_hand" : "off_hand");
+                if (itemPoseTr != null)
+                {
+                    if (!itemPoseTr.visible)
+                    {
+                        stack.pop();
+                        continue;
+                    }
+
+                    MatrixStackUtils.applyTransform(stack, itemPoseTr);
+                }
+
                 CustomVertexConsumerProvider.hijackVertexFormat((l) -> RenderSystem.enableBlend());
 
                 /* Translucent item layers (potions, glass blocks in hand) ride the deferred
@@ -1175,6 +1308,41 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
                 RenderSystem.enableDepthTest();
             }
         }
+    }
+
+    private void collectHandMatrix(MatrixCache matrices, MatrixStack stack, String prefix, String key, List<ArmorSlot> items)
+    {
+        if (items == null || items.isEmpty())
+        {
+            return;
+        }
+
+        ArmorSlot armorSlot = items.get(0);
+        MatrixCacheEntry entry = this.bones.get(armorSlot.group);
+        if (entry == null || entry.matrix() == null)
+        {
+            return;
+        }
+
+        stack.push();
+        MatrixStackUtils.multiply(stack, entry.matrix());
+        stack.multiply(RotationAxis.POSITIVE_X.rotationDegrees(90F));
+        stack.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(180F));
+        stack.translate(0F, 0.125F, 0F);
+        MatrixStackUtils.applyTransform(stack, armorSlot.transform);
+
+        Matrix4f origin = new Matrix4f(stack.peek().getPositionMatrix());
+
+        PoseTransform itemPoseTr = this.form.itemPose.get().transforms.get(key);
+        if (itemPoseTr != null)
+        {
+            MatrixStackUtils.applyTransform(stack, itemPoseTr);
+        }
+
+        Matrix4f matrix = new Matrix4f(stack.peek().getPositionMatrix());
+        stack.pop();
+
+        matrices.put(StringUtils.combinePaths(prefix, key), matrix, origin);
     }
 
     /**
@@ -1606,6 +1774,12 @@ public class ModelFormRenderer extends FormRenderer<ModelForm> implements ITicka
             stack.pop();
 
             matrices.put(StringUtils.combinePaths(prefix, entry.getKey()), matrix, o, entry.getValue().evaluatedRotation(), entry.getValue().offBody());
+        }
+
+        if (model != null)
+        {
+            this.collectHandMatrix(matrices, stack, prefix, "main_hand", model.getItemsMain());
+            this.collectHandMatrix(matrices, stack, prefix, "off_hand", model.getItemsOff());
         }
 
         /* Recursively do the same thing with body parts */

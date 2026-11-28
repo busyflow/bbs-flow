@@ -92,6 +92,17 @@ public class Batcher2D
     }
 
     /**
+     * Vanilla Minecraft font wrapper (never uses BBS's custom UI font), used for in-world
+     * and exported frame overlays (such as BBS-POV HUD and subtitles) so renders stay 100% vanilla.
+     */
+    public static FontRenderer getVanillaFontRenderer()
+    {
+        fontRenderer.setRenderer(getVanillaTextRenderer());
+
+        return fontRenderer;
+    }
+
+    /**
      * Program for textured UI quads. The pixel art one keeps the seam between
      * texels even when the interface is drawn at a fractional scale, and falls
      * back to vanilla's when it's turned off or failed to compile.

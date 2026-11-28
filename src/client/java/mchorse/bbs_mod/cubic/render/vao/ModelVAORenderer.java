@@ -312,18 +312,20 @@ public class ModelVAORenderer
                     {
                         passTex0 = tex0;
                         shader.addSampler("Sampler0", tex0);
-                        RenderSystem.activeTexture(GL13.GL_TEXTURE0);
-                        RenderSystem.bindTexture(tex0);
                     }
 
                     if (tex1 != passTex1)
                     {
                         passTex1 = tex1;
                         shader.addSampler("Sampler1", tex1);
-                        RenderSystem.activeTexture(GL13.GL_TEXTURE1);
-                        RenderSystem.bindTexture(tex1);
-                        RenderSystem.activeTexture(GL13.GL_TEXTURE0);
                     }
+
+                    /* Always ensure GL_TEXTURE0/1 match the shader's samplers in case
+                     * external rendering bound a white/other texture directly via GL. */
+                    RenderSystem.activeTexture(GL13.GL_TEXTURE1);
+                    RenderSystem.bindTexture(tex1);
+                    RenderSystem.activeTexture(GL13.GL_TEXTURE0);
+                    RenderSystem.bindTexture(tex0);
 
                     uploadPerDrawUniforms(shader, modelView, normalMat);
                 }

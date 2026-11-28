@@ -10,6 +10,7 @@ import mchorse.bbs_mod.ui.framework.UIContext;
 import mchorse.bbs_mod.ui.framework.elements.UIElement;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIButton;
 import mchorse.bbs_mod.ui.framework.elements.context.UISimpleContextMenu;
+import mchorse.bbs_mod.ui.framework.elements.input.UISliderTrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.UITrackpad;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UIList;
 import mchorse.bbs_mod.ui.framework.elements.input.list.UISearchList;
@@ -20,6 +21,7 @@ import mchorse.bbs_mod.ui.framework.elements.input.text.utils.TextLine;
 import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlayPanel;
 import mchorse.bbs_mod.ui.framework.elements.utils.RowStyle;
 import mchorse.bbs_mod.ui.utils.UI;
+import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.context.ContextAction;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.colors.Colors;
@@ -56,6 +58,7 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
     private static final int GAP = 6;
     private static final int HEADER_HEIGHT = 20;
     private static final int HOTBAR_HEIGHT = 24;
+    private static final int DURABILITY_HEIGHT = 20;
 
     private static final List<String> ITEM_IDS = new ArrayList<>();
     private static final List<String> BLOCK_IDS = new ArrayList<>();
@@ -246,7 +249,10 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
     private final UIElement blockPropertiesWrap;
     private final UIElement blockProperties;
     private final UIElement mobPanel;
+    private final UIElement itemRightPane;
     private final UIItemHotbar hotbar;
+    private final UISliderTrackpad itemDurability;
+    private final UIElement clearSlot;
     private final UITrackpad itemCount;
     private final UITextbox itemName;
     private final UITextarea itemNbt;
@@ -316,8 +322,60 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
 
         this.blockPropertiesWrap = new UIElement();
         this.blockPropertiesWrap.relative(this.blockPanel).x(0.5F, GAP).y(0).w(0.5F, -GAP).h(1F);
+        this.itemRightPane = new UIElement();
+        this.itemRightPane.relative(this.itemPanel).x(0.5F, GAP).y(0).w(0.5F, -GAP).h(1F);
         this.hotbar = new UIItemHotbar(UIUnifiedPickOverlayPanel::playerHotbarStack, UIUnifiedPickOverlayPanel::playerSelectedSlot, this::pickFromHotbar);
         this.hotbar.relative(this.itemPanel).x(0).y(1F, -HOTBAR_HEIGHT).w(1F).h(HOTBAR_HEIGHT);
+
+        this.itemDurability = new UISliderTrackpad((v) ->
+        {
+            if (this.mode != PickerMode.ITEM || this.itemStack == null || !this.itemStack.isDamageable())
+            {
+                return;
+            }
+
+            int maxDurability = this.itemStack.getMaxDamage();
+            int remaining = Math.max(0, Math.min(maxDurability, v.intValue()));
+            int damage = maxDurability - remaining;
+
+            this.itemStack.setDamage(damage);
+            this.acceptItem(this.itemStack.copy());
+            this.updateItemNbt();
+        });
+        this.itemDurability.integer().snap(1D).increment(1D);
+        this.itemDurability.tooltip(IKey.constant("Durability"));
+        this.itemDurability.setVisible(false);
+
+        this.clearSlot = new UIElement()
+        {
+            @Override
+            protected boolean subMouseClicked(UIContext context)
+            {
+                if (this.area.isInside(context) && context.mouseButton == 0)
+                {
+                    UIUnifiedPickOverlayPanel.this.clearToAir();
+                    UIUtils.playClick();
+
+                    return true;
+                }
+
+                return super.subMouseClicked(context);
+            }
+
+            @Override
+            public void render(UIContext context)
+            {
+                boolean hover = this.area.isInside(context);
+                int border = hover ? 0xFFFF6B6B : 0xFFE04848;
+                int fill = hover ? 0x77B82020 : 0x558A1818;
+
+                context.batcher.box(this.area.x, this.area.y, this.area.ex(), this.area.ey(), border);
+                context.batcher.box(this.area.x + 1, this.area.y + 1, this.area.ex() - 1, this.area.ey() - 1, fill);
+
+                super.render(context);
+            }
+        };
+        this.clearSlot.tooltip(IKey.constant("Clear item (Air)"));
 
         this.itemName = new UITextbox(1000, (value) ->
         {
@@ -355,13 +413,14 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
                 ItemStack parsed = ItemStack.fromNbt(nbt);
 
                 this.acceptItem(parsed);
+                this.updateItemDurability();
 
                 String id = Registries.ITEM.getId(parsed.getItem()).toString();
 
                 if (!id.equals(this.selectedId))
                 {
                     this.selectedId = id;
-                    this.list.list.setCurrentScroll(id);
+                    this.list.list.setCurrent(id);
                 }
             }
             catch (Exception e)
@@ -389,11 +448,14 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
             UIElement fields = UI.column(5, 6, this.itemName, this.itemCount);
 
             fields.relative(this.itemPanel).y(1F).w(0.5F, -GAP).anchorY(1F);
-            this.hotbar.relative(this.itemPanel).x(0.5F, GAP).y(1F, -HOTBAR_HEIGHT).w(0.5F, -GAP).h(HOTBAR_HEIGHT);
-            this.itemNbt.relative(this.itemPanel).x(0.5F, GAP).y(0).w(0.5F, -GAP).h(1F, -HOTBAR_HEIGHT - GAP);
+            this.hotbar.relative(this.itemRightPane).x(0.5F).y(1F, -HOTBAR_HEIGHT).w(UIItemHotbar.WIDTH).h(HOTBAR_HEIGHT).anchorX(0.5F);
+            this.itemDurability.relative(this.itemRightPane).x(0.5F).y(1F, -HOTBAR_HEIGHT - GAP - DURABILITY_HEIGHT).w(UIItemHotbar.WIDTH).h(DURABILITY_HEIGHT).anchorX(0.5F);
+            this.clearSlot.relative(this.itemRightPane).x(1F, -UIItemHotbar.SLOT_SIZE).y(1F, -(HOTBAR_HEIGHT + UIItemHotbar.SLOT_SIZE) / 2).wh(UIItemHotbar.SLOT_SIZE, UIItemHotbar.SLOT_SIZE);
+            this.itemNbt.relative(this.itemRightPane).x(0).y(0).w(1F).h(1F, -HOTBAR_HEIGHT - GAP);
             this.list.relative(this.itemPanel).xy(0, 0).w(0.5F, -GAP).hTo(fields.area, 0F, -GAP);
 
-            this.itemPanel.add(this.itemNbt, fields, this.list, this.hotbar);
+            this.itemRightPane.add(this.itemNbt, this.itemDurability, this.hotbar, this.clearSlot);
+            this.itemPanel.add(this.itemRightPane, fields, this.list);
         }
         else if (mode == PickerMode.MOB)
         {
@@ -436,6 +498,7 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
             this.selectedId = Registries.ITEM.getId(this.itemStack.getItem()).toString();
             this.itemCount.limit(1, this.itemStack.getMaxCount(), true).setValue(this.itemStack.getCount());
             this.itemName.setText(this.itemStack.getName().getString());
+            this.updateItemDurability();
             this.updateItemNbt();
         }
         else if (mode == PickerMode.MOB)
@@ -465,8 +528,11 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
 
         if (!this.selectedId.isEmpty())
         {
-            this.list.list.setCurrentScroll(this.selectedId);
+            this.list.list.setCurrent(this.selectedId);
         }
+
+        /* Always start at the top of the list so opening the picker or searching never lands near the bottom */
+        this.list.list.scroll.scrollTo(0);
     }
 
     private void selectId(String id)
@@ -502,6 +568,7 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
             this.acceptItem(selected);
             this.itemCount.limit(1, selected.getMaxCount(), true).setValue(selected.getCount());
             this.itemName.setText(selected.getName().getString());
+            this.updateItemDurability();
             this.updateItemNbt();
         }
         else if (this.mode == PickerMode.MOB)
@@ -552,6 +619,50 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
         {
             this.mobCallback.accept(this.selectedId, this.mobNbtText);
         }
+    }
+
+    private void updateItemDurability()
+    {
+        if (this.mode != PickerMode.ITEM)
+        {
+            return;
+        }
+
+        boolean damageable = this.itemStack != null && !this.itemStack.isEmpty() && this.itemStack.isDamageable();
+
+        this.itemDurability.setVisible(damageable);
+        this.itemDurability.setEnabled(damageable);
+
+        if (damageable)
+        {
+            int maxDurability = this.itemStack.getMaxDamage();
+            int remaining = Math.max(0, Math.min(maxDurability, maxDurability - this.itemStack.getDamage()));
+
+            this.itemDurability.limit(0, maxDurability, true).setValue(remaining);
+            this.itemNbt.h(1F, -HOTBAR_HEIGHT - GAP - DURABILITY_HEIGHT - GAP);
+        }
+        else
+        {
+            this.itemNbt.h(1F, -HOTBAR_HEIGHT - GAP);
+        }
+
+        this.itemRightPane.resize();
+    }
+
+    private void clearToAir()
+    {
+        if (this.mode != PickerMode.ITEM)
+        {
+            return;
+        }
+
+        this.selectedId = Registries.ITEM.getId(Items.AIR).toString();
+        this.acceptItem(ItemStack.EMPTY);
+        this.itemCount.limit(1, 64, true).setValue(1);
+        this.itemName.setText("");
+        this.list.list.setCurrent(this.selectedId);
+        this.updateItemDurability();
+        this.updateItemNbt();
     }
 
     private void updateItemNbt()
@@ -691,6 +802,13 @@ public class UIUnifiedPickOverlayPanel extends UIOverlayPanel
             }
 
             return this.mode == PickerMode.MOB ? mobLabel(id) : blockLabel(id);
+        }
+
+        @Override
+        public void filter(String filter)
+        {
+            super.filter(filter);
+            this.scroll.scrollTo(0);
         }
 
         @Override

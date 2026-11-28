@@ -32,7 +32,41 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
     private IKeyframeFactory<T> factory;
     private final List<KeyframeLoop> loops = new ArrayList<>();
     private final List<KeyframeLoop> loopsView = Collections.unmodifiableList(this.loops);
+    private String customLabel = "";
+    private boolean muted;
     private int version;
+
+    public String getCustomLabel()
+    {
+        return this.customLabel;
+    }
+
+    public void setCustomLabel(String label)
+    {
+        String normalized = label == null ? "" : label.trim();
+
+        if (!this.customLabel.equals(normalized))
+        {
+            this.preNotify();
+            this.customLabel = normalized;
+            this.postNotify();
+        }
+    }
+
+    public boolean isMuted()
+    {
+        return this.muted;
+    }
+
+    public void setMuted(boolean muted)
+    {
+        if (this.muted != muted)
+        {
+            this.preNotify();
+            this.muted = muted;
+            this.postNotify();
+        }
+    }
 
     public int getVersion()
     {
@@ -726,6 +760,16 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
             data.put("loops", loops);
         }
 
+        if (!this.customLabel.isEmpty())
+        {
+            data.putString("label", this.customLabel);
+        }
+
+        if (this.muted)
+        {
+            data.putBool("muted", true);
+        }
+
         return data;
     }
 
@@ -774,6 +818,8 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
         {
             if (entry.isMap()) this.putLoop(KeyframeLoop.fromData(entry.asMap()));
         }
+        this.customLabel = map.getString("label");
+        this.muted = map.getBool("muted");
         this.version += 1;
     }
 
@@ -792,6 +838,8 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
         this.sort();
         this.loops.clear();
         this.loops.addAll(channel.loops);
+        this.customLabel = channel.customLabel;
+        this.muted = channel.muted;
         this.version += 1;
     }
 
@@ -804,7 +852,11 @@ public class KeyframeChannel <T> extends ValueList<Keyframe<T>>
     @Override
     public boolean equals(Object object)
     {
-        return object instanceof KeyframeChannel<?> channel && super.equals(object) && this.loops.equals(channel.loops);
+        return object instanceof KeyframeChannel<?> channel
+            && super.equals(object)
+            && this.loops.equals(channel.loops)
+            && this.muted == channel.muted
+            && java.util.Objects.equals(this.customLabel, channel.customLabel);
     }
 
     /**

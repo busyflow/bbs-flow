@@ -75,4 +75,12 @@ public class TimelineBodyPartSelection
         for (var item : data.getList("body_parts")) this.paths.add(item.asString());
         if (this.paths.isEmpty()) this.paths.add(this.activePart);
     }
+
+    public boolean readChanged(MapType data)
+    {
+        String prevActive = this.activePart;
+        Set<String> prevPaths = new LinkedHashSet<>(this.paths);
+        this.read(data);
+        return !prevActive.equals(this.activePart) || !prevPaths.equals(this.paths);
+    }
 }

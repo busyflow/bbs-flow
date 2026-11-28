@@ -358,6 +358,25 @@ public class FormProperties extends ValueGroup
 
         LegacySplineValues.finish(legacySplines);
         SolverBindings.apply(context);
+        bumpPoseVersionTree(root);
+    }
+
+    private static void bumpPoseVersionTree(Form form)
+    {
+        if (form == null)
+        {
+            return;
+        }
+
+        form.bumpPoseVersion();
+
+        for (mchorse.bbs_mod.forms.forms.BodyPart part : form.parts.getAllTyped())
+        {
+            if (part.getForm() != null)
+            {
+                bumpPoseVersionTree(part.getForm());
+            }
+        }
     }
 
     private static void apply(TrackContext context, TrackId track, KeyframeChannel channel, float tick, float blend)

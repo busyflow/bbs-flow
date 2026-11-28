@@ -744,6 +744,11 @@ public class UIClipsPanel extends UITimelinePanel implements IUIClipsDelegate, I
     {
         super.applyUndoData(data);
 
+        if (!this.isVisible())
+        {
+            return;
+        }
+
         /* The selection comes back, the view doesn't: zoom and scroll stay where the user left them. */
         List<Integer> selection = DataStorageUtils.intListFromData(data.getList("selection"));
         int count = this.clips.getClips() == null ? 0 : this.clips.getClips().get().size();

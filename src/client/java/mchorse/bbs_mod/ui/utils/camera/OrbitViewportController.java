@@ -176,6 +176,11 @@ public abstract class OrbitViewportController implements ICameraController
     /** True while actively orbiting/panning or still coasting under camera smoothing. */
     public boolean isMoving()
     {
+        if (!this.enabled)
+        {
+            return false;
+        }
+
         return this.orbiting
             || this.velocityPosition.lengthSquared() > 0
             || this.rotation.distanceSquared(this.targetRotation) > 1e-6F

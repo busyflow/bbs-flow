@@ -18,6 +18,7 @@ import mchorse.bbs_mod.ui.framework.elements.utils.FontRenderer;
 import mchorse.bbs_mod.ui.framework.elements.utils.RowStyle;
 import mchorse.bbs_mod.ui.utils.Area;
 import mchorse.bbs_mod.ui.utils.Scroll;
+import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.bones.UIBoneTreeList;
 import mchorse.bbs_mod.ui.utils.icons.Icon;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
@@ -28,8 +29,11 @@ import mchorse.bbs_mod.utils.Pair;
 import mchorse.bbs_mod.utils.colors.Color;
 import mchorse.bbs_mod.utils.colors.Colors;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
+import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import mchorse.bbs_mod.utils.keyframes.KeyframeSegment;
 import mchorse.bbs_mod.utils.keyframes.KeyframeShape;
+import mchorse.bbs_mod.utils.pose.Pose;
+import mchorse.bbs_mod.utils.pose.PoseTransform;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BufferRenderer;
 import net.minecraft.client.render.GameRenderer;
@@ -285,7 +289,12 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
         int base = color != null ? color.getRGBColor() | Colors.A100 : sheet.color;
 
-        return frame.isEnabled() ? base : Colors.mulRGB(base, 0.4F);
+        if (!frame.isEnabled() || (sheet != null && sheet.channel != null && sheet.channel.isMuted()))
+        {
+            return Colors.mulRGB(base, 0.4F);
+        }
+
+        return base;
     }
 
     /**
@@ -1180,6 +1189,14 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
             if (context.mouseY >= y && context.mouseY < y + height)
             {
+                if (sheet.isPoseOverlay() && this.isMuteToggleHit(context, sheet, y, labelWidth))
+                {
+                    sheet.channel.setMuted(!sheet.channel.isMuted());
+                    UIUtils.playClick();
+
+                    return true;
+                }
+
                 if (this.hasChildren(sheet) && this.isFoldToggleHit(context, sheet, y, labelWidth))
                 {
                     this.toggleFold(sheet, Window.isShiftPressed());
@@ -1771,9 +1788,28 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
                 this.renderFoldArrow(context, this.getArrowX(lx, w, hasIcon) + LABEL_ARROW_SIZE / 2F, my, this.isUnfolded(sheet));
             }
 
+            if (sheet.isPoseOverlay() && height >= 12D)
+            {
+                boolean muted = sheet.channel.isMuted();
+                boolean rowHover = areaHover && context.mouseY >= y && context.mouseY < y + height;
+
+                if (muted || rowHover)
+                {
+                    int eyeX = this.getMuteIconX(lx, w, hasIcon);
+                    boolean eyeHover = rowHover && context.mouseX >= eyeX && context.mouseX < eyeX + LABEL_ICON_SIZE;
+                    Icon eyeIcon = muted ? Icons.INVISIBLE : Icons.VISIBLE;
+                    int eyeColor = muted
+                        ? (eyeHover ? 0xFFFF8888 : 0xFFD96B6B)
+                        : (eyeHover ? Colors.WHITE : Colors.setA(Colors.WHITE, 0.45F));
+
+                    context.batcher.icon(eyeIcon, eyeColor, eyeX, my - eyeIcon.h / 2);
+                }
+            }
+
             if (hasIcon)
             {
-                context.batcher.icon(icon, iconX, my - icon.h / 2);
+                int iconColor = sheet.channel != null && sheet.channel.isMuted() ? Colors.setA(Colors.WHITE, 0.35F) : Colors.WHITE;
+                context.batcher.icon(icon, iconColor, iconX, my - icon.h / 2);
             }
         }
 
@@ -1817,7 +1853,10 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
         if (w > LABEL_COMPACT_WIDTH)
         {
             FontRenderer font = context.batcher.getFont();
-            int textColor = hover ? Colors.WHITE : Colors.setA(Colors.WHITE, 0.75F);
+            boolean muted = sheet.channel != null && sheet.channel.isMuted();
+            int textColor = muted
+                ? Colors.setA(Colors.WHITE, hover ? 0.55F : 0.35F)
+                : (hover ? Colors.WHITE : Colors.setA(Colors.WHITE, 0.75F));
             int textRight = hasIcon ? iconX - LABEL_TEXT_ICON_GAP : lx + w - LABEL_RIGHT_PAD;
 
             if (foldable)
@@ -1825,7 +1864,29 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
                 textRight -= LABEL_ARROW_SIZE;
             }
 
-            String title = font.limitToWidth(sheet.title.get(), Math.max(0, textRight - textX));
+            if (sheet.isPoseOverlay() && height >= 12D)
+            {
+                textRight = this.getMuteIconX(lx, w, hasIcon) - LABEL_TEXT_ICON_GAP;
+
+                String badge = this.getPoseOverlayBadge(sheet.channel);
+
+                if (!badge.isEmpty() && textRight - textX > 48)
+                {
+                    int maxBadgeW = Math.min(font.getWidth(badge), (textRight - textX) / 2);
+                    String fittedBadge = font.limitToWidth(badge, maxBadgeW);
+                    int badgeW = font.getWidth(fittedBadge);
+
+                    if (badgeW > 0 && textRight - badgeW - 6 - textX >= 18)
+                    {
+                        int badgeColor = Colors.setA(Colors.LIGHTER_GRAY, muted ? 0.30F : 0.62F);
+
+                        context.batcher.textShadow(fittedBadge, textRight - badgeW, my - font.getHeight() / 2, badgeColor);
+                        textRight -= badgeW + 6;
+                    }
+                }
+            }
+
+            String title = font.limitToWidth(sheet.getDisplayTitle(), Math.max(0, textRight - textX));
 
             context.batcher.textShadow(title, textX, my - font.getHeight() / 2, textColor);
         }
@@ -2493,6 +2554,93 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
      * two sit together at the right end of the name column and read as one control, so hitting either
      * folds the row — the arrow alone is a 10px target, which is a lot to ask of a mouse.
      */
+    private int getMuteIconX(int labelX, int labelWidth, boolean hasIcon)
+    {
+        int iconX = labelX + labelWidth - LABEL_RIGHT_PAD - LABEL_ICON_SIZE;
+
+        return hasIcon ? iconX - LABEL_ICON_SIZE : iconX;
+    }
+
+    private boolean isMuteToggleHit(UIContext context, UIKeyframeSheet sheet, int y, int labelWidth)
+    {
+        int height = this.getTrackHeight(sheet);
+
+        if (height < 12D)
+        {
+            return false;
+        }
+
+        boolean hasIcon = sheet.getIcon() != null;
+        int eyeX = this.getMuteIconX(this.keyframes.area.x, labelWidth, hasIcon);
+
+        return context.mouseX >= eyeX && context.mouseX < eyeX + LABEL_ICON_SIZE
+            && context.mouseY >= y && context.mouseY < y + height;
+    }
+
+    private static final PoseTransform DEFAULT_POSE_TRANSFORM = new PoseTransform();
+    private final Map<KeyframeChannel, BoneBadgeCache> boneBadgeCache = new java.util.WeakHashMap<>();
+
+    private String getPoseOverlayBadge(KeyframeChannel channel)
+    {
+        if (channel == null || channel.isEmpty())
+        {
+            return "";
+        }
+
+        int version = channel.getVersion();
+        BoneBadgeCache cached = this.boneBadgeCache.get(channel);
+
+        if (cached != null && cached.version == version)
+        {
+            return cached.badge;
+        }
+
+        Set<String> bones = new LinkedHashSet<>();
+
+        for (Object obj : channel.getKeyframes())
+        {
+            Keyframe kf = (Keyframe) obj;
+
+            if (kf.getValue() instanceof Pose pose)
+            {
+                for (Map.Entry<String, PoseTransform> entry : pose.transforms.entrySet())
+                {
+                    if (entry.getValue() != null && !DEFAULT_POSE_TRANSFORM.equals(entry.getValue()))
+                    {
+                        bones.add(entry.getKey());
+                    }
+                }
+            }
+        }
+
+        String badge = "";
+
+        if (bones.size() == 1)
+        {
+            badge = bones.iterator().next();
+        }
+        else if (bones.size() > 1)
+        {
+            badge = bones.iterator().next() + " +" + (bones.size() - 1);
+        }
+
+        this.boneBadgeCache.put(channel, new BoneBadgeCache(version, badge));
+
+        return badge;
+    }
+
+    private static final class BoneBadgeCache
+    {
+        final int version;
+        final String badge;
+
+        BoneBadgeCache(int version, String badge)
+        {
+            this.version = version;
+            this.badge = badge;
+        }
+    }
+
     private boolean isFoldToggleHit(UIContext context, UIKeyframeSheet sheet, int y, int labelWidth)
     {
         int height = this.getTrackHeight(sheet);

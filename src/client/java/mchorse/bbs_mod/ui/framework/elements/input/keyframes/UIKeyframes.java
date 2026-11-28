@@ -36,6 +36,14 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeDo
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.graphs.UIKeyframeGraph;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.overlays.UIKeyframeStylePopup;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.overlays.UITrackStylePopup;
+import mchorse.bbs_mod.ui.framework.elements.buttons.UIButton;
+import mchorse.bbs_mod.ui.framework.elements.context.UIPopup;
+import mchorse.bbs_mod.ui.framework.elements.input.text.UITextbox;
+import mchorse.bbs_mod.ui.framework.elements.overlay.UIOverlay;
+import mchorse.bbs_mod.ui.utils.UI;
+import mchorse.bbs_mod.ui.utils.pose.UIPosePresetOverlayPanel;
+import mchorse.bbs_mod.forms.FormUtils;
+import mchorse.bbs_mod.utils.pose.Pose;
 import mchorse.bbs_mod.ui.framework.elements.utils.UIDraggable;
 import mchorse.bbs_mod.ui.utils.Area;
 import mchorse.bbs_mod.ui.utils.DoubleClick;
@@ -359,6 +367,21 @@ public class UIKeyframes extends UITimelineCanvas
                 menu.action(Icons.GRAPH, UIKeys.KEYFRAMES_MODE_GRAPH, () -> this.setGraphMode(true));
             }
 
+            if (hovered != null && hovered.isPoseOverlay())
+            {
+                boolean muted = hovered.channel.isMuted();
+                boolean soloed = this.isPoseOverlaySoloed(hovered);
+
+                menu.action(Icons.EDIT, IKey.constant("Rename overlay..."), () -> this.openPoseOverlayRenamePopup(hovered));
+                menu.action(muted ? Icons.VISIBLE : Icons.INVISIBLE, IKey.constant(muted ? "Unmute overlay" : "Mute overlay"), () -> hovered.channel.setMuted(!muted));
+                menu.action(Icons.CHECKMARK, IKey.constant(soloed ? "Unsolo overlay" : "Solo overlay"), () -> this.toggleSoloPoseOverlay(hovered));
+            }
+
+            if (this.findSelectedPoseSheet() != null)
+            {
+                menu.action(Icons.POSE, IKey.constant("Pose presets..."), () -> this.openPosePresetBrowser(this.getContext()));
+            }
+
             if (hovered != null)
             {
                 menu.action(Icons.BUCKET, UIKeys.KEYFRAMES_CONTEXT_TRACK_STYLE, () -> this.getContext().replaceContextMenu(
@@ -441,6 +464,13 @@ public class UIKeyframes extends UITimelineCanvas
         {
             UIContext context = this.getContext();
 
+            if (this.openPosePresetBrowser(context))
+            {
+                UIUtils.playClick();
+
+                return;
+            }
+
             if (this.copyPasteController.canPreviewPresets())
             {
                 this.copyPasteController.openPresets(context, context.mouseX, context.mouseY);
@@ -477,6 +507,150 @@ public class UIKeyframes extends UITimelineCanvas
     public int getLabelWidth()
     {
         return BBSSettings.editorLayoutSettings.getKeyframeLabelWidth();
+    }
+
+    private void openPoseOverlayRenamePopup(UIKeyframeSheet sheet)
+    {
+        UIPopup popup = new UIPopup(IKey.constant("Rename Pose Overlay"), 220);
+        UITextbox name = new UITextbox(100, (text) -> sheet.channel.setCustomLabel(text));
+
+        name.placeholder(sheet.defaultTitle);
+        name.setText(sheet.channel.getCustomLabel());
+
+        UIButton reset = new UIButton(IKey.constant("Reset"), (b) ->
+        {
+            sheet.channel.setCustomLabel("");
+            name.setText("");
+        });
+
+        popup.column.add(name, reset);
+        this.getContext().replaceContextMenu(popup);
+        this.getContext().focus(name);
+    }
+
+    private static String poseOverlayOwnerPrefix(UIKeyframeSheet sheet)
+    {
+        if (sheet == null || sheet.id == null)
+        {
+            return "";
+        }
+
+        int idx = sheet.id.lastIndexOf("pose_overlay");
+
+        return idx > 0 ? sheet.id.substring(0, idx) : "";
+    }
+
+    private List<UIKeyframeSheet> getSiblingPoseOverlays(UIKeyframeSheet target)
+    {
+        String prefix = poseOverlayOwnerPrefix(target);
+        List<UIKeyframeSheet> siblings = new ArrayList<>();
+
+        for (UIKeyframeSheet sheet : this.sheets)
+        {
+            if (sheet.isPoseOverlay() && prefix.equals(poseOverlayOwnerPrefix(sheet)))
+            {
+                siblings.add(sheet);
+            }
+        }
+
+        return siblings;
+    }
+
+    private boolean isPoseOverlaySoloed(UIKeyframeSheet target)
+    {
+        List<UIKeyframeSheet> siblings = this.getSiblingPoseOverlays(target);
+
+        if (siblings.size() <= 1 || target.channel.isMuted())
+        {
+            return false;
+        }
+
+        for (UIKeyframeSheet sheet : siblings)
+        {
+            if (sheet != target && !sheet.channel.isMuted())
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void toggleSoloPoseOverlay(UIKeyframeSheet target)
+    {
+        List<UIKeyframeSheet> siblings = this.getSiblingPoseOverlays(target);
+
+        if (siblings.size() <= 1)
+        {
+            target.channel.setMuted(false);
+
+            return;
+        }
+
+        boolean unsolo = this.isPoseOverlaySoloed(target);
+
+        for (UIKeyframeSheet sheet : siblings)
+        {
+            sheet.channel.setMuted(!unsolo && sheet != target);
+        }
+    }
+
+    private UIKeyframeSheet findSelectedPoseSheet()
+    {
+        UIKeyframeSheet picked = this.getPickedSheet();
+
+        if (picked != null && picked.channel != null && picked.channel.getFactory() == KeyframeFactories.POSE && picked.selection.hasAny())
+        {
+            return picked;
+        }
+
+        for (UIKeyframeSheet sheet : this.sheets)
+        {
+            if (sheet.channel != null && sheet.channel.getFactory() == KeyframeFactories.POSE && sheet.selection.hasAny())
+            {
+                return sheet;
+            }
+        }
+
+        return null;
+    }
+
+    private boolean openPosePresetBrowser(UIContext context)
+    {
+        UIKeyframeSheet target = this.findSelectedPoseSheet();
+
+        if (target == null || context == null)
+        {
+            return false;
+        }
+
+        Form form = target.property != null ? FormUtils.getForm(target.property) : target.form;
+        UIPosePresetOverlayPanel panel = new UIPosePresetOverlayPanel(form, (poseData) ->
+        {
+            List<Keyframe> selected = target.selection.getSelected();
+
+            if (selected.isEmpty())
+            {
+                return;
+            }
+
+            target.channel.preNotify(IValueListener.FLAG_UNMERGEABLE);
+
+            for (Keyframe kf : selected)
+            {
+                if (kf.getValue() instanceof Pose pose)
+                {
+                    pose.fromData(poseData);
+                }
+            }
+
+            target.channel.postNotify(IValueListener.FLAG_UNMERGEABLE);
+            this.triggerChange();
+        });
+
+        UIOverlay.addOverlay(context, panel, 0.65F, 0.72F);
+
+        return true;
     }
 
     /**

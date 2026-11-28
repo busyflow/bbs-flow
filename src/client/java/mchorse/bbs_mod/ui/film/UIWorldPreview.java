@@ -158,6 +158,29 @@ public class UIWorldPreview extends UIElement
         return shaders;
     }
 
+    /**
+     * Global ON/OFF toggle icon for the Realistic Biomes 1.3 Fabric mod (left-click: toggle, right-click: settings).
+     */
+    protected UIIcon createRealisticBiomesIcon()
+    {
+        if (!mchorse.bbs_mod.utils.RealisticBiomesBridge.isLoaded())
+        {
+            return null;
+        }
+
+        UIIcon icon = new UIIcon(Icons.TREE, (b) -> mchorse.bbs_mod.utils.RealisticBiomesBridge.toggleEnabled());
+
+        icon.highlight(mchorse.bbs_mod.utils.RealisticBiomesBridge::isEnabled, Direction.BOTTOM);
+        icon.tooltip(mchorse.bbs_mod.l10n.keys.IKey.constant("Realistic Biomes (Left-click: Toggle, Right-click: Settings)"));
+        icon.context((menu) ->
+        {
+            menu.action(Icons.TREE, mchorse.bbs_mod.l10n.keys.IKey.constant("Realistic Biomes Enabled"), mchorse.bbs_mod.utils.RealisticBiomesBridge.isEnabled(), mchorse.bbs_mod.utils.RealisticBiomesBridge::toggleEnabled);
+            menu.action(Icons.GEAR, mchorse.bbs_mod.l10n.keys.IKey.constant("Realistic Biomes Settings..."), mchorse.bbs_mod.utils.RealisticBiomesBridge::openSettings);
+        });
+
+        return icon;
+    }
+
     protected void toggleShaders()
     {
         if (!FabricLoader.getInstance().isModLoaded("iris")) return;

@@ -1030,6 +1030,8 @@ public class NativeFontRenderer
             pixels.flip();
 
             int texId = this.getTextureId();
+            org.lwjgl.opengl.GL13.glActiveTexture(org.lwjgl.opengl.GL13.GL_TEXTURE0);
+            GL11.glBindTexture(GL11.GL_TEXTURE_2D, texId);
             GlStateManager._bindTexture(texId);
             resetUnpackState();
             GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, atlasX, atlasY, gw, gh, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixels);

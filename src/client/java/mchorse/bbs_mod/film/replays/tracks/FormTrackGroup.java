@@ -20,6 +20,7 @@ public enum FormTrackGroup
 {
     /* In the order the headings show. The rig bends the same skeleton the pose keys, so it follows it. */
     POSE("pose", Icons.POSE, Colors.RED),
+    ITEM_POSE("items", IKey.constant("Items"), Icons.BLOCK, 0x3898ff),
     RIG("rig", Icons.BONE, 0xfb7185),
     TRANSFORM("transform", Icons.ALL_DIRECTIONS, 0x4ade80),
     LOOK("look", Icons.MATERIAL, 0xfb923c);
@@ -31,8 +32,13 @@ public enum FormTrackGroup
 
     FormTrackGroup(String id, Icon icon, int color)
     {
+        this(id, L10n.lang("bbs.ui.film.form.sections." + id), icon, color);
+    }
+
+    FormTrackGroup(String id, IKey label, Icon icon, int color)
+    {
         this.id = id;
-        this.label = L10n.lang("bbs.ui.film.form.sections." + id);
+        this.label = label;
         this.icon = icon;
         this.color = color;
     }
@@ -74,6 +80,11 @@ public enum FormTrackGroup
         if (name.equals("transform") || name.startsWith("transform_overlay"))
         {
             return TRANSFORM;
+        }
+
+        if (name.equals("item_pose"))
+        {
+            return ITEM_POSE;
         }
 
         /* What moves the model: its pose and everything that plays or bends it. */

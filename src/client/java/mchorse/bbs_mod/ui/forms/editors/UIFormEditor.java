@@ -1609,6 +1609,11 @@ public class UIFormEditor extends UIElement implements IUIFormList, ICursor, IBo
     {
         super.applyUndoData(data);
 
+        if (!this.isVisible())
+        {
+            return;
+        }
+
         /* The same body part stays where the user has scrolled the list and the options to; only
          * another one is scrolled to. The editor is still rebuilt: that is what shows the restored values. */
         int index = data.getInt("body_part");

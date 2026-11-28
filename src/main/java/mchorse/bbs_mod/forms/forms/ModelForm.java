@@ -57,6 +57,7 @@ public class ModelForm extends Form implements IPosedForm
     public final ValueString model = new ValueString("model", "");
     public final ValuePose pose = new ValuePose("pose", new Pose());
     public final ValuePose poseOverlay = new ValuePose("pose_overlay", new Pose());
+    public final ValuePose itemPose = new ValuePose("item_pose", new Pose());
     /** Compatibility field for addons (e.g. bbs_pov) compiled against ModelForm.boneTracks. */
     public final ValueBoolean boneTracks = new ValueBoolean("bone_tracks", true);
     public final ValueActionsConfig actions = new ValueActionsConfig("actions", new ActionsConfig());
@@ -148,6 +149,7 @@ public class ModelForm extends Form implements IPosedForm
         this.add(this.poseOverlay);
 
         this.syncOverlayTracks();
+        this.add(this.itemPose);
 
         this.add(this.actions);
         this.add(this.color);

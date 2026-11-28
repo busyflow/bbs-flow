@@ -26,6 +26,7 @@ public class UISequencePreview extends UIWorldPreview
 
     public UIIcon plause;
     public UIIcon shaders;
+    public UIIcon realisticBiomes;
     public UIIcon record;
 
     public UISequencePreview(UISequencePanel panel)
@@ -35,6 +36,7 @@ public class UISequencePreview extends UIWorldPreview
         this.plause = new UIIcon(() -> this.panel.isRunning() ? Icons.PAUSE : Icons.PLAY, (b) -> this.panel.togglePlayback());
         this.plause.tooltip(UIKeys.CAMERA_EDITOR_KEYS_EDITOR_PLAUSE);
         this.shaders = this.createShadersIcon();
+        this.realisticBiomes = this.createRealisticBiomesIcon();
         this.record = new UIIcon(Icons.VIDEO_CAMERA, (b) -> this.panel.recorder.recordSequence());
         this.record.tooltip(UIKeys.SEQUENCE_RECORD);
         this.record.context((menu) ->
@@ -61,6 +63,10 @@ public class UISequencePreview extends UIWorldPreview
         });
 
         this.addIcon(this.shaders, BBSSettings.previewIconShaders);
+        if (this.realisticBiomes != null)
+        {
+            this.icons.add(this.realisticBiomes);
+        }
         this.addIcon(this.plause, BBSSettings.previewIconPlayback);
         this.addIcon(this.record, BBSSettings.previewIconExport);
     }

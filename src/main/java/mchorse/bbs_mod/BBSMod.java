@@ -39,6 +39,7 @@ import mchorse.bbs_mod.camera.clips.converters.PathToKeyframeConverter;
 import mchorse.bbs_mod.camera.clips.misc.AudioClip;
 import mchorse.bbs_mod.camera.clips.misc.CurveClip;
 import mchorse.bbs_mod.camera.clips.misc.ImageClip;
+import mchorse.bbs_mod.camera.clips.misc.RealisticBiomesClip;
 import mchorse.bbs_mod.camera.clips.misc.SubtitleClip;
 import mchorse.bbs_mod.camera.clips.misc.VideoClip;
 import mchorse.bbs_mod.camera.clips.modifiers.AngleClip;
@@ -519,7 +520,8 @@ public class BBSMod implements ModInitializer
             .register(Link.bbs("curve"), CurveClip.class, new ClipFactoryData(Icons.ARC, 0xff1493).in(ClipCategories.MISC))
             .register(Link.bbs("tracker"), TrackerClip.class, new ClipFactoryData(Icons.USER, 0xffffff).in(ClipCategories.OVERWRITE))
             .register(Link.bbs("spline"), SplineClip.class, new ClipFactoryData(Icons.GRAPH, 0x5599ff).in(ClipCategories.OVERWRITE))
-            .register(Link.bbs("dolly_zoom"), DollyZoomClip.class, new ClipFactoryData(Icons.FILTER, 0x7d56c9).in(ClipCategories.MODIFIERS));
+            .register(Link.bbs("dolly_zoom"), DollyZoomClip.class, new ClipFactoryData(Icons.FILTER, 0x7d56c9).in(ClipCategories.MODIFIERS))
+            .register(Link.bbs("realistic_biomes"), RealisticBiomesClip.class, new ClipFactoryData(Icons.TREE, 0x2ecc71).in(ClipCategories.OTHER));
 
         events.post(new RegisterCameraClipsEvent(factoryCameraClips));
 

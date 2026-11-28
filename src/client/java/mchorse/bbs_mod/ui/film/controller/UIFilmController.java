@@ -643,6 +643,17 @@ public class UIFilmController extends UIElement implements GizmoViewport
         RenderFrame.invalidate();
     }
 
+    /** Re-evaluate existing actors in place after a lightweight undo/redo without rebuilding entities. */
+    public void refreshEntitiesAfterUndo()
+    {
+        if (this.editorController != null)
+        {
+            this.editorController.update();
+        }
+
+        RenderFrame.invalidate();
+    }
+
     /**
      * Hand the control back to the rebuilt body of the replay it was on. Only a replay that is
      * gone or switched off leaves nothing to steer, and only then is the control let go &mdash;
@@ -913,21 +924,15 @@ public class UIFilmController extends UIElement implements GizmoViewport
         }
 
         /* Alt pick the replay */
-        if (context.mouseButton == 0)
+        if (context.mouseButton == 0 && this.picker.getHoveredReplayIndex() >= 0)
         {
-            int hoveredReplay = this.picker.getHoveredReplayIndex();
+            this.pickReplay(this.picker.getHoveredReplayIndex());
 
-            if (hoveredReplay < 0 && Window.isAltPressed() && !this.picker.isPickingTarget())
-            {
-                hoveredReplay = this.picker.resolveHoveredReplayIndex();
-            }
-
-            if (hoveredReplay >= 0)
-            {
-                this.pickReplay(hoveredReplay);
-
-                return true;
-            }
+            return true;
+        }
+        else if (context.mouseButton == 0 && Window.isAltPressed() && this.tryAltPickReplay())
+        {
+            return true;
         }
 
         if (gizmoShown && this.gizmo.mouseClickedSphere(context))
@@ -983,6 +988,30 @@ public class UIFilmController extends UIElement implements GizmoViewport
     public void pickGizmoForm(UIContext context, Form form, String bone)
     {
         this.panel.replayEditor.pickFormWithOffers(context, form, bone);
+    }
+
+    public boolean tryAltPickReplay()
+    {
+        if (this.picker.isPickingTarget())
+        {
+            return false;
+        }
+
+        int hoveredReplay = this.picker.getHoveredReplayIndex();
+
+        if (hoveredReplay < 0)
+        {
+            hoveredReplay = this.picker.resolveHoveredReplayIndex();
+        }
+
+        if (hoveredReplay >= 0)
+        {
+            this.pickReplay(hoveredReplay);
+
+            return true;
+        }
+
+        return false;
     }
 
     private void pickReplay(int index)

@@ -2155,17 +2155,31 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         List<Integer> currentIndices = this.replaysList.replays.getCurrentIndices();
 
         Replay replay = CollectionUtils.getSafe(this.film.replays.getList(), data.getInt("replay"));
+        boolean partsChanged = false;
 
         if (replay != null)
         {
-            this.selectedPartsByReplay.computeIfAbsent(replay.getId(), key -> new TimelineBodyPartSelection()).read(data);
+            partsChanged = this.selectedPartsByReplay.computeIfAbsent(replay.getId(), key -> new TimelineBodyPartSelection()).readChanged(data);
+        }
+
+        boolean another = replay != this.replay;
+        List<BaseValue> applied = this.filmPanel.getUndoHandler() == null ? null : this.filmPanel.getUndoHandler().getLastAppliedValues();
+
+        if (!another && !partsChanged && this.isLightweightKeyframeUndo(applied))
+        {
+            if (!currentIndices.equals(selection))
+            {
+                currentIndices.clear();
+                currentIndices.addAll(selection);
+                this.replaysList.replays.update();
+            }
+
+            return;
         }
 
         /* Scrolling the list to the replay (and opening its folder) is for when undo picks another
          * one; for the same replay it threw the list back to it on every Ctrl+Z. The rows are still
          * rebuilt, undo may have added or removed replays. */
-        boolean another = replay != this.replay;
-
         this.setReplay(replay, another, OrbitReaction.KEEP);
 
         if (!another)
@@ -2176,6 +2190,89 @@ public class UIReplaysEditor extends UIElement implements IBoneSelectionHost, IL
         currentIndices.clear();
         currentIndices.addAll(selection);
         this.replaysList.replays.update();
+    }
+
+    private boolean isLightweightKeyframeUndo(List<BaseValue> applied)
+    {
+        if (applied == null || applied.isEmpty() || this.replay == null)
+        {
+            return false;
+        }
+
+        for (BaseValue value : applied)
+        {
+            if (value instanceof mchorse.bbs_mod.utils.keyframes.Keyframe<?>)
+            {
+                BaseValue parent = value.getParent();
+
+                if (parent instanceof mchorse.bbs_mod.utils.keyframes.KeyframeChannel<?> channel && this.hasSheetForChannel(channel))
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            if (value instanceof mchorse.bbs_mod.utils.keyframes.KeyframeChannel<?> channel)
+            {
+                if (this.hasSheetForChannel(channel))
+                {
+                    continue;
+                }
+
+                return false;
+            }
+
+            /* Camera / action clip edits don't alter the replay's keyframe sheet layout. */
+            boolean insideClips = false;
+            BaseValue cursor = value;
+
+            while (cursor != null)
+            {
+                if (cursor instanceof mchorse.bbs_mod.utils.clips.Clips)
+                {
+                    insideClips = true;
+
+                    break;
+                }
+
+                cursor = cursor.getParent();
+            }
+
+            if (!insideClips)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private boolean hasSheetForChannel(mchorse.bbs_mod.utils.keyframes.KeyframeChannel<?> channel)
+    {
+        if (this.keyframeEditor != null)
+        {
+            for (UIKeyframeSheet sheet : this.keyframeEditor.view.getSheets())
+            {
+                if (sheet.channel == channel)
+                {
+                    return true;
+                }
+            }
+        }
+
+        if (this.poseKeyframeEditor != null)
+        {
+            for (UIKeyframeSheet sheet : this.poseKeyframeEditor.view.getSheets())
+            {
+                if (sheet.channel == channel)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     @Override

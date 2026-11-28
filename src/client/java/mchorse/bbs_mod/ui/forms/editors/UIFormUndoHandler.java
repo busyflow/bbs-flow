@@ -42,6 +42,12 @@ public class UIFormUndoHandler
     protected Timer batchTimer = new Timer(BATCH_TIMEOUT);
 
     protected UIElement uiElement;
+    private List<BaseValue> lastAppliedValues;
+
+    public List<BaseValue> getLastAppliedValues()
+    {
+        return this.lastAppliedValues;
+    }
 
     /**
      * Remove any child tree entries if one of the parents is present already.
@@ -112,20 +118,29 @@ public class UIFormUndoHandler
     {
         List<BaseValue> applied = new ArrayList<>();
         collectAppliedValues(undo, applied);
-        FilmEditEvents.notifyChanges(applied, redo ? FilmEditEvents.Cause.REDO : FilmEditEvents.Cause.UNDO);
+        this.lastAppliedValues = applied;
 
-        IUndo<ValueGroup> anotherUndo = undo;
-
-        if (anotherUndo instanceof CompoundUndo)
+        try
         {
-            anotherUndo = ((CompoundUndo<ValueGroup>) anotherUndo).getFirst(ValueChangeUndo.class);
+            FilmEditEvents.notifyChanges(applied, redo ? FilmEditEvents.Cause.REDO : FilmEditEvents.Cause.UNDO);
+
+            IUndo<ValueGroup> anotherUndo = undo;
+
+            if (anotherUndo instanceof CompoundUndo)
+            {
+                anotherUndo = ((CompoundUndo<ValueGroup>) anotherUndo).getFirst(ValueChangeUndo.class);
+            }
+
+            if (anotherUndo instanceof ValueChangeUndo)
+            {
+                ValueChangeUndo change = (ValueChangeUndo) anotherUndo;
+
+                this.uiElement.getRoot().applyAllUndoData(change.getUIData(redo));
+            }
         }
-
-        if (anotherUndo instanceof ValueChangeUndo)
+        finally
         {
-            ValueChangeUndo change = (ValueChangeUndo) anotherUndo;
-
-            this.uiElement.getRoot().applyAllUndoData(change.getUIData(redo));
+            this.lastAppliedValues = null;
         }
     }
 

@@ -99,6 +99,7 @@ public class UIFilmPreview extends UIWorldPreview
     public UIIcon hidePositionKeyframes;
     public UIIcon recordVideo;
     public UIIcon shaders;
+    public UIIcon realisticBiomes;
 
     /** The side of the axes crosshair's block, matching {@link RenderSystem#renderCrosshair}'s reach. */
     private static final int CURSOR_SIZE = 24;
@@ -234,6 +235,7 @@ public class UIFilmPreview extends UIWorldPreview
         this.hidePositionKeyframes.highlight(() -> BBSSettings.hidePositionKeyframes.get(), Direction.BOTTOM);
         this.hidePositionKeyframes.tooltip(mchorse.bbs_mod.l10n.keys.IKey.constant("Hide position keyframes"));
         this.shaders = this.createShadersIcon();
+        this.realisticBiomes = this.createRealisticBiomesIcon();
         this.recordVideo = new UIIcon(Icons.VIDEO_CAMERA, (b) ->
         {
             if (!this.canExport())
@@ -320,6 +322,10 @@ public class UIFilmPreview extends UIWorldPreview
         this.addIcon(this.autoKeyframe, BBSSettings.previewIconAutoKeyframe);
         this.addIcon(this.liveRecording, BBSSettings.previewIconLiveRecording);
         this.addIcon(this.shaders, BBSSettings.previewIconShaders);
+        if (this.realisticBiomes != null)
+        {
+            this.icons.add(this.realisticBiomes);
+        }
         this.addIcon(this.recordReplay, BBSSettings.previewIconRecordReplay);
         this.addIcon(this.hidePositionKeyframes, BBSSettings.previewIconHidePositionKeyframes);
         this.addIcon(this.recordVideo, BBSSettings.previewIconExport);
@@ -449,6 +455,11 @@ public class UIFilmPreview extends UIWorldPreview
         if (area.isInside(context))
         {
             if (this.panel.getController().picker.pickTarget(context))
+            {
+                return true;
+            }
+
+            if (context.mouseButton == 0 && Window.isAltPressed() && this.panel.getController().tryAltPickReplay())
             {
                 return true;
             }

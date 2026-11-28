@@ -12,10 +12,16 @@
 	},
 	"armor_slots": {
 		"helmet": {
-			"group": "armor_helmet"
+			"group": "armor_helmet",
+			"transform": {
+				"t": [0, 0, -0.025]
+			}
 		},
 		"chest": {
-			"group": "armor_chest"
+			"group": "armor_chest",
+			"transform": {
+				"t": [0, 0, -0.025]
+			}
 		},
 		"leggings": {
 			"group": "armor_leggings"

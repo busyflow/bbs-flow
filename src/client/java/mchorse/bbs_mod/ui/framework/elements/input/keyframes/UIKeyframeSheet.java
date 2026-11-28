@@ -221,6 +221,31 @@ public class UIKeyframeSheet
         return FormUtils.getForm(this.property) instanceof IPosedForm posedForm ? posedForm : null;
     }
 
+    /** Whether this track is a pose overlay channel (pose_overlay, pose_overlay_1..11, or on a body part). */
+    public boolean isPoseOverlay()
+    {
+        return this.channel != null
+            && this.channel.getFactory() == KeyframeFactories.POSE
+            && this.id != null
+            && this.id.contains("pose_overlay");
+    }
+
+    /** Display title for the track label: per-channel custom label if set, otherwise styled/default title. */
+    public String getDisplayTitle()
+    {
+        if (this.channel != null)
+        {
+            String custom = this.channel.getCustomLabel();
+
+            if (custom != null && !custom.isEmpty())
+            {
+                return custom;
+            }
+        }
+
+        return this.title.get();
+    }
+
     /** The key this track is identified by in the global filters and in the user's name/colour overrides. */
     public String getFilterKey()
     {

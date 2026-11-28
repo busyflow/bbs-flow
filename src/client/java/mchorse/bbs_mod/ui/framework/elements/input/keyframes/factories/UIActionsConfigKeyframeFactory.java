@@ -3,7 +3,9 @@ package mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories;
 import mchorse.bbs_mod.cubic.animation.ActionsConfig;
 import mchorse.bbs_mod.forms.FormUtils;
 import mchorse.bbs_mod.forms.FormUtilsClient;
+import mchorse.bbs_mod.forms.forms.Form;
 import mchorse.bbs_mod.forms.forms.ModelForm;
+import mchorse.bbs_mod.forms.renderers.FormRenderer;
 import mchorse.bbs_mod.forms.renderers.ModelFormRenderer;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframes;
@@ -11,6 +13,8 @@ import mchorse.bbs_mod.ui.utils.UIConstants;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.ui.utils.pose.UIActionsConfigEditor;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UITrackValue;
+
+import java.util.Collection;
 
 public class UIActionsConfigKeyframeFactory extends UIKeyframeFactory<ActionsConfig>
 {
@@ -21,23 +25,57 @@ public class UIActionsConfigKeyframeFactory extends UIKeyframeFactory<ActionsCon
      * that stays on the same side of the threshold doesn't rebuild the subtree */
     private Boolean wide;
 
+    @SuppressWarnings("unchecked")
     public UIActionsConfigKeyframeFactory(UITrackValue<ActionsConfig> track, UIKeyframes editor)
     {
         super(track, editor);
 
-        ModelForm form = (ModelForm) FormUtils.getForm(track.sheet.property);
-        ModelFormRenderer renderer = (ModelFormRenderer) FormUtilsClient.getRenderer(form);
+        Form form = FormUtils.getForm(track.sheet.property);
+        FormRenderer renderer = form != null ? FormUtilsClient.getRenderer(form) : null;
 
         this.actionsEditor = new UIActionsConfigEditor(() ->
         {
 
         }, () ->
         {
-            renderer.resetAnimator();
+            if (renderer instanceof ModelFormRenderer modelRenderer)
+            {
+                modelRenderer.resetAnimator();
+            }
+            else if (renderer != null)
+            {
+                try
+                {
+                    renderer.getClass().getMethod("resetAnimator").invoke(renderer);
+                }
+                catch (Throwable ignored)
+                {}
+            }
             this.track.setValue(this.displayed);
         });
         this.displayed = track.getValue();
-        this.actionsEditor.setConfigs(this.displayed, form);
+
+        if (form instanceof ModelForm modelForm)
+        {
+            this.actionsEditor.setConfigs(this.displayed, modelForm);
+        }
+        else if (renderer != null)
+        {
+            Collection<String> animations = null;
+            Collection<String> actions = null;
+
+            try
+            {
+                Object animObj = renderer.getClass().getMethod("getAnimationsList").invoke(renderer);
+                if (animObj instanceof Collection<?> c) animations = (Collection<String>) c;
+                Object actObj = renderer.getClass().getMethod("getActionsList").invoke(renderer);
+                if (actObj instanceof Collection<?> c) actions = (Collection<String>) c;
+            }
+            catch (Throwable ignored)
+            {}
+
+            this.actionsEditor.setConfigs(this.displayed, animations, actions);
+        }
 
         this.scroll.add(this.actionsEditor);
     }
