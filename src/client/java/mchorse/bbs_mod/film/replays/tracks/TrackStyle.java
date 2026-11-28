@@ -150,7 +150,6 @@ public class TrackStyle
         COLORS.put("pose", Colors.RED);
         COLORS.put("item_pose", 0x3898ff);
         LABELS.put("item_pose", IKey.constant("Item pose"));
-        ICONS.put("item_pose", Icons.POSE);
         COLORS.put("physics_targets", Colors.MAGENTA);
         COLORS.put("transform_overlay", 0xaaff00);
         COLORS.put("color", Colors.INACTIVE);
@@ -271,9 +270,7 @@ public class TrackStyle
         ICONS.put("length", Icons.LINE);
         ICONS.put("loop", Icons.REFRESH);
 
-        /* Pose and transform, and their overlays - see getIcon(), which folds the numbered
-         * overlays onto the thing they overlay: an overlay is that thing, layered. */
-        ICONS.put("pose", Icons.POSE);
+        /* Transform and its overlays - see getIcon(), which folds the numbered overlays onto the thing they overlay. */
         ICONS.put("transform", Icons.ALL_DIRECTIONS);
 
         /* The label */

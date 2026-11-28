@@ -32,8 +32,6 @@ import mchorse.bbs_mod.utils.keyframes.Keyframe;
 import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import mchorse.bbs_mod.utils.keyframes.KeyframeSegment;
 import mchorse.bbs_mod.utils.keyframes.KeyframeShape;
-import mchorse.bbs_mod.utils.pose.Pose;
-import mchorse.bbs_mod.utils.pose.PoseTransform;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BufferRenderer;
 import net.minecraft.client.render.GameRenderer;
@@ -1864,26 +1862,9 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
                 textRight -= LABEL_ARROW_SIZE;
             }
 
-            if (sheet.isPoseOverlay() && height >= 12D)
+            if (sheet.isPoseOverlay() && height >= 12D && (muted || hover))
             {
                 textRight = this.getMuteIconX(lx, w, hasIcon) - LABEL_TEXT_ICON_GAP;
-
-                String badge = this.getPoseOverlayBadge(sheet.channel);
-
-                if (!badge.isEmpty() && textRight - textX > 48)
-                {
-                    int maxBadgeW = Math.min(font.getWidth(badge), (textRight - textX) / 2);
-                    String fittedBadge = font.limitToWidth(badge, maxBadgeW);
-                    int badgeW = font.getWidth(fittedBadge);
-
-                    if (badgeW > 0 && textRight - badgeW - 6 - textX >= 18)
-                    {
-                        int badgeColor = Colors.setA(Colors.LIGHTER_GRAY, muted ? 0.30F : 0.62F);
-
-                        context.batcher.textShadow(fittedBadge, textRight - badgeW, my - font.getHeight() / 2, badgeColor);
-                        textRight -= badgeW + 6;
-                    }
-                }
             }
 
             String title = font.limitToWidth(sheet.getDisplayTitle(), Math.max(0, textRight - textX));
@@ -2575,70 +2556,6 @@ public class UIKeyframeDopeSheet implements IUIKeyframeGraph
 
         return context.mouseX >= eyeX && context.mouseX < eyeX + LABEL_ICON_SIZE
             && context.mouseY >= y && context.mouseY < y + height;
-    }
-
-    private static final PoseTransform DEFAULT_POSE_TRANSFORM = new PoseTransform();
-    private final Map<KeyframeChannel, BoneBadgeCache> boneBadgeCache = new java.util.WeakHashMap<>();
-
-    private String getPoseOverlayBadge(KeyframeChannel channel)
-    {
-        if (channel == null || channel.isEmpty())
-        {
-            return "";
-        }
-
-        int version = channel.getVersion();
-        BoneBadgeCache cached = this.boneBadgeCache.get(channel);
-
-        if (cached != null && cached.version == version)
-        {
-            return cached.badge;
-        }
-
-        Set<String> bones = new LinkedHashSet<>();
-
-        for (Object obj : channel.getKeyframes())
-        {
-            Keyframe kf = (Keyframe) obj;
-
-            if (kf.getValue() instanceof Pose pose)
-            {
-                for (Map.Entry<String, PoseTransform> entry : pose.transforms.entrySet())
-                {
-                    if (entry.getValue() != null && !DEFAULT_POSE_TRANSFORM.equals(entry.getValue()))
-                    {
-                        bones.add(entry.getKey());
-                    }
-                }
-            }
-        }
-
-        String badge = "";
-
-        if (bones.size() == 1)
-        {
-            badge = bones.iterator().next();
-        }
-        else if (bones.size() > 1)
-        {
-            badge = bones.iterator().next() + " +" + (bones.size() - 1);
-        }
-
-        this.boneBadgeCache.put(channel, new BoneBadgeCache(version, badge));
-
-        return badge;
-    }
-
-    private static final class BoneBadgeCache
-    {
-        final int version;
-        final String badge;
-
-        BoneBadgeCache(int version, String badge)
-        {
-            this.version = version;
-            this.badge = badge;
-        }
     }
 
     private boolean isFoldToggleHit(UIContext context, UIKeyframeSheet sheet, int y, int labelWidth)
